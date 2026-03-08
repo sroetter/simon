@@ -1,0 +1,2197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pirate Raid</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a1a; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; }
+canvas { display: block; }
+#ui {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+}
+#ui > * { pointer-events: auto; }
+.screen {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    transition: opacity 0.4s;
+}
+.screen.hidden { opacity: 0; pointer-events: none !important; }
+.screen.hidden * { pointer-events: none !important; }
+#titleScreen {
+    background: linear-gradient(180deg, #0a1628 0%, #1a2a4a 40%, #2a4a6a 70%, #d4a574 100%);
+}
+.title-text {
+    font-size: 72px; font-weight: 900; color: #ffd700;
+    text-shadow: 3px 3px 0 #8b4513, 6px 6px 0 rgba(0,0,0,0.3);
+    margin-bottom: 10px; letter-spacing: 4px;
+}
+.title-sub {
+    font-size: 20px; color: #b8d4e8; margin-bottom: 30px; letter-spacing: 2px;
+}
+.title-info {
+    max-width: 550px; text-align: center; margin-bottom: 25px;
+    color: #8aa; font-size: 14px; line-height: 1.6;
+    background: rgba(0,0,0,0.3); padding: 15px 20px; border-radius: 10px;
+}
+.title-info b { color: #ffd700; }
+.mode-btn {
+    font-size: 22px; padding: 16px 36px; margin: 8px;
+    border: 3px solid #ffd700; border-radius: 12px;
+    cursor: pointer; font-weight: bold; letter-spacing: 1px;
+    transition: all 0.2s; min-width: 300px;
+}
+.mode-btn:hover { transform: scale(1.05); }
+.mode-btn .mode-desc { font-size: 12px; font-weight: normal; opacity: 0.7; margin-top: 4px; }
+.mode-btn.pirate {
+    background: linear-gradient(135deg, #1a1a2e, #2a1a3e);
+    color: #ffd700;
+}
+.mode-btn.pirate:hover { background: linear-gradient(135deg, #2a2a3e, #3a2a4e); }
+.mode-btn.defender {
+    background: linear-gradient(135deg, #1a2e1a, #1a3e2a);
+    color: #7fff7f;
+    border-color: #7fff7f;
+}
+.mode-btn.defender:hover { background: linear-gradient(135deg, #2a3e2a, #2a4e3a); }
+#hud {
+    position: absolute; top: 0; left: 0; width: 100%; padding: 15px 20px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    pointer-events: none;
+}
+.hud-left, .hud-right, .hud-center { pointer-events: none; }
+.gold-display {
+    font-size: 22px; color: #ffd700; font-weight: bold;
+    text-shadow: 0 0 8px rgba(255,215,0,0.5);
+}
+.level-display {
+    font-size: 18px; color: #fff; text-align: center;
+    text-shadow: 0 0 8px rgba(0,0,0,0.8);
+}
+.enemy-count {
+    font-size: 15px; color: #f88; text-align: center;
+    text-shadow: 0 0 6px rgba(0,0,0,0.8); margin-top: 4px;
+}
+.ally-count {
+    font-size: 15px; color: #8f8; text-align: center;
+    text-shadow: 0 0 6px rgba(0,0,0,0.8); margin-top: 2px;
+}
+.combo-display {
+    font-size: 28px; color: #ff4444; font-weight: 900;
+    text-shadow: 0 0 12px rgba(255,0,0,0.8);
+    text-align: center; margin-top: 40px;
+    transition: opacity 0.3s;
+}
+.raid-msg {
+    font-size: 22px; color: #ffd700; font-weight: bold;
+    text-shadow: 0 0 12px rgba(255,215,0,0.8);
+    text-align: center; margin-top: 8px;
+}
+.capture-prompt {
+    font-size: 18px; color: #4f4; font-weight: bold;
+    text-shadow: 0 0 10px rgba(0,255,0,0.6);
+    text-align: center; margin-top: 6px;
+}
+.controls-hint {
+    position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.5); font-size: 13px; text-align: center;
+    pointer-events: none;
+}
+#shopScreen {
+    background: rgba(0,0,0,0.85);
+    overflow-y: auto;
+}
+.shop-title {
+    font-size: 36px; color: #ffd700; font-weight: bold; margin-bottom: 15px;
+    text-shadow: 2px 2px 0 #8b4513;
+}
+.shop-sections {
+    display: flex; gap: 25px; max-width: 900px; width: 95%; flex-wrap: wrap;
+    justify-content: center;
+}
+.shop-section-title {
+    font-size: 20px; color: #aac; margin-bottom: 10px; text-align: center;
+    grid-column: 1 / -1;
+}
+.shop-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.shop-grid.crew-grid {
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+.shop-card {
+    background: linear-gradient(135deg, #1a2a3a, #2a3a4a);
+    border: 2px solid #446; border-radius: 10px;
+    padding: 12px; text-align: center; cursor: pointer;
+    transition: all 0.2s; min-width: 130px;
+}
+.shop-card:hover { border-color: #ffd700; transform: scale(1.03); }
+.shop-card.maxed { opacity: 0.5; cursor: default; border-color: #333; }
+.shop-card.maxed:hover { transform: none; border-color: #333; }
+.shop-card.hire { border-color: #5a5; }
+.shop-card.hire:hover { border-color: #8f8; }
+.shop-card.hire-gunsman { border-color: #a85; }
+.shop-card.hire-gunsman:hover { border-color: #fc8; }
+.shop-card.hire-cannon { border-color: #a55; }
+.shop-card.hire-cannon:hover { border-color: #f88; }
+.shop-card.hire-goldguard { border-color: #a85; }
+.shop-card.hire-goldguard:hover { border-color: #ffd700; }
+.shop-name { font-size: 15px; color: #fff; font-weight: bold; margin-bottom: 3px; }
+.shop-level { font-size: 11px; color: #aaa; margin-bottom: 5px; }
+.shop-cost { font-size: 14px; color: #ffd700; font-weight: bold; }
+.shop-desc { font-size: 11px; color: #8af; margin-top: 3px; }
+.shop-gold {
+    font-size: 22px; color: #ffd700; margin-bottom: 12px;
+    text-shadow: 0 0 8px rgba(255,215,0,0.5);
+}
+.next-btn {
+    margin-top: 18px; font-size: 22px; padding: 14px 50px;
+    background: linear-gradient(135deg, #2a6a2a, #3a8a3a);
+    color: #fff; border: 2px solid #5a5; border-radius: 10px;
+    cursor: pointer; font-weight: bold; transition: all 0.2s;
+}
+.next-btn:hover { transform: scale(1.05); background: linear-gradient(135deg, #3a7a3a, #4a9a4a); }
+#gameOverScreen, #victoryScreen { background: rgba(0,0,0,0.9); }
+.go-title {
+    font-size: 48px; color: #ff4444; font-weight: 900;
+    text-shadow: 3px 3px 0 #600; margin-bottom: 15px;
+}
+.victory-title {
+    font-size: 48px; color: #ffd700; font-weight: 900;
+    text-shadow: 3px 3px 0 #8b4513; margin-bottom: 15px;
+}
+.score-text { font-size: 22px; color: #ddd; margin-bottom: 8px; }
+.btn-row { display: flex; gap: 15px; margin-top: 25px; }
+.ui-btn {
+    font-size: 18px; padding: 12px 30px;
+    background: linear-gradient(135deg, #333, #555);
+    color: #fff; border: 2px solid #777; border-radius: 8px;
+    cursor: pointer; font-weight: bold; transition: all 0.2s;
+}
+.ui-btn:hover { transform: scale(1.05); border-color: #ffd700; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui">
+    <div id="titleScreen" class="screen">
+        <div class="title-text">PIRATE RAID</div>
+        <div class="title-sub">CHOOSE YOUR SIDE</div>
+        <div class="title-info">
+            <b>WASD / Arrow Keys</b> to move &bull; <b>Space / Click</b> to spin-attack all around you<br>
+            <b>Shift</b> to dodge-roll &bull; Kill enemies for gold, collect treasure, upgrade!<br>
+            You start with <b>3 free crew</b>! Hire more in the shop: <b>Swordsmen</b>, <b>Gunsmen</b>, or <b>Cannon</b> crews!<br>
+            <b>Capture</b> retreating enemies by walking into them! Shop opens after clearing enemies.
+        </div>
+        <button class="mode-btn pirate" onclick="startGame('pirate')">
+            Play as Pirate &#9876;&#65039;
+            <div class="mode-desc">Sail to islands, defeat defenders, steal treasure</div>
+        </button>
+        <button class="mode-btn defender" onclick="startGame('defender')">
+            Defend the Island &#128737;&#65039;
+            <div class="mode-desc">Fight off waves of pirates landing on your beach</div>
+        </button>
+    </div>
+
+    <div id="hud" class="hidden">
+        <div class="hud-left">
+            <div class="gold-display" id="goldDisplay"></div>
+        </div>
+        <div class="hud-center">
+            <div class="level-display" id="levelDisplay"></div>
+            <div class="enemy-count" id="enemyCount"></div>
+            <div class="ally-count" id="allyCount"></div>
+            <div class="combo-display" id="comboDisplay"></div>
+            <div class="raid-msg" id="raidMsg"></div>
+            <div class="capture-prompt" id="capturePrompt"></div>
+        </div>
+        <div class="hud-right">
+            <div style="font-size:15px;color:#aaa;text-shadow:0 0 6px rgba(0,0,0,0.8);" id="treasureCount"></div>
+        </div>
+    </div>
+    <div class="controls-hint" id="controlsHint">WASD/Arrows: Move | Space/Click: Spin Attack | Shift: Dodge | Walk into retreating enemies to capture! | Shop opens after clearing enemies</div>
+
+    <div id="shopScreen" class="screen hidden">
+        <div class="shop-title">Upgrade Shop</div>
+        <div class="shop-gold" id="shopGold"></div>
+        <div class="shop-sections" id="shopSections"></div>
+        <button class="next-btn" id="nextBtn" onclick="nextLevel()">Next Level &rarr;</button>
+    </div>
+
+    <div id="gameOverScreen" class="screen hidden">
+        <div class="go-title">GAME OVER</div>
+        <div class="score-text" id="goScore"></div>
+        <div class="score-text" id="goGold"></div>
+        <div class="btn-row">
+            <button class="ui-btn" onclick="tryAgain()">Try Again</button>
+            <button class="ui-btn" onclick="mainMenu()">Main Menu</button>
+        </div>
+    </div>
+
+    <div id="victoryScreen" class="screen hidden">
+        <div class="victory-title">VICTORY!</div>
+        <div class="score-text" id="vicScore"></div>
+        <div class="score-text" id="vicGold"></div>
+        <div class="btn-row">
+            <button class="ui-btn" onclick="mainMenu()">Main Menu</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+const ISO_ANGLE = Math.PI / 6;
+const SCALE = 1;
+const TILE_SIZE = 40;
+const COS_A = Math.cos(ISO_ANGLE);
+const SIN_A = Math.sin(ISO_ANGLE);
+
+let W, H, camX = 0, camY = 0, camZoom = 1;
+let gameMode = null;
+let gameState = 'title';
+let currentLevel = 0;
+let gold = 0;
+let totalGoldEarned = 0;
+let player = null;
+let enemies = [];
+let allies = [];
+let treasures = [];
+let particles = [];
+let floatingTexts = [];
+let trees = [];
+let rocks = [];
+let flowers = [];
+let ships = [];
+let islandFlag = null;
+let goldPile = null; // visible gold pile in defender mode
+let shakeTimer = 0, shakeIntensity = 0;
+let comboCount = 0, comboTimer = 0;
+let goldAtStartOfLevel = 0; // track gold lost per level
+let keys = {};
+let dt = 0, lastTime = 0;
+let sailTimer = 0;
+let redFlashTimer = 0;
+let oceanTime = 0;
+let islandTiles = [];
+let beachTiles = [];
+let audioCtx = null;
+let islandCleared = false;
+let hiredAllies = []; // now an array of {type: 'cutlass'|'gunsman'|'cannon'}
+let islandRadius = 9;
+let capturedThisLevel = 0;
+let anyRetreating = false;
+
+const PIRATE_LEVELS = [6, 8, 10, 12, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 43, 45, 48, 51, 54, 57, 60, 64, 68, 72, 76, 80];
+const DEFENDER_WAVES = [4, 6, 8, 10, 12, 14, 16, 18, 20, 25, 27, 29, 31, 33, 35, 37, 39, 41, 43, 45, 48, 51, 54, 57, 60, 64, 68, 72, 76, 80];
+
+const UPGRADES = [
+    { name: 'Attack Power', icon: '\u2694', desc: '+25% damage', key: 'attack' },
+    { name: 'Speed', icon: '\ud83d\udca8', desc: '+15% speed', key: 'speed' },
+    { name: 'Max Health', icon: '\u2764', desc: '+2 max HP', key: 'health' },
+    { name: 'Sword Range', icon: '\ud83d\udde1', desc: '+15% range', key: 'range' },
+];
+let upgradeLevels = { attack: 0, speed: 0, health: 0, range: 0 };
+const UPGRADE_COSTS = [50, 100, 200, 350, 500];
+const MAX_UPGRADE = 5;
+
+// Crew types with costs and stats - names change based on mode
+function getCrewTypes() {
+    const isPirate = gameMode === 'pirate';
+    return {
+        cutlass: { name: isPirate ? 'Pirate Cutlass' : 'Defender Swordsman', icon: '\u2694\uFE0F', cost: 40, costPer: 20, desc: 'Melee fighter, charges enemies', color: '#5a8a5a' },
+        gunsman: { name: isPirate ? 'Pirate Gunsman' : 'Defender Archer', icon: '\ud83d\udd2b', cost: 75, costPer: 30, desc: 'Ranged attacker, shoots from afar', color: '#8a7a4a' },
+        cannon: { name: isPirate ? 'Pirate Cannon' : 'Defender Cannon', icon: '\ud83d\udca3', cost: 120, costPer: 45, desc: 'Area damage, hits multiple enemies', color: '#8a4a4a' },
+        goldguard: { name: 'Gold Guard', icon: '\ud83d\udcb0', cost: 60, costPer: 25, desc: 'Stays at gold pile, defends your treasure', color: '#a89a2a' },
+    };
+}
+let CREW_TYPES = null; // set on game start
+
+// ===== AUDIO =====
+function initAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playSound(type) {
+    if (!audioCtx) return;
+    try {
+        const now = audioCtx.currentTime;
+        switch(type) {
+            case 'swing': {
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
+                const d = buf.getChannelData(0);
+                for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) * 0.3;
+                const src = audioCtx.createBufferSource(); src.buffer = buf;
+                const f = audioCtx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 800;
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.18, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                src.connect(f).connect(g).connect(audioCtx.destination);
+                src.start(now); src.stop(now + 0.15); break;
+            }
+            case 'hit': {
+                const o = audioCtx.createOscillator(); o.type = 'triangle';
+                o.frequency.setValueAtTime(800, now); o.frequency.exponentialRampToValueAtTime(200, now + 0.15);
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.2, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                o.connect(g).connect(audioCtx.destination); o.start(now); o.stop(now + 0.15); break;
+            }
+            case 'death': {
+                const o = audioCtx.createOscillator(); o.type = 'sawtooth';
+                o.frequency.setValueAtTime(150, now); o.frequency.exponentialRampToValueAtTime(40, now + 0.3);
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.15, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                o.connect(g).connect(audioCtx.destination); o.start(now); o.stop(now + 0.3); break;
+            }
+            case 'playerHit': {
+                const o = audioCtx.createOscillator(); o.type = 'square';
+                o.frequency.setValueAtTime(100, now); o.frequency.exponentialRampToValueAtTime(50, now + 0.2);
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.2, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                o.connect(g).connect(audioCtx.destination); o.start(now); o.stop(now + 0.2); break;
+            }
+            case 'treasure': {
+                [0, 0.08, 0.16].forEach((delay, i) => {
+                    const o = audioCtx.createOscillator(); o.type = 'sine'; o.frequency.value = 600 + i * 200;
+                    const g = audioCtx.createGain();
+                    g.gain.setValueAtTime(0, now + delay); g.gain.linearRampToValueAtTime(0.15, now + delay + 0.02);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.15);
+                    o.connect(g).connect(audioCtx.destination); o.start(now + delay); o.stop(now + delay + 0.15);
+                }); break;
+            }
+            case 'fanfare': {
+                [0, 0.1, 0.2, 0.3].forEach((delay, i) => {
+                    const o = audioCtx.createOscillator(); o.type = 'square';
+                    o.frequency.value = [262, 330, 392, 523][i];
+                    const g = audioCtx.createGain();
+                    g.gain.setValueAtTime(0, now + delay); g.gain.linearRampToValueAtTime(0.12, now + delay + 0.03);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.3);
+                    o.connect(g).connect(audioCtx.destination); o.start(now + delay); o.stop(now + delay + 0.3);
+                }); break;
+            }
+            case 'capture': {
+                const o = audioCtx.createOscillator(); o.type = 'sine';
+                o.frequency.setValueAtTime(300, now); o.frequency.linearRampToValueAtTime(500, now + 0.1);
+                o.frequency.linearRampToValueAtTime(700, now + 0.2);
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.15, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                o.connect(g).connect(audioCtx.destination); o.start(now); o.stop(now + 0.25); break;
+            }
+            case 'hire': {
+                const o = audioCtx.createOscillator(); o.type = 'sine';
+                o.frequency.setValueAtTime(400, now); o.frequency.linearRampToValueAtTime(600, now + 0.15);
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.15, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                o.connect(g).connect(audioCtx.destination); o.start(now); o.stop(now + 0.2); break;
+            }
+            case 'gunshot': {
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.08, audioCtx.sampleRate);
+                const d = buf.getChannelData(0);
+                for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2) * 0.4;
+                const src = audioCtx.createBufferSource(); src.buffer = buf;
+                const g = audioCtx.createGain(); g.gain.value = 0.12;
+                src.connect(g).connect(audioCtx.destination); src.start(now); src.stop(now + 0.08); break;
+            }
+            case 'cannonfire': {
+                const o = audioCtx.createOscillator(); o.type = 'sawtooth';
+                o.frequency.setValueAtTime(80, now); o.frequency.exponentialRampToValueAtTime(30, now + 0.25);
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.25, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                o.connect(g).connect(audioCtx.destination); o.start(now); o.stop(now + 0.3);
+                // boom
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
+                const d = buf.getChannelData(0);
+                for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 1.5) * 0.3;
+                const src = audioCtx.createBufferSource(); src.buffer = buf;
+                const g2 = audioCtx.createGain(); g2.gain.value = 0.15;
+                src.connect(g2).connect(audioCtx.destination); src.start(now + 0.05); src.stop(now + 0.2); break;
+            }
+            case 'step': {
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.04, audioCtx.sampleRate);
+                const d = buf.getChannelData(0);
+                for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) * 0.08;
+                const src = audioCtx.createBufferSource(); src.buffer = buf;
+                const f = audioCtx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 600;
+                const g = audioCtx.createGain(); g.gain.value = 0.06;
+                src.connect(f).connect(g).connect(audioCtx.destination); src.start(now); src.stop(now + 0.04); break;
+            }
+        }
+    } catch(e) {}
+}
+
+// ===== ISO PROJECTION =====
+function isoProject(x, y, z) {
+    return { x: (x - z) * COS_A * SCALE, y: -y * SCALE + (x + z) * SIN_A * SCALE };
+}
+
+// ===== BOUNDARY CHECK =====
+function clampToIsland(x, z) {
+    const maxDist = (islandRadius + 1.8) * TILE_SIZE;
+    const dist = Math.sqrt(x * x + z * z);
+    if (dist > maxDist) {
+        const ratio = maxDist / dist;
+        return { x: x * ratio, z: z * ratio, clamped: true };
+    }
+    return { x, z, clamped: false };
+}
+
+// ===== ENTITY CONSTRUCTORS =====
+function createPlayer(x, z) {
+    const maxHP = 5 + upgradeLevels.health * 2;
+    return {
+        x, z, y: 0, facing: 0,
+        hp: maxHP, maxHP,
+        speed: 120 * (1 + upgradeLevels.speed * 0.15),
+        attackDamage: 1 + upgradeLevels.attack * 0.5,
+        attackRange: 85 * (1 + upgradeLevels.range * 0.15),
+        attackArc: Math.PI * 2, // 360 degree spin attack!
+        attacking: false, attackTimer: 0, attackCooldown: 0,
+        dodging: false, dodgeTimer: 0, dodgeCooldown: 0, dodgeDir: 0,
+        invincible: 0, stepTimer: 0,
+        isPlayer: true, isPirate: gameMode === 'pirate',
+        alive: true, deathFade: 0, flashTimer: 0,
+        spinAngle: 0, // for spin attack visual
+    };
+}
+
+function createEnemy(x, z, level) {
+    const diff = Math.min(level, 4);
+    // Pirates are weaker than military defenders
+    const isPirateEnemy = (gameMode === 'defender'); // enemies are pirates in defender mode
+    const isDefenderEnemy = !isPirateEnemy; // enemies are defenders in pirate mode
+    const hp = isDefenderEnemy ? (2 + Math.floor(diff * 0.7)) : (5 + diff * 2);
+    const spd = isDefenderEnemy ? (40 + diff * 5 + Math.random() * 15) : (50 + diff * 8 + Math.random() * 20);
+    const dmg = isDefenderEnemy ? 0.7 : 1;
+    return {
+        x, z, y: 0, facing: 0,
+        hp, maxHP: hp,
+        speed: spd,
+        attackDamage: dmg, attackRange: 35,
+        attacking: false, attackTimer: 0, attackCooldown: 0,
+        aiState: 'approach', aiTimer: Math.random() * 2,
+        flashTimer: 0, alive: true, deathFade: 0,
+        isPlayer: false, isPirate: gameMode === 'defender',
+        landedOnBeach: gameMode !== 'defender',
+        landX: x, landZ: z,
+        retreating: false, canCapture: false,
+        crewType: 'cutlass',
+        stolenGold: 0, isThief: false, stealCooldown: 0,
+    };
+}
+
+function createAlly(x, z, type) {
+    type = type || 'cutlass';
+    const stats = {
+        cutlass: { hp: 4, speed: 75, damage: 0.8, range: 40, attackSpeed: 0.5, color: '#5a8a5a' },
+        gunsman: { hp: 3, speed: 60, damage: 1.5, range: 180, attackSpeed: 1.0, color: '#8a7a4a' },
+        cannon: { hp: 5, speed: 45, damage: 2.5, range: 140, attackSpeed: 1.8, color: '#8a4a4a' },
+        goldguard: { hp: 6, speed: 50, damage: 1.0, range: 45, attackSpeed: 0.6, color: '#a89a2a' },
+    }[type];
+    return {
+        x, z, y: 0, facing: 0,
+        hp: stats.hp + upgradeLevels.health, maxHP: stats.hp + upgradeLevels.health,
+        speed: stats.speed + upgradeLevels.speed * 10,
+        attackDamage: stats.damage + upgradeLevels.attack * 0.3,
+        attackRange: stats.range * (1 + upgradeLevels.range * 0.1),
+        attackArc: Math.PI * 0.7,
+        attacking: false, attackTimer: 0, attackCooldown: 0,
+        attackSpeed: stats.attackSpeed,
+        aiState: 'follow', aiTimer: 0,
+        flashTimer: 0, alive: true, deathFade: 0,
+        isPlayer: false, isAlly: true,
+        isPirate: gameMode === 'pirate',
+        crewType: type,
+        allyColor: stats.color,
+        projectiles: [],
+        patrolX: null, patrolZ: null, patrolTimer: 0,
+    };
+}
+
+function createTreasure(x, z) {
+    return { x, z, y: 0, collected: false, value: 20 + Math.floor(Math.random() * 30), sparkleTimer: 0 };
+}
+
+// ===== MAP GENERATION =====
+function generateIsland(level) {
+    islandTiles = []; beachTiles = []; trees = []; rocks = []; flowers = []; treasures = []; ships = [];
+    islandRadius = 9 + level * 1.5;
+
+    for (let tx = -Math.ceil(islandRadius) - 2; tx <= Math.ceil(islandRadius) + 2; tx++) {
+        for (let tz = -Math.ceil(islandRadius) - 2; tz <= Math.ceil(islandRadius) + 2; tz++) {
+            const dist = Math.sqrt(tx * tx + tz * tz);
+            if (dist <= islandRadius) {
+                // Vary grass colors for interesting look
+                const shade = Math.random();
+                let c1, c2;
+                if (shade < 0.3) { c1 = '#3a8a3a'; c2 = '#2a7a2a'; }
+                else if (shade < 0.6) { c1 = '#458a35'; c2 = '#357a25'; }
+                else if (shade < 0.85) { c1 = '#4a9040'; c2 = '#3a8030'; }
+                else { c1 = '#2a7530'; c2 = '#1a6520'; } // dark patches
+                islandTiles.push({ x: tx * TILE_SIZE, z: tz * TILE_SIZE, c1, c2 });
+            }
+            else if (dist <= islandRadius + 1.5) {
+                const beachShade = 0.9 + Math.random() * 0.1;
+                const r = Math.floor(212 * beachShade), g = Math.floor(176 * beachShade), b = Math.floor(116 * beachShade);
+                beachTiles.push({ x: tx * TILE_SIZE, z: tz * TILE_SIZE, c1: `rgb(${r},${g},${b})`, c2: `rgb(${r-10},${g-10},${b-10})` });
+            }
+        }
+    }
+
+    // Trees - more and varied
+    for (let i = 0; i < 12 + level * 4; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.random() * (islandRadius - 2) * TILE_SIZE;
+        // Keep trees away from center flag
+        if (d < TILE_SIZE * 1.5) continue;
+        trees.push({
+            x: Math.cos(a) * d, z: Math.sin(a) * d,
+            height: 25 + Math.random() * 30,
+            sway: Math.random() * Math.PI * 2,
+            type: Math.random() < 0.3 ? 'bush' : 'palm',
+        });
+    }
+
+    // Rocks scattered around
+    for (let i = 0; i < 6 + level * 2; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = (1 + Math.random() * islandRadius) * TILE_SIZE;
+        if (d < TILE_SIZE * 1.5) continue;
+        rocks.push({
+            x: Math.cos(a) * d, z: Math.sin(a) * d,
+            size: 4 + Math.random() * 8,
+            shade: 0.4 + Math.random() * 0.3,
+        });
+    }
+
+    // Flowers / grass tufts
+    for (let i = 0; i < 15 + level * 3; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.random() * (islandRadius - 1) * TILE_SIZE;
+        if (d < TILE_SIZE * 1.5) continue;
+        flowers.push({
+            x: Math.cos(a) * d, z: Math.sin(a) * d,
+            color: ['#ff6', '#f6f', '#f66', '#6ff', '#ff9', '#faa'][Math.floor(Math.random() * 6)],
+            size: 2 + Math.random() * 3,
+        });
+    }
+
+    islandFlag = null;
+
+    // Gold pile in defender mode — visible at center
+    if (gameMode === 'defender') {
+        goldPile = { x: 0, z: 0 };
+    } else {
+        goldPile = null;
+    }
+
+    if (gameMode === 'pirate') {
+        for (let i = 0; i < 3 + level; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const d = (2 + Math.random() * (islandRadius - 3)) * TILE_SIZE;
+            treasures.push(createTreasure(Math.cos(a) * d, Math.sin(a) * d));
+        }
+    }
+}
+
+function spawnEnemies(level) {
+    enemies = [];
+    const count = gameMode === 'pirate' ? PIRATE_LEVELS[level] : DEFENDER_WAVES[level];
+
+    if (gameMode === 'pirate') {
+        for (let i = 0; i < count; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const d = (2 + Math.random() * (islandRadius - 3)) * TILE_SIZE;
+            enemies.push(createEnemy(Math.cos(a) * d, Math.sin(a) * d, level));
+        }
+    } else {
+        const sc = Math.ceil(count / 4);
+        ships = [];
+        for (let s = 0; s < sc; s++) {
+            const a = (s / sc) * Math.PI * 2 + Math.random() * 0.3;
+            const d = (islandRadius + 5) * TILE_SIZE;
+            ships.push({ x: Math.cos(a) * d, z: Math.sin(a) * d, angle: a + Math.PI });
+        }
+        let ei = 0;
+        for (let s = 0; s < sc; s++) {
+            for (let j = 0; j < Math.min(4, count - ei); j++) {
+                const e = createEnemy(ships[s].x, ships[s].z, level);
+                e.landedOnBeach = false;
+                const a = Math.atan2(ships[s].z, ships[s].x);
+                const ld = (islandRadius + 0.5) * TILE_SIZE;
+                e.landX = Math.cos(a) * ld + (Math.random() - 0.5) * 60;
+                e.landZ = Math.sin(a) * ld + (Math.random() - 0.5) * 60;
+                e.aiState = 'landing';
+                e.aiTimer = 1.5 + s * 1.2 + j * 0.4;
+                // ~30% of pirates are thieves who try to steal gold
+                if (Math.random() < 0.3) { e.isThief = true; e.speed *= 1.2; }
+                enemies.push(e); ei++;
+            }
+        }
+    }
+}
+
+function spawnAllies() {
+    allies = [];
+    const allCrew = [];
+    // Auto team of 5 cutlass fighters (free, don't persist if killed)
+    for (let i = 0; i < autoTeamSize; i++) allCrew.push({ type: 'cutlass', isAuto: true });
+    // Hired allies
+    hiredAllies.forEach(h => allCrew.push({ type: h.type, isAuto: false }));
+
+    allCrew.forEach((crew, i) => {
+        // Spread allies out evenly around the island at fixed posts
+        const a = (i / Math.max(1, allCrew.length)) * Math.PI * 2;
+        const postDist = (islandRadius * 0.5) * TILE_SIZE;
+        const ax = Math.cos(a) * postDist;
+        const az = Math.sin(a) * postDist;
+        const ally = createAlly(ax, az, crew.type);
+        ally.isAutoTeam = crew.isAuto;
+        ally.postX = ax; // fixed post position
+        ally.postZ = az;
+        allies.push(ally);
+    });
+}
+
+// ===== PROJECTILE SYSTEM for gunsmen/cannon =====
+let projectiles = [];
+
+function createProjectile(x, z, angle, type, damage) {
+    const speed = type === 'bullet' ? 300 : 200;
+    const size = type === 'bullet' ? 3 : 6;
+    const color = type === 'bullet' ? '#ff8' : '#f60';
+    const aoe = type === 'cannonball' ? 60 : 0;
+    return {
+        x, z, y: 10,
+        vx: Math.cos(angle) * speed, vz: Math.sin(angle) * speed,
+        type, damage, size, color, aoe,
+        life: 1.5, alive: true,
+    };
+}
+
+// ===== GAME FLOW =====
+let autoTeamSize = 3;
+
+function startGame(mode) {
+    initAudio();
+    gameMode = mode;
+    autoTeamSize = mode === 'defender' ? 5 : 3;
+    CREW_TYPES = getCrewTypes();
+    currentLevel = 0;
+    gold = 0; totalGoldEarned = 0;
+    upgradeLevels = { attack: 0, speed: 0, health: 0, range: 0 };
+    hiredAllies = [];
+    particles = []; floatingTexts = []; projectiles = [];
+    if (mode === 'pirate') startSailing();
+    else startLevel();
+}
+
+function startSailing() {
+    gameState = 'sailing';
+    sailTimer = 2.5;
+    islandCleared = false;
+    capturedThisLevel = 0;
+    anyRetreating = false;
+    showScreen('none');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('controlsHint').style.display = 'none';
+
+    generateIsland(currentLevel);
+
+    // Zoom for sailing view
+    const islandPixelSize = (islandRadius + 6) * TILE_SIZE * 2 * COS_A;
+    const fitW = W / islandPixelSize;
+    const fitH = H / (islandPixelSize * 0.6);
+    camZoom = Math.min(fitW, fitH, 1) * 0.85;
+
+    const a = Math.PI + Math.random() * 0.5 - 0.25;
+    const d = (islandRadius + 6) * TILE_SIZE;
+    ships = [{
+        x: Math.cos(a) * d, z: Math.sin(a) * d,
+        angle: a + Math.PI, isPlayerShip: true,
+        targetX: Math.cos(a) * (islandRadius + 1.5) * TILE_SIZE,
+        targetZ: Math.sin(a) * (islandRadius + 1.5) * TILE_SIZE,
+    }];
+}
+
+function startLevel() {
+    gameState = 'playing';
+    islandCleared = false;
+    capturedThisLevel = 0;
+    anyRetreating = false;
+    particles = []; floatingTexts = []; projectiles = [];
+
+    generateIsland(currentLevel);
+
+    if (gameMode === 'pirate') {
+        const a = Math.PI;
+        const d = (islandRadius + 0.5) * TILE_SIZE;
+        player = createPlayer(Math.cos(a) * d, Math.sin(a) * d);
+        ships = [{
+            x: Math.cos(a) * (islandRadius + 3) * TILE_SIZE,
+            z: Math.sin(a) * (islandRadius + 3) * TILE_SIZE,
+            angle: a + Math.PI, isPlayerShip: true,
+        }];
+    } else {
+        player = createPlayer(0, 0);
+    }
+
+    // Reinforcements: 2 new free troops for levels 1-5, 5 for 6-10, 8 for 11-15, etc.
+    if (currentLevel > 0) {
+        const tier = Math.floor((currentLevel - 1) / 5); // 0 for 1-5, 1 for 6-10, 2 for 11-15...
+        const reinforcements = 2 + tier * 3; // 2, 5, 8, 11, ...
+        autoTeamSize += reinforcements;
+    }
+
+    goldAtStartOfLevel = gold;
+
+    spawnEnemies(currentLevel);
+    spawnAllies();
+
+    // Calculate zoom so the whole island (+ some ocean margin) fits on screen
+    const islandPixelSize = (islandRadius + 4) * TILE_SIZE * 2 * COS_A; // rough iso width
+    const fitW = W / islandPixelSize;
+    const fitH = H / (islandPixelSize * 0.6); // iso height is compressed
+    camZoom = Math.min(fitW, fitH, 1) * 0.85; // cap at 1x, 85% to add margin
+
+    showScreen('none');
+    document.getElementById('hud').classList.remove('hidden');
+    document.getElementById('controlsHint').style.display = '';
+    updateHUD();
+}
+
+function nextLevel() {
+    currentLevel++;
+    const max = gameMode === 'pirate' ? PIRATE_LEVELS.length : DEFENDER_WAVES.length;
+    if (currentLevel >= max) { showVictory(); return; }
+    if (gameMode === 'pirate') startSailing();
+    else startLevel();
+}
+
+function tryAgain() { startGame(gameMode); }
+function mainMenu() {
+    gameState = 'title'; showScreen('titleScreen');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('controlsHint').style.display = 'none';
+}
+function showScreen(id) {
+    ['titleScreen','shopScreen','gameOverScreen','victoryScreen'].forEach(s =>
+        document.getElementById(s).classList.toggle('hidden', s !== id));
+}
+
+function showShop() {
+    gameState = 'shop';
+    playSound('fanfare');
+    showScreen('shopScreen');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('controlsHint').style.display = 'none';
+    renderShop();
+}
+
+function renderShop() {
+    document.getElementById('shopGold').textContent = `Gold: ${gold}`;
+    const sections = document.getElementById('shopSections');
+    sections.innerHTML = '';
+
+    // Upgrades
+    const upDiv = document.createElement('div');
+    upDiv.innerHTML = '<div class="shop-section-title">\u2b06 Upgrades</div>';
+    const upGrid = document.createElement('div');
+    upGrid.className = 'shop-grid';
+    UPGRADES.forEach(up => {
+        const lvl = upgradeLevels[up.key];
+        const maxed = lvl >= MAX_UPGRADE;
+        const cost = maxed ? 0 : UPGRADE_COSTS[lvl];
+        const card = document.createElement('div');
+        card.className = 'shop-card' + (maxed ? ' maxed' : '');
+        card.innerHTML = `<div class="shop-name">${up.icon} ${up.name}</div>
+            <div class="shop-level">Lv ${lvl}/${MAX_UPGRADE}</div>
+            <div class="shop-cost">${maxed ? 'MAX' : cost + ' gold'}</div>
+            <div class="shop-desc">${up.desc}</div>`;
+        if (!maxed) card.onclick = () => { buyUpgrade(up.key); renderShop(); };
+        upGrid.appendChild(card);
+    });
+    upDiv.appendChild(upGrid);
+    sections.appendChild(upDiv);
+
+    // Hire Crew - 3 types
+    const hireDiv = document.createElement('div');
+    hireDiv.innerHTML = `<div class="shop-section-title">\ud83d\udee1 Hire Crew (Hired: ${hiredAllies.length} + ${autoTeamSize} free crew)</div>`;
+    const hireGrid = document.createElement('div');
+    hireGrid.className = 'shop-grid crew-grid';
+
+    Object.entries(CREW_TYPES).forEach(([type, info]) => {
+        const count = hiredAllies.filter(h => h.type === type).length;
+        const cost = info.cost + count * info.costPer;
+        const card = document.createElement('div');
+        card.className = `shop-card hire-${type}`;
+        card.innerHTML = `<div class="shop-name">${info.icon} ${info.name}</div>
+            <div class="shop-level">Have: ${count}</div>
+            <div class="shop-cost">${cost} gold</div>
+            <div class="shop-desc">${info.desc}</div>`;
+        card.onclick = () => {
+            if (gold >= cost) {
+                gold -= cost;
+                hiredAllies.push({ type });
+                playSound('hire');
+                renderShop();
+            }
+        };
+        hireGrid.appendChild(card);
+    });
+    hireDiv.appendChild(hireGrid);
+
+    // Dismiss button
+    if (hiredAllies.length > 0) {
+        const dismissDiv = document.createElement('div');
+        dismissDiv.style.cssText = 'margin-top:8px;text-align:center;';
+        const dismissBtn = document.createElement('div');
+        dismissBtn.className = 'shop-card'; dismissBtn.style.borderColor = '#a44'; dismissBtn.style.display = 'inline-block';
+        const last = hiredAllies[hiredAllies.length - 1];
+        const lastInfo = CREW_TYPES[last.type];
+        const refund = Math.floor(lastInfo.cost * 0.4);
+        dismissBtn.innerHTML = `<div class="shop-name">\u274c Dismiss Last (${lastInfo.name})</div>
+            <div class="shop-cost">Refund ${refund}</div>`;
+        dismissBtn.onclick = () => { hiredAllies.pop(); gold += refund; renderShop(); };
+        dismissDiv.appendChild(dismissBtn);
+        hireDiv.appendChild(dismissDiv);
+    }
+    sections.appendChild(hireDiv);
+
+    // Captured info
+    if (capturedThisLevel > 0) {
+        const capDiv = document.createElement('div');
+        capDiv.innerHTML = `<div class="shop-section-title" style="color:#4f4;">\u2705 Captured ${capturedThisLevel} soldier${capturedThisLevel > 1 ? 's' : ''} this level (added as cutlass crew!)</div>`;
+        sections.appendChild(capDiv);
+    }
+
+    // Gold summary for this round
+    const goldChange = gold - goldAtStartOfLevel;
+    const sumDiv = document.createElement('div');
+    if (goldChange >= 0) {
+        sumDiv.innerHTML = `<div class="shop-section-title" style="color:#ffd700;">\ud83d\udcb0 Round summary: +${goldChange} gold earned</div>`;
+    } else {
+        sumDiv.innerHTML = `<div class="shop-section-title" style="color:#f44;">\u26a0 Round summary: ${goldChange} gold (lost ${Math.abs(goldChange)} to pirates!)</div>`;
+    }
+    sections.appendChild(sumDiv);
+
+    const nextBtn = document.getElementById('nextBtn');
+    const max = gameMode === 'pirate' ? PIRATE_LEVELS.length : DEFENDER_WAVES.length;
+    nextBtn.textContent = currentLevel + 1 >= max ? 'Claim Victory!' :
+        (gameMode === 'pirate' ? 'Sail to Next Island \u2192' : 'Next Wave \u2192');
+}
+
+function buyUpgrade(key) {
+    const lvl = upgradeLevels[key];
+    if (lvl >= MAX_UPGRADE) return;
+    const cost = UPGRADE_COSTS[lvl];
+    if (gold < cost) return;
+    gold -= cost;
+    upgradeLevels[key]++;
+    playSound('treasure');
+}
+
+function showGameOver() {
+    gameState = 'gameover'; showScreen('gameOverScreen');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('controlsHint').style.display = 'none';
+    document.getElementById('goScore').textContent = `Reached: ${gameMode === 'pirate' ? 'Island' : 'Wave'} ${currentLevel + 1}`;
+    document.getElementById('goGold').textContent = `Gold earned: ${totalGoldEarned}`;
+    saveProgress();
+}
+function showVictory() {
+    gameState = 'victory'; playSound('fanfare');
+    setTimeout(() => playSound('fanfare'), 500);
+    showScreen('victoryScreen');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('controlsHint').style.display = 'none';
+    document.getElementById('vicScore').textContent = gameMode === 'pirate' ? 'All 30 islands conquered!' : 'All 30 waves survived!';
+    document.getElementById('vicGold').textContent = `Total gold: ${totalGoldEarned}`;
+    saveProgress();
+}
+function saveProgress() {
+    try {
+        const d = JSON.parse(localStorage.getItem('pirateRaid') || '{}');
+        const k = gameMode === 'pirate' ? 'highestIsland' : 'highestWave';
+        d[k] = Math.max(d[k] || 0, currentLevel + 1);
+        d.totalGold = (d.totalGold || 0) + totalGoldEarned;
+        localStorage.setItem('pirateRaid', JSON.stringify(d));
+    } catch(e) {}
+}
+
+function updateHUD() {
+    document.getElementById('goldDisplay').textContent = `\u2728 ${gold}`;
+    document.getElementById('levelDisplay').textContent = `${gameMode === 'pirate' ? 'Island' : 'Wave'} ${currentLevel + 1} / ${gameMode === 'pirate' ? PIRATE_LEVELS.length : DEFENDER_WAVES.length}`;
+
+    const living = enemies.filter(e => e.alive && !e.retreating);
+    const retreating = enemies.filter(e => e.alive && e.retreating);
+    let eTxt = `Enemies: ${living.length}`;
+    if (retreating.length > 0) eTxt += ` (${retreating.length} retreating!)`;
+    document.getElementById('enemyCount').textContent = eTxt;
+
+    const aliveAllies = allies.filter(a => a.alive);
+    const cutlass = aliveAllies.filter(a => a.crewType === 'cutlass').length;
+    const guns = aliveAllies.filter(a => a.crewType === 'gunsman').length;
+    const cannons = aliveAllies.filter(a => a.crewType === 'cannon').length;
+    let crewTxt = '';
+    if (aliveAllies.length > 0) {
+        crewTxt = 'Crew: ';
+        const parts = [];
+        if (cutlass > 0) parts.push(`${cutlass}\u2694`);
+        if (guns > 0) parts.push(`${guns}\ud83d\udd2b`);
+        if (cannons > 0) parts.push(`${cannons}\ud83d\udca3`);
+        crewTxt += parts.join(' ');
+    }
+    document.getElementById('allyCount').textContent = crewTxt;
+
+    if (gameMode === 'pirate') {
+        const unc = treasures.filter(t => !t.collected).length;
+        document.getElementById('treasureCount').textContent = islandCleared ? `Treasure: ${unc} left` : `Treasure: ${unc} (clear enemies!)`;
+    } else {
+        document.getElementById('treasureCount').textContent = '';
+    }
+
+    const comboEl = document.getElementById('comboDisplay');
+    comboEl.textContent = comboCount > 1 ? `${comboCount}x COMBO!` : '';
+    comboEl.style.opacity = comboCount > 1 ? '1' : '0';
+
+    const raidEl = document.getElementById('raidMsg');
+    if (gameMode === 'pirate' && islandCleared && treasures.some(t => !t.collected))
+        raidEl.textContent = 'Island cleared! Grab the treasure!';
+    else if (gameMode === 'pirate' && islandCleared && treasures.every(t => t.collected))
+        raidEl.textContent = 'All loot collected!';
+    else raidEl.textContent = '';
+
+    const capEl = document.getElementById('capturePrompt');
+    const thievesWithGold = enemies.filter(e => e.alive && e.stolenGold > 0);
+    const thievesStealing = enemies.filter(e => e.alive && e.isThief && e.stolenGold === 0 && e.aiState === 'stealing');
+    if (thievesWithGold.length > 0) {
+        const totalStolen = thievesWithGold.reduce((s, e) => s + e.stolenGold, 0);
+        capEl.textContent = `\u26a0 ${thievesWithGold.length} pirate${thievesWithGold.length > 1 ? 's' : ''} fleeing with ${totalStolen} gold! Stop them!`;
+        capEl.style.color = '#f44';
+    } else if (thievesStealing.length > 0) {
+        capEl.textContent = `\u26a0 ${thievesStealing.length} thie${thievesStealing.length > 1 ? 'ves' : 'f'} heading for your gold!`;
+        capEl.style.color = '#fa4';
+    } else if (retreating.length > 0) {
+        capEl.textContent = 'Walk into retreating enemies to capture them!';
+        capEl.style.color = '#4f4';
+    } else {
+        capEl.textContent = '';
+    }
+}
+
+// ===== INPUT =====
+window.addEventListener('keydown', e => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key === ' ' || e.key === 'Shift') e.preventDefault();
+    if (e.key === ' ' && gameState === 'playing') playerAttack();
+    if (e.key === 'Shift' && gameState === 'playing') playerDodge();
+});
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+canvas.addEventListener('mousedown', e => { initAudio(); if (gameState === 'playing') playerAttack(); });
+canvas.addEventListener('touchstart', e => { initAudio(); if (gameState === 'playing') playerAttack(); });
+
+function playerAttack() {
+    if (!player || !player.alive || player.attackCooldown > 0 || player.dodging) return;
+    player.attacking = true;
+    player.attackTimer = 0.3; // slightly longer for spin
+    player.attackCooldown = 0.4;
+    player.spinAngle = 0;
+    playSound('swing');
+
+    // Hit ALL enemies in range (360 degrees)
+    enemies.forEach(e => {
+        if (!e.alive) return;
+        const dx = e.x - player.x, dz = e.z - player.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist > player.attackRange) return;
+        // No angle check needed - 360 degree attack!
+        hitEnemy(e, player.attackDamage);
+    });
+}
+
+function hitEnemy(e, damage) {
+    e.hp -= damage;
+    e.flashTimer = 0.12;
+    playSound('hit');
+    shakeTimer = 0.1; shakeIntensity = 4;
+
+    floatingTexts.push({ x: e.x, z: e.z, y: 20, text: (Math.round(damage * 10) / 10) + '', color: '#ff4', life: 0.8, maxLife: 0.8 });
+
+    for (let i = 0; i < 5; i++) {
+        particles.push({
+            x: e.x, z: e.z, y: 10 + Math.random() * 10,
+            vx: (Math.random() - 0.5) * 80, vz: (Math.random() - 0.5) * 80, vy: Math.random() * 40,
+            life: 0.4 + Math.random() * 0.3, maxLife: 0.7, color: '#c00', size: 2 + Math.random() * 2,
+        });
+    }
+    comboCount++; comboTimer = 1.5;
+
+    if (e.hp <= 0) {
+        // Only pirates retreat — defenders just die
+        const canRetreat = e.isPirate;
+        let retreatChance = 0;
+        if (canRetreat) {
+            const enemyAlive = enemies.filter(en => en.alive && !en.retreating).length;
+            const totalE = enemies.length;
+            const losingBadly = enemyAlive <= totalE * 0.3;
+            retreatChance = 0.25;
+            if (losingBadly) retreatChance = 0.6;
+            else if (enemyAlive <= totalE * 0.5) retreatChance = 0.4;
+        }
+
+        if (retreatChance > 0 && Math.random() < retreatChance && e.landedOnBeach) {
+            e.hp = 1;
+            e.alive = true;
+            e.retreating = true;
+            e.canCapture = true;
+            e.aiState = 'fleeing';
+            e.speed *= 0.7;
+            anyRetreating = true;
+            floatingTexts.push({ x: e.x, z: e.z, y: 35, text: 'RETREATING!', color: '#ff8', life: 1.2, maxLife: 1.2 });
+        } else {
+            e.alive = false;
+            e.deathFade = 0.6;
+            playSound('death');
+
+            // Both modes drop gold on kill
+            const killGold = 15 + currentLevel * 5 + Math.floor(Math.random() * 10);
+            gold += killGold; totalGoldEarned += killGold;
+            floatingTexts.push({ x: e.x, z: e.z, y: 30, text: `+${killGold}`, color: '#ffd700', life: 1, maxLife: 1 });
+
+            // If thief had stolen gold, return it!
+            if (e.stolenGold > 0) {
+                gold += e.stolenGold;
+                floatingTexts.push({ x: e.x, z: e.z, y: 42, text: `+${e.stolenGold} RECOVERED!`, color: '#4f4', life: 1.5, maxLife: 1.5 });
+                playSound('treasure');
+                for (let i = 0; i < 10; i++) {
+                    particles.push({
+                        x: e.x, z: e.z, y: 8 + Math.random() * 15,
+                        vx: (Math.random() - 0.5) * 80, vz: (Math.random() - 0.5) * 80, vy: 20 + Math.random() * 40,
+                        life: 0.5 + Math.random() * 0.4, maxLife: 0.9, color: '#ffd700', size: 3 + Math.random() * 2,
+                    });
+                }
+                e.stolenGold = 0;
+            }
+        }
+    }
+}
+
+function captureEnemy(e) {
+    e.alive = false;
+    e.deathFade = 0;
+    e.canCapture = false;
+    hiredAllies.push({ type: 'cutlass' });
+    capturedThisLevel++;
+    playSound('capture');
+
+    floatingTexts.push({ x: e.x, z: e.z, y: 35, text: 'CAPTURED!', color: '#4f4', life: 1.2, maxLife: 1.2 });
+
+    const ally = createAlly(e.x, e.z, 'cutlass');
+    allies.push(ally);
+
+    for (let i = 0; i < 8; i++) {
+        particles.push({
+            x: e.x, z: e.z, y: 10 + Math.random() * 15,
+            vx: (Math.random() - 0.5) * 50, vz: (Math.random() - 0.5) * 50, vy: 20 + Math.random() * 30,
+            life: 0.5 + Math.random() * 0.3, maxLife: 0.8, color: '#4f4', size: 3,
+        });
+    }
+}
+
+function playerDodge() {
+    if (!player || !player.alive || player.dodgeCooldown > 0 || player.dodging) return;
+    player.dodging = true;
+    player.dodgeTimer = 0.25;
+    player.dodgeCooldown = 0.6;
+    player.invincible = 0.3;
+    player.dodgeDir = player.facing;
+    const mx = (keys['d'] || keys['arrowright'] ? 1 : 0) - (keys['a'] || keys['arrowleft'] ? 1 : 0);
+    const mz = (keys['s'] || keys['arrowdown'] ? 1 : 0) - (keys['w'] || keys['arrowup'] ? 1 : 0);
+    if (mx !== 0 || mz !== 0) player.dodgeDir = Math.atan2(mz, mx);
+}
+
+// ===== UPDATE =====
+function update(dt) {
+    oceanTime += dt;
+    if (gameState === 'sailing') { updateSailing(dt); return; }
+    if (gameState !== 'playing' || !player || !player.alive) return;
+
+    // Player movement
+    let mx = (keys['d'] || keys['arrowright'] ? 1 : 0) - (keys['a'] || keys['arrowleft'] ? 1 : 0);
+    let mz = (keys['s'] || keys['arrowdown'] ? 1 : 0) - (keys['w'] || keys['arrowup'] ? 1 : 0);
+
+    if (player.dodging) {
+        let nx = player.x + Math.cos(player.dodgeDir) * player.speed * 3 * dt;
+        let nz = player.z + Math.sin(player.dodgeDir) * player.speed * 3 * dt;
+        const c = clampToIsland(nx, nz);
+        player.x = c.x; player.z = c.z;
+        player.dodgeTimer -= dt;
+        if (player.dodgeTimer <= 0) player.dodging = false;
+    } else if (mx !== 0 || mz !== 0) {
+        const len = Math.sqrt(mx * mx + mz * mz);
+        mx /= len; mz /= len;
+        let nx = player.x + mx * player.speed * dt;
+        let nz = player.z + mz * player.speed * dt;
+        const c = clampToIsland(nx, nz);
+        player.x = c.x; player.z = c.z;
+        player.facing = Math.atan2(mz, mx);
+        player.stepTimer -= dt;
+        if (player.stepTimer <= 0) { playSound('step'); player.stepTimer = 0.3; }
+    }
+
+    player.attackTimer = Math.max(0, player.attackTimer - dt);
+    player.attackCooldown = Math.max(0, player.attackCooldown - dt);
+    player.dodgeCooldown = Math.max(0, player.dodgeCooldown - dt);
+    player.invincible = Math.max(0, player.invincible - dt);
+    player.flashTimer = Math.max(0, player.flashTimer - dt);
+    if (player.attackTimer <= 0) player.attacking = false;
+    if (player.attacking) player.spinAngle += dt * Math.PI * 2 / 0.3; // full spin during attack
+
+    // Update enemies
+    enemies.forEach(e => {
+        if (!e.alive) { e.deathFade -= dt; return; }
+        e.flashTimer = Math.max(0, e.flashTimer - dt);
+        e.attackTimer = Math.max(0, e.attackTimer - dt);
+        e.attackCooldown = Math.max(0, e.attackCooldown - dt);
+        if (e.attackTimer <= 0) e.attacking = false;
+
+        if (e.retreating) {
+            const dx = e.x - player.x, dz = e.z - player.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist > 0) {
+                e.x += (dx / dist) * e.speed * dt;
+                e.z += (dz / dist) * e.speed * dt;
+                e.facing = Math.atan2(dz, dx);
+            }
+            const pdist = Math.sqrt((player.x - e.x) ** 2 + (player.z - e.z) ** 2);
+            if (pdist < 25 && e.canCapture) { captureEnemy(e); return; }
+            const edgeDist = Math.sqrt(e.x * e.x + e.z * e.z);
+            if (edgeDist > (islandRadius + 2) * TILE_SIZE) {
+                e.alive = false; e.deathFade = 0;
+                floatingTexts.push({ x: e.x, z: e.z, y: 25, text: 'ESCAPED!', color: '#f88', life: 1, maxLife: 1 });
+            }
+            return;
+        }
+
+        if (!e.landedOnBeach) {
+            e.aiTimer -= dt;
+            if (e.aiTimer <= 0) {
+                const dx = e.landX - e.x, dz = e.landZ - e.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist > 5) {
+                    e.x += (dx / dist) * e.speed * 1.5 * dt;
+                    e.z += (dz / dist) * e.speed * 1.5 * dt;
+                    e.facing = Math.atan2(dz, dx);
+                } else { e.landedOnBeach = true; e.aiState = 'approach'; }
+            }
+            return;
+        }
+
+        // Thieves fleeing with gold — always run to edge
+        if (e.stolenGold > 0 && e.aiState === 'fleeing_with_gold') {
+            const edgeDist = Math.sqrt(e.x * e.x + e.z * e.z);
+            const fleeAngle = Math.atan2(e.z, e.x);
+            e.x += Math.cos(fleeAngle) * e.speed * 1.3 * dt;
+            e.z += Math.sin(fleeAngle) * e.speed * 1.3 * dt;
+            e.facing = fleeAngle;
+            if (edgeDist > (islandRadius + 2) * TILE_SIZE) {
+                e.alive = false; e.deathFade = 0;
+                floatingTexts.push({ x: e.x, z: e.z, y: 35, text: `-${e.stolenGold} GOLD STOLEN!`, color: '#f44', life: 2, maxLife: 2 });
+                e.stolenGold = 0;
+            }
+            return;
+        }
+
+        // ALL pirates run toward gold pile to steal — fight anyone in their way
+        if (e.isPirate && e.stolenGold === 0 && gold > 0) {
+            e.stealCooldown = Math.max(0, (e.stealCooldown || 0) - dt);
+            const dx2c = -e.x, dz2c = -e.z;
+            const dist2c = Math.sqrt(dx2c * dx2c + dz2c * dz2c);
+
+            // Check if anyone is blocking the path — fight them
+            let blocker = null, blockerDist = Infinity;
+            if (player && player.alive) {
+                const pd = Math.sqrt((player.x - e.x) ** 2 + (player.z - e.z) ** 2);
+                if (pd < 60) { blocker = player; blockerDist = pd; }
+            }
+            allies.forEach(a => {
+                if (!a.alive) return;
+                const d = Math.sqrt((a.x - e.x) ** 2 + (a.z - e.z) ** 2);
+                if (d < 60 && d < blockerDist) { blocker = a; blockerDist = d; }
+            });
+
+            if (blocker && blockerDist < e.attackRange * 1.2) {
+                // Fight the blocker, then keep going
+                // (fall through to normal combat below)
+            } else if (dist2c > 40) {
+                // Run toward gold pile
+                e.x += (dx2c / dist2c) * e.speed * 0.8 * dt;
+                e.z += (dz2c / dist2c) * e.speed * 0.8 * dt;
+                e.facing = Math.atan2(dz2c, dx2c);
+                e.aiState = 'stealing';
+                return;
+            } else if (e.stealCooldown <= 0) {
+                // At gold pile — steal about 1/3 and despawn instantly
+                const stealAmount = Math.min(gold, Math.max(5, Math.floor(gold / 3)));
+                if (stealAmount > 0) {
+                    gold -= stealAmount;
+                    e.alive = false; e.deathFade = 0;
+                    playSound('playerHit');
+                    floatingTexts.push({ x: e.x, z: e.z, y: 30, text: `-${stealAmount} GOLD STOLEN!`, color: '#f44', life: 2, maxLife: 2 });
+                    for (let i = 0; i < 8; i++) {
+                        particles.push({
+                            x: e.x, z: e.z, y: 10 + Math.random() * 10,
+                            vx: (Math.random() - 0.5) * 60, vz: (Math.random() - 0.5) * 60, vy: 15 + Math.random() * 25,
+                            life: 0.4 + Math.random() * 0.3, maxLife: 0.7, color: '#ffd700', size: 3,
+                        });
+                    }
+                }
+                return;
+            }
+        }
+
+        // Find nearest target — no range limit, always chase
+        let target = null;
+        let targetDist = Infinity;
+
+        const pDist = Math.sqrt((player.x - e.x) ** 2 + (player.z - e.z) ** 2);
+        if (pDist < targetDist) { target = player; targetDist = pDist; }
+
+        allies.forEach(a => {
+            if (!a.alive) return;
+            const d = Math.sqrt((a.x - e.x) ** 2 + (a.z - e.z) ** 2);
+            if (d < targetDist) { target = a; targetDist = d; }
+        });
+
+        if (!target) return; // shouldn't happen but safety check
+
+        const dx = target.x - e.x, dz = target.z - e.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        e.aiTimer -= dt;
+
+        // Pirates attack slower than military
+        const isDefE = !e.isPirate; // defenders are the slow/weak ones
+        if (e.aiState === 'patrol') e.aiState = 'approach'; // spotted target, switch to combat
+        if (e.aiState === 'approach') {
+            if (dist < e.attackRange * 0.8) {
+                e.aiState = 'attack_windup';
+                e.aiTimer = isDefE ? (1.0 + Math.random() * 0.8) : (0.25 + Math.random() * 0.15);
+            } else if (dist > 0) {
+                e.x += (dx / dist) * e.speed * dt;
+                e.z += (dz / dist) * e.speed * dt;
+                e.facing = Math.atan2(dz, dx);
+            }
+        } else if (e.aiState === 'attack_windup') {
+            e.facing = Math.atan2(dz, dx);
+            if (e.aiTimer <= 0) {
+                e.aiState = 'attacking'; e.attacking = true; e.attackTimer = 0.2;
+                e.aiTimer = isDefE ? 0.8 : 0.15;
+                if (dist < e.attackRange * 1.2) damageTarget(target, e.attackDamage);
+            }
+        } else if (e.aiState === 'attacking') {
+            if (e.aiTimer <= 0) {
+                e.aiState = 'retreat_back';
+                e.aiTimer = isDefE ? (1.2 + Math.random() * 1.0) : (0.15 + Math.random() * 0.1);
+            }
+        } else if (e.aiState === 'retreat_back') {
+            if (dist > 0) { e.x -= (dx / dist) * e.speed * 0.5 * dt; e.z -= (dz / dist) * e.speed * 0.5 * dt; }
+            if (e.aiTimer <= 0) { e.aiState = 'approach'; e.aiTimer = isDefE ? (0.8 + Math.random() * 0.5) : 0.1; }
+        }
+
+        if (target.isPlayer) {
+            const pd = Math.sqrt((player.x - e.x) ** 2 + (player.z - e.z) ** 2);
+            if (pd < 18 && player.invincible <= 0 && !player.dodging) {
+                damageTarget(player, 1);
+                if (pd > 0) {
+                    const pdx = player.x - e.x, pdz = player.z - e.z;
+                    const pdd = Math.sqrt(pdx * pdx + pdz * pdz);
+                    player.x += (pdx / pdd) * 30;
+                    player.z += (pdz / pdd) * 30;
+                }
+            }
+        }
+    });
+
+    // Update allies
+    allies.forEach(a => {
+        if (!a.alive) { a.deathFade -= dt; return; }
+        a.flashTimer = Math.max(0, a.flashTimer - dt);
+        a.attackTimer = Math.max(0, a.attackTimer - dt);
+        a.attackCooldown = Math.max(0, a.attackCooldown - dt);
+        if (a.attackTimer <= 0) a.attacking = false;
+
+        // Allies can capture retreating enemies too
+        enemies.forEach(e => {
+            if (!e.alive || !e.retreating || !e.canCapture) return;
+            const d = Math.sqrt((e.x - a.x) ** 2 + (e.z - a.z) ** 2);
+            if (d < 25) { captureEnemy(e); }
+        });
+
+        let ne = null, nd = Infinity;
+        enemies.forEach(e => {
+            if (!e.alive || e.retreating) return;
+            const d = Math.sqrt((e.x - a.x) ** 2 + (e.z - a.z) ** 2);
+            if (d < nd) { ne = e; nd = d; }
+        });
+
+        // --- Gold Guard: stays at gold pile, fights enemies near it ---
+        if (a.crewType === 'goldguard') {
+            // Find enemies near the gold pile (center 0,0)
+            let threat = null, threatDist = Infinity;
+            enemies.forEach(e => {
+                if (!e.alive) return;
+                const dToGold = Math.sqrt(e.x * e.x + e.z * e.z);
+                if (dToGold < 120) {
+                    const dToMe = Math.sqrt((e.x - a.x) ** 2 + (e.z - a.z) ** 2);
+                    if (dToMe < threatDist) { threat = e; threatDist = dToMe; }
+                }
+            });
+
+            if (threat && threatDist < a.attackRange * 1.5) {
+                const tdx = threat.x - a.x, tdz = threat.z - a.z;
+                const td = Math.sqrt(tdx * tdx + tdz * tdz);
+                a.facing = Math.atan2(tdz, tdx);
+                if (td < a.attackRange * 0.8 && a.attackCooldown <= 0) {
+                    a.attacking = true; a.attackTimer = 0.2; a.attackCooldown = a.attackSpeed;
+                    hitEnemy(threat, a.attackDamage);
+                } else if (td > a.attackRange * 0.4) {
+                    a.x += (tdx / td) * a.speed * dt; a.z += (tdz / td) * a.speed * dt;
+                }
+            } else {
+                // Return to gold pile
+                const dx = -a.x, dz = -a.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist > 25) {
+                    a.x += (dx / dist) * a.speed * 0.6 * dt;
+                    a.z += (dz / dist) * a.speed * 0.6 * dt;
+                    a.facing = Math.atan2(dz, dx);
+                }
+            }
+            return;
+        }
+
+        // --- Shared ally AI: charge enemies, chase retreaters, collect treasure, return to post ---
+
+        // Priority 1: chase retreating enemies to capture them
+        let retreater = null, retDist = Infinity;
+        enemies.forEach(e => {
+            if (!e.alive || !e.retreating || !e.canCapture) return;
+            const d = Math.sqrt((e.x - a.x) ** 2 + (e.z - a.z) ** 2);
+            if (d < retDist) { retreater = e; retDist = d; }
+        });
+        // Also chase thieves fleeing with gold
+        enemies.forEach(e => {
+            if (!e.alive || e.stolenGold <= 0) return;
+            const d = Math.sqrt((e.x - a.x) ** 2 + (e.z - a.z) ** 2);
+            if (d < retDist) { retreater = e; retDist = d; }
+        });
+
+        if (retreater && retDist < 300) {
+            // Chase the retreater/thief
+            const dx = retreater.x - a.x, dz = retreater.z - a.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            a.facing = Math.atan2(dz, dx);
+            if (dist < a.attackRange * 0.8 && a.attackCooldown <= 0 && retreater.stolenGold > 0) {
+                // Attack thief
+                a.attacking = true; a.attackTimer = 0.2; a.attackCooldown = a.attackSpeed;
+                hitEnemy(retreater, a.attackDamage);
+            } else {
+                a.x += (dx / dist) * a.speed * 1.2 * dt;
+                a.z += (dz / dist) * a.speed * 1.2 * dt;
+            }
+        }
+        // Priority 2: fight nearest enemy — charge toward them
+        else if (ne) {
+            const dx = ne.x - a.x, dz = ne.z - a.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            a.facing = Math.atan2(dz, dx);
+
+            if (a.crewType === 'gunsman') {
+                // Ranged: always run away while shooting — no sword
+                if (dist < a.attackRange && a.attackCooldown <= 0) {
+                    a.attacking = true; a.attackTimer = 0.15; a.attackCooldown = a.attackSpeed;
+                    playSound('gunshot');
+                    projectiles.push(createProjectile(a.x, a.z, a.facing, 'bullet', a.attackDamage));
+                }
+                // Always kite — run away from nearest enemy
+                if (dist < a.attackRange * 0.9) {
+                    a.x -= (dx / dist) * a.speed * 0.8 * dt;
+                    a.z -= (dz / dist) * a.speed * 0.8 * dt;
+                } else if (dist > a.attackRange) {
+                    // Close gap just enough to shoot
+                    a.x += (dx / dist) * a.speed * 0.4 * dt;
+                    a.z += (dz / dist) * a.speed * 0.4 * dt;
+                }
+            } else if (a.crewType === 'cannon') {
+                // Cannon: fire and retreat — no sword
+                if (dist < a.attackRange && a.attackCooldown <= 0) {
+                    a.attacking = true; a.attackTimer = 0.2; a.attackCooldown = a.attackSpeed;
+                    playSound('cannonfire');
+                    projectiles.push(createProjectile(a.x, a.z, a.facing, 'cannonball', a.attackDamage));
+                    shakeTimer = 0.08; shakeIntensity = 3;
+                }
+                // Always keep distance
+                if (dist < a.attackRange * 0.7) {
+                    a.x -= (dx / dist) * a.speed * 0.6 * dt;
+                    a.z -= (dz / dist) * a.speed * 0.6 * dt;
+                } else if (dist > a.attackRange) {
+                    a.x += (dx / dist) * a.speed * 0.4 * dt;
+                    a.z += (dz / dist) * a.speed * 0.4 * dt;
+                }
+            } else {
+                // Cutlass: melee charge
+                if (dist < a.attackRange * 0.8 && a.attackCooldown <= 0) {
+                    a.attacking = true; a.attackTimer = 0.2; a.attackCooldown = a.attackSpeed;
+                    hitEnemy(ne, a.attackDamage);
+                } else if (dist > a.attackRange * 0.5) {
+                    a.x += (dx / dist) * a.speed * dt;
+                    a.z += (dz / dist) * a.speed * dt;
+                }
+            }
+        }
+        // Priority 3: in pirate mode, go collect treasure when island is cleared
+        else if (gameMode === 'pirate' && islandCleared) {
+            let nearT = null, nearTD = Infinity;
+            treasures.forEach(t => {
+                if (t.collected) return;
+                const d = Math.sqrt((t.x - a.x) ** 2 + (t.z - a.z) ** 2);
+                if (d < nearTD) { nearT = t; nearTD = d; }
+            });
+            if (nearT) {
+                const dx = nearT.x - a.x, dz = nearT.z - a.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist > 10) {
+                    a.x += (dx / dist) * a.speed * 0.8 * dt;
+                    a.z += (dz / dist) * a.speed * 0.8 * dt;
+                    a.facing = Math.atan2(dz, dx);
+                }
+                // Allies can pick up treasure too
+                if (dist < 30) {
+                    nearT.collected = true; gold += nearT.value; totalGoldEarned += nearT.value;
+                    playSound('treasure');
+                    floatingTexts.push({ x: nearT.x, z: nearT.z, y: 15, text: `+${nearT.value}`, color: '#ffd700', life: 1, maxLife: 1 });
+                }
+            } else {
+                // All treasure collected, return to post
+                const dx = (a.postX || 0) - a.x, dz = (a.postZ || 0) - a.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist > 15) { a.x += (dx / dist) * a.speed * 0.5 * dt; a.z += (dz / dist) * a.speed * 0.5 * dt; a.facing = Math.atan2(dz, dx); }
+            }
+        }
+        // Priority 4: no enemies, no treasure — hold post position
+        else {
+            const dx = (a.postX || 0) - a.x, dz = (a.postZ || 0) - a.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist > 15) {
+                a.x += (dx / dist) * a.speed * 0.5 * dt;
+                a.z += (dz / dist) * a.speed * 0.5 * dt;
+                a.facing = Math.atan2(dz, dx);
+            }
+        }
+    });
+
+    // Update projectiles
+    projectiles.forEach(p => {
+        if (!p.alive) return;
+        p.x += p.vx * dt;
+        p.z += p.vz * dt;
+        p.life -= dt;
+        if (p.life <= 0) { p.alive = false; return; }
+
+        // Check hit enemies
+        enemies.forEach(e => {
+            if (!e.alive || e.retreating) return;
+            const dx = e.x - p.x, dz = e.z - p.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist < 20) {
+                if (p.aoe > 0) {
+                    // Cannonball: explode and hit all nearby
+                    p.alive = false;
+                    shakeTimer = 0.12; shakeIntensity = 6;
+                    // Explosion particles
+                    for (let i = 0; i < 15; i++) {
+                        particles.push({
+                            x: p.x, z: p.z, y: 5 + Math.random() * 20,
+                            vx: (Math.random() - 0.5) * 120, vz: (Math.random() - 0.5) * 120, vy: 20 + Math.random() * 50,
+                            life: 0.3 + Math.random() * 0.4, maxLife: 0.7,
+                            color: Math.random() < 0.5 ? '#f80' : '#ff4', size: 3 + Math.random() * 4,
+                        });
+                    }
+                    // Hit all enemies in AoE
+                    enemies.forEach(e2 => {
+                        if (!e2.alive) return;
+                        const d2 = Math.sqrt((e2.x - p.x) ** 2 + (e2.z - p.z) ** 2);
+                        if (d2 < p.aoe) hitEnemy(e2, p.damage * (1 - d2 / p.aoe * 0.5));
+                    });
+                } else {
+                    // Bullet: single target
+                    p.alive = false;
+                    hitEnemy(e, p.damage);
+                }
+            }
+        });
+    });
+    projectiles = projectiles.filter(p => p.alive);
+
+    enemies = enemies.filter(e => e.alive || e.deathFade > 0);
+    allies = allies.filter(a => a.alive || a.deathFade > 0);
+
+    // Separation: push overlapping entities apart so they don't stack
+    const allUnits = [];
+    if (player && player.alive) allUnits.push(player);
+    enemies.forEach(e => { if (e.alive) allUnits.push(e); });
+    allies.forEach(a => { if (a.alive) allUnits.push(a); });
+    const sepDist = 18;
+    for (let i = 0; i < allUnits.length; i++) {
+        for (let j = i + 1; j < allUnits.length; j++) {
+            const a = allUnits[i], b = allUnits[j];
+            const dx = b.x - a.x, dz = b.z - a.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist < sepDist && dist > 0.1) {
+                const push = (sepDist - dist) * 0.5;
+                const nx = (dx / dist) * push, nz = (dz / dist) * push;
+                if (!a.isPlayer) { a.x -= nx; a.z -= nz; }
+                if (!b.isPlayer) { b.x += nx; b.z += nz; }
+                if (a.isPlayer) { b.x += nx * 2; b.z += nz * 2; }
+                if (b.isPlayer) { a.x -= nx * 2; a.z -= nz * 2; }
+            }
+        }
+    }
+
+    // Level completion
+    if (gameMode === 'pirate') {
+        const living = enemies.filter(e => e.alive && !e.retreating);
+        if (living.length === 0 && !islandCleared) {
+            islandCleared = true;
+            playSound('fanfare');
+            floatingTexts.push({ x: player.x, z: player.z, y: 50, text: 'ISLAND CLEARED!', color: '#ffd700', life: 2, maxLife: 2 });
+        }
+        if (islandCleared) {
+            treasures.forEach(t => {
+                if (t.collected) return;
+                const dx = t.x - player.x, dz = t.z - player.z;
+                if (Math.sqrt(dx * dx + dz * dz) < 30) {
+                    t.collected = true; gold += t.value; totalGoldEarned += t.value;
+                    playSound('treasure');
+                    floatingTexts.push({ x: t.x, z: t.z, y: 15, text: `+${t.value}`, color: '#ffd700', life: 1, maxLife: 1 });
+                    for (let i = 0; i < 12; i++) particles.push({
+                        x: t.x, z: t.z, y: 5 + Math.random() * 15,
+                        vx: (Math.random() - .5) * 60, vz: (Math.random() - .5) * 60, vy: 20 + Math.random() * 40,
+                        life: .5 + Math.random() * .5, maxLife: 1, color: Math.random() > .5 ? '#ffd700' : '#ffea00', size: 2 + Math.random() * 3,
+                    });
+                }
+            });
+            const anyAliveEnemies = enemies.some(e => e.alive);
+            if (treasures.every(t => t.collected) && !anyAliveEnemies) showShop();
+        }
+    } else {
+        if (enemies.filter(e => e.alive && !e.retreating).length === 0) {
+            const hasRetreating = enemies.some(e => e.alive && e.retreating);
+            if (!hasRetreating) showShop();
+        }
+    }
+
+    if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) comboCount = 0; }
+
+    particles.forEach(p => { p.x += p.vx * dt; p.z += p.vz * dt; p.y += p.vy * dt; p.vy -= 80 * dt; p.life -= dt; });
+    particles = particles.filter(p => p.life > 0);
+    floatingTexts.forEach(t => { t.y += 30 * dt; t.life -= dt; });
+    floatingTexts = floatingTexts.filter(t => t.life > 0);
+
+    shakeTimer = Math.max(0, shakeTimer - dt);
+    redFlashTimer = Math.max(0, redFlashTimer - dt);
+
+    const ps = isoProject(player.x, 0, player.z);
+    camX += (ps.x - camX) * 3 * dt;
+    camY += (ps.y - camY) * 3 * dt;
+
+    updateHUD();
+}
+
+function damageTarget(target, amount) {
+    if (target.isPlayer) {
+        if (target.invincible > 0 || target.dodging) return;
+        target.hp -= amount; target.flashTimer = 0.15;
+        playSound('playerHit'); shakeTimer = 0.15; shakeIntensity = 8; redFlashTimer = 0.2;
+        target.invincible = 0.6;
+        if (target.hp <= 0) { target.alive = false; showGameOver(); }
+    } else if (target.isAlly) {
+        target.hp -= amount; target.flashTimer = 0.12;
+        if (target.hp <= 0) {
+            target.alive = false; target.deathFade = 0.6; playSound('death');
+            // After level 5, dead allies don't come back
+            if (currentLevel >= 5) {
+                if (target.isAutoTeam) {
+                    autoTeamSize = Math.max(0, autoTeamSize - 1);
+                } else {
+                    const idx = hiredAllies.findIndex(h => h.type === target.crewType);
+                    if (idx >= 0) hiredAllies.splice(idx, 1);
+                }
+            }
+        }
+    }
+}
+
+function updateSailing(dt) {
+    sailTimer -= dt;
+    if (ships.length > 0) {
+        const s = ships[0];
+        const dx = s.targetX - s.x, dz = s.targetZ - s.z;
+        const d = Math.sqrt(dx * dx + dz * dz);
+        if (d > 5) { s.x += (dx / d) * 80 * dt; s.z += (dz / d) * 80 * dt; }
+        const p = isoProject(s.x, 0, s.z);
+        camX += (p.x - camX) * 2 * dt; camY += (p.y - camY) * 2 * dt;
+    }
+    if (sailTimer <= 0) startLevel();
+}
+
+// ===== RENDERING =====
+function render() {
+    ctx.fillStyle = '#0a1628';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    ctx.scale(camZoom, camZoom);
+    ctx.translate(-camX, -camY);
+
+    // Render ocean large enough to fill the screen (account for zoom)
+    const oceanRange = Math.max(W, H) / camZoom + (islandRadius + 10) * TILE_SIZE;
+    if (gameState === 'title') {
+        renderOcean(-600, -600, 1200, 1200);
+        ctx.restore(); return;
+    }
+
+    renderOcean(-oceanRange, -oceanRange, oceanRange * 2, oceanRange * 2);
+    beachTiles.forEach(t => renderTile(t.x, t.z, t.c1, t.c2));
+    islandTiles.forEach(t => renderTile(t.x, t.z, t.c1, t.c2));
+
+    let drawList = [];
+    // Flowers (under everything)
+    flowers.forEach(f => drawList.push({ t: 'flower', d: f, dp: f.x + f.z - 1 }));
+    rocks.forEach(r => drawList.push({ t: 'rock', d: r, dp: r.x + r.z }));
+    trees.forEach(t => drawList.push({ t: 'tree', d: t, dp: t.x + t.z }));
+    treasures.forEach(t => { if (!t.collected) drawList.push({ t: 'treasure', d: t, dp: t.x + t.z }); });
+    // Flag removed per user request
+    if (goldPile) drawList.push({ t: 'goldpile', d: goldPile, dp: goldPile.x + goldPile.z });
+    ships.forEach(s => drawList.push({ t: 'ship', d: s, dp: s.x + s.z }));
+    enemies.forEach(e => { if (e.alive || e.deathFade > 0) drawList.push({ t: 'enemy', d: e, dp: e.x + e.z }); });
+    allies.forEach(a => { if (a.alive || a.deathFade > 0) drawList.push({ t: 'ally', d: a, dp: a.x + a.z }); });
+    if (player && player.alive) drawList.push({ t: 'player', d: player, dp: player.x + player.z });
+    projectiles.forEach(p => { if (p.alive) drawList.push({ t: 'projectile', d: p, dp: p.x + p.z }); });
+    particles.forEach(p => drawList.push({ t: 'particle', d: p, dp: p.x + p.z }));
+    floatingTexts.forEach(t => drawList.push({ t: 'text', d: t, dp: t.x + t.z + 1000 }));
+
+    drawList.sort((a, b) => a.dp - b.dp);
+    drawList.forEach(item => {
+        switch(item.t) {
+            case 'flower': drawFlower(item.d); break;
+            case 'rock': drawRock(item.d); break;
+            case 'tree': drawTree(item.d); break;
+            case 'treasure': drawTreasure(item.d); break;
+            case 'flag': drawFlag(item.d); break;
+            case 'goldpile': drawGoldPile(item.d); break;
+            case 'ship': drawShip(item.d); break;
+            case 'enemy': drawCharacter(item.d, false, false); break;
+            case 'ally': drawCharacter(item.d, false, true); break;
+            case 'player': drawCharacter(item.d, true, false); break;
+            case 'projectile': drawProjectile(item.d); break;
+            case 'particle': drawParticle(item.d); break;
+            case 'text': drawFloatingText(item.d); break;
+        }
+    });
+    ctx.restore();
+
+    if (redFlashTimer > 0) {
+        ctx.fillStyle = `rgba(255,0,0,${redFlashTimer * 1.5})`;
+        ctx.fillRect(0, 0, W, H);
+    }
+    if (gameState === 'sailing') {
+        ctx.fillStyle = '#ffd700'; ctx.font = 'bold 32px Segoe UI'; ctx.textAlign = 'center';
+        ctx.shadowColor = '#000'; ctx.shadowBlur = 10;
+        ctx.fillText(`Sailing to Island ${currentLevel + 1}...`, W / 2, H / 2 - 80);
+        ctx.shadowBlur = 0;
+    }
+}
+
+function renderOcean(ox, oz, w, h) {
+    const step = TILE_SIZE;
+    for (let x = ox; x < ox + w; x += step) {
+        for (let z = oz; z < oz + h; z += step) {
+            const wave = Math.sin(oceanTime * 2 + x * 0.02 + z * 0.02) * 2;
+            const p1 = isoProject(x, wave, z), p2 = isoProject(x + step, wave, z);
+            const p3 = isoProject(x + step, wave, z + step), p4 = isoProject(x, wave, z + step);
+            // Check if tile is on screen (rough check, account for zoom)
+            const centerX = (p1.x + p3.x) / 2, centerY = (p1.y + p3.y) / 2;
+            const cullW = W / camZoom * 0.6, cullH = H / camZoom * 0.6;
+            if (centerX < -cullW || centerX > cullW || centerY < -cullH || centerY > cullH) continue;
+            const s = 0.5 + Math.sin(oceanTime * 1.5 + x * 0.03 + z * 0.04) * 0.08;
+            ctx.fillStyle = `rgb(${Math.floor(20*s)},${Math.floor(60+30*s)},${Math.floor(120+40*s)})`;
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y);
+            ctx.closePath(); ctx.fill();
+        }
+    }
+}
+
+function renderTile(tx, tz, c1, c2) {
+    const p1 = isoProject(tx, 0, tz), p2 = isoProject(tx + TILE_SIZE, 0, tz);
+    const p3 = isoProject(tx + TILE_SIZE, 0, tz + TILE_SIZE), p4 = isoProject(tx, 0, tz + TILE_SIZE);
+    ctx.fillStyle = c1; ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = c2; ctx.lineWidth = 0.5; ctx.stroke();
+}
+
+function drawFlower(f) {
+    const p = isoProject(f.x, 0, f.z);
+    ctx.fillStyle = f.color;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath(); ctx.arc(p.x, p.y - 2, f.size, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+}
+
+function drawRock(r) {
+    const p = isoProject(r.x, 0, r.z);
+    const g = Math.floor(r.shade * 255);
+    ctx.fillStyle = `rgb(${g-20},${g-10},${g})`;
+    ctx.beginPath();
+    ctx.moveTo(p.x - r.size, p.y);
+    ctx.lineTo(p.x - r.size * 0.5, p.y - r.size * 0.8);
+    ctx.lineTo(p.x + r.size * 0.3, p.y - r.size * 0.9);
+    ctx.lineTo(p.x + r.size, p.y - r.size * 0.2);
+    ctx.lineTo(p.x + r.size * 0.7, p.y + r.size * 0.3);
+    ctx.lineTo(p.x - r.size * 0.6, p.y + r.size * 0.2);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = `rgb(${g-40},${g-30},${g-20})`; ctx.lineWidth = 0.5; ctx.stroke();
+}
+
+function drawTree(tree) {
+    const base = isoProject(tree.x, 0, tree.z);
+    const sw = Math.sin(oceanTime * 1.5 + tree.sway) * 3;
+
+    if (tree.type === 'bush') {
+        // Bush: low round green shape
+        ctx.fillStyle = '#2a7a2a';
+        ctx.beginPath(); ctx.ellipse(base.x, base.y - 8, 12, 8, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#3a9a3a';
+        ctx.beginPath(); ctx.ellipse(base.x + 3, base.y - 10, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
+    } else {
+        // Palm tree
+        ctx.strokeStyle = '#8b6914'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(base.x, base.y); ctx.lineTo(base.x + sw, base.y - tree.height * 0.7); ctx.stroke();
+        const tx = base.x + sw, ty = base.y - tree.height * 0.7;
+        ctx.fillStyle = '#2a8a2a';
+        for (let i = 0; i < 3; i++) {
+            const a = (i / 3) * Math.PI * 2 + oceanTime * 0.3 + tree.sway;
+            const lx = tx + Math.cos(a) * 14, ly = ty - 5 + Math.sin(a) * 5;
+            ctx.beginPath(); ctx.moveTo(lx, ly - 18); ctx.lineTo(lx - 14, ly + 6); ctx.lineTo(lx + 14, ly + 6); ctx.closePath(); ctx.fill();
+        }
+        ctx.fillStyle = '#3a9a3a'; ctx.beginPath();
+        ctx.moveTo(tx, ty - 22); ctx.lineTo(tx - 12, ty); ctx.lineTo(tx + 12, ty); ctx.closePath(); ctx.fill();
+    }
+}
+
+function drawFlag(flag) {
+    const p = isoProject(flag.x, 0, flag.z);
+    // Pole
+    ctx.strokeStyle = '#8b6914'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y + 2); ctx.lineTo(p.x, p.y - 50); ctx.stroke();
+
+    // Flag cloth - animate wave
+    const flagWave = Math.sin(oceanTime * 3) * 4;
+    const isWhite = islandCleared;
+    ctx.fillStyle = isWhite ? '#fff' : '#111';
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y - 50);
+    ctx.lineTo(p.x + 18 + flagWave, p.y - 48 + flagWave * 0.3);
+    ctx.lineTo(p.x + 16 + flagWave * 0.5, p.y - 38);
+    ctx.lineTo(p.x, p.y - 40);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = isWhite ? '#ccc' : '#333'; ctx.lineWidth = 0.5; ctx.stroke();
+
+    // Skull on black flag
+    if (!isWhite) {
+        ctx.fillStyle = '#fff'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('\u2620', p.x + 9 + flagWave * 0.5, p.y - 42);
+    }
+
+    // Gold ball on top
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath(); ctx.arc(p.x, p.y - 51, 3, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawTreasure(t) {
+    const p = isoProject(t.x, 0, t.z);
+    const bob = Math.sin(oceanTime * 3 + t.x) * 2;
+    if (gameMode === 'pirate' && !islandCleared) ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#d4a020'; ctx.fillRect(p.x - 8, p.y - 12 + bob, 16, 10);
+    ctx.fillStyle = '#b8860b'; ctx.fillRect(p.x - 9, p.y - 14 + bob, 18, 4);
+    ctx.fillStyle = islandCleared ? '#ffd700' : '#888'; ctx.fillRect(p.x - 2, p.y - 10 + bob, 4, 4);
+    if (islandCleared) {
+        t.sparkleTimer = (t.sparkleTimer || 0) + 0.05;
+        if (Math.sin(t.sparkleTimer * 3) > 0.7) { ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.8; ctx.fillRect(p.x + 6, p.y - 18 + bob, 3, 3); }
+    } else {
+        ctx.fillStyle = '#666'; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('\ud83d\udd12', p.x, p.y - 18 + bob);
+    }
+    ctx.globalAlpha = 1;
+}
+
+function drawGoldPile(gp) {
+    if (gold <= 0) return; // nothing to show
+    const p = isoProject(gp.x, 0, gp.z);
+    const sparkle = Math.sin(oceanTime * 4) * 0.3;
+    // Scale pile size based on gold amount — grows as you earn more
+    const s = Math.min(2.5, 0.5 + gold / 200); // scale factor 0.5 to 2.5
+    const bw = 18 * s, bh = 9 * s; // base ellipse
+    // Base shadow
+    ctx.fillStyle = '#8b6914';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y + 2, bw + 2, bh + 1, 0, 0, Math.PI * 2); ctx.fill();
+    // Bottom layer
+    ctx.fillStyle = '#b8860b';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, bw, bh, 0, 0, Math.PI * 2); ctx.fill();
+    // Mid layer
+    ctx.fillStyle = '#d4a020';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y - 4 * s, bw * 0.85, bh * 0.85, 0, 0, Math.PI * 2); ctx.fill();
+    // Top layer
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y - 8 * s, bw * 0.65, bh * 0.65, 0, 0, Math.PI * 2); ctx.fill();
+    // Peak
+    if (s > 1) {
+        ctx.fillStyle = '#ffe44d';
+        ctx.beginPath(); ctx.ellipse(p.x, p.y - 11 * s, bw * 0.4, bh * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    // Sparkles — more sparkles for bigger piles
+    ctx.fillStyle = `rgba(255,255,255,${0.5 + sparkle})`;
+    ctx.beginPath(); ctx.arc(p.x + 5 * s, p.y - 12 * s, 2, 0, Math.PI * 2); ctx.fill();
+    if (Math.sin(oceanTime * 6 + 1) > 0.5) {
+        ctx.beginPath(); ctx.arc(p.x - 8 * s, p.y - 3 * s, 1.5, 0, Math.PI * 2); ctx.fill();
+    }
+    if (s > 1.2 && Math.sin(oceanTime * 5 + 2) > 0.6) {
+        ctx.beginPath(); ctx.arc(p.x + 3 * s, p.y - 2 * s, 1.5, 0, Math.PI * 2); ctx.fill();
+    }
+    // Gold amount label
+    const fontSize = Math.max(11, Math.min(16, 10 + s * 3));
+    ctx.fillStyle = '#ffd700'; ctx.font = `bold ${Math.round(fontSize)}px Segoe UI`; ctx.textAlign = 'center';
+    ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
+    ctx.fillText(`${gold}g`, p.x, p.y - 14 * s - 6);
+    ctx.shadowBlur = 0;
+}
+
+function drawShip(ship) {
+    const p = isoProject(ship.x, 0, ship.z);
+    const bob = Math.sin(oceanTime * 1.2 + ship.x * 0.01) * 3;
+    ctx.save(); ctx.translate(p.x, p.y + bob);
+    ctx.fillStyle = ship.isPlayerShip ? '#8b5e3c' : '#5a3a1a';
+    ctx.beginPath(); ctx.moveTo(-20, 0); ctx.lineTo(-15, 8); ctx.lineTo(15, 8); ctx.lineTo(20, 0); ctx.lineTo(15, -4); ctx.lineTo(-15, -4); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#3a2a0a'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(0, -30); ctx.stroke();
+    ctx.fillStyle = ship.isPlayerShip ? '#eee' : '#a44';
+    ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(12, -18); ctx.lineTo(0, -8); ctx.closePath(); ctx.fill();
+    if (ship.isPlayerShip) { ctx.fillStyle = '#ffd700'; ctx.fillRect(-2, -33, 8, 5); }
+    ctx.restore();
+}
+
+function drawHealthBar(x, y, hp, maxHP, color, w) {
+    w = w || 24;
+    const h = 4, bx = x - w / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(bx - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = '#333'; ctx.fillRect(bx, y, w, h);
+    ctx.fillStyle = color; ctx.fillRect(bx, y, w * Math.max(0, hp / maxHP), h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 0.5; ctx.strokeRect(bx, y, w, h);
+}
+
+function drawCharacter(entity, isP, isA) {
+    const p = isoProject(entity.x, 0, entity.z);
+    const alpha = entity.alive ? 1 : Math.max(0, entity.deathFade / 0.6);
+    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(p.x, p.y);
+
+    if (entity.dodging) {
+        ctx.globalAlpha = 0.3; ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(-Math.cos(entity.dodgeDir) * 10, -Math.sin(entity.dodgeDir) * 5, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = alpha;
+    }
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(0, 2, 10, 5, 0, 0, Math.PI * 2); ctx.fill();
+
+    if (entity.invincible > 0 && Math.floor(entity.invincible * 20) % 2 === 0) ctx.globalAlpha = 0.4;
+
+    let bc, hc, pc;
+    // Pirates = black uniforms, Military/Defenders = blue uniforms
+    if (isP) {
+        if (entity.isPirate) { bc = '#1a1a1a'; hc = '#e8c090'; pc = '#222'; }         // player pirate: black
+        else { bc = '#2244aa'; hc = '#e8c090'; pc = '#1a3a8a'; }                       // player defender: blue
+    } else if (isA) {
+        // Ally colors based on faction + crew type tint
+        const ct = entity.crewType;
+        if (ct === 'goldguard') {
+            bc = '#b8960b'; hc = '#d8b080'; pc = '#8a7a0a'; // gold uniform
+        } else if (entity.isPirate) {
+            // pirate allies: black base with slight type tint
+            if (ct === 'gunsman') { bc = '#2a2a1a'; hc = '#d8b080'; pc = '#1a1a0a'; }
+            else if (ct === 'cannon') { bc = '#2a1a1a'; hc = '#d8b080'; pc = '#1a0a0a'; }
+            else { bc = '#1a1a1a'; hc = '#d8b080'; pc = '#111'; }
+        } else {
+            // defender allies: blue base with type tint
+            if (ct === 'gunsman') { bc = '#2a4a8a'; hc = '#d8b080'; pc = '#1a3a6a'; }
+            else if (ct === 'cannon') { bc = '#3a3a8a'; hc = '#d8b080'; pc = '#2a2a6a'; }
+            else { bc = '#2244aa'; hc = '#d8b080'; pc = '#1a3a8a'; }
+        }
+    } else {
+        // Enemy colors
+        if (entity.retreating) { bc = '#5a5a3a'; hc = '#e8d080'; pc = '#3a3a1a'; }
+        else if (entity.isPirate) { bc = '#111'; hc = '#d8b080'; pc = '#0a0a0a'; }     // pirate enemies: black
+        else { bc = '#3355aa'; hc = '#d8b080'; pc = '#2244aa'; }                       // military enemies: blue
+    }
+    if (entity.flashTimer > 0) { bc = '#fff'; hc = '#fff'; pc = '#fff'; }
+
+    const tilt = !entity.alive ? (1 - Math.max(0, entity.deathFade / 0.6)) * 0.5 : 0;
+    ctx.rotate(tilt);
+
+    // Body
+    ctx.fillStyle = pc; ctx.fillRect(-5, -6, 10, 8);
+    ctx.fillStyle = bc; ctx.fillRect(-6, -16, 12, 12);
+    ctx.fillStyle = hc; ctx.beginPath(); ctx.arc(0, -22, 6, 0, Math.PI * 2); ctx.fill();
+
+    // Hat / headgear
+    if (isA && entity.crewType === 'goldguard') {
+        // Gold helmet
+        ctx.fillStyle = '#d4a020';
+        ctx.beginPath(); ctx.arc(0, -26, 8, Math.PI, 0); ctx.fill();
+        ctx.fillRect(-8, -26, 16, 2);
+        ctx.fillStyle = '#ffd700'; ctx.fillRect(-3, -28, 6, 2);
+    } else if (isA && entity.crewType === 'gunsman') {
+        // Wide brim hat
+        ctx.fillStyle = '#5a4a2a';
+        ctx.fillRect(-8, -28, 16, 3);
+        ctx.fillRect(-4, -32, 8, 5);
+    } else if (isA && entity.crewType === 'cannon') {
+        // Bandana
+        ctx.fillStyle = '#a33';
+        ctx.beginPath(); ctx.arc(0, -26, 7, Math.PI, 0); ctx.fill();
+        ctx.fillRect(-7, -26, 14, 2);
+    } else if (entity.isPirate) {
+        // Pirate hat: black with skull
+        ctx.fillStyle = entity.retreating ? '#aa8' : '#111';
+        ctx.fillRect(-7, -28, 14, 4);
+        ctx.fillStyle = '#ddd'; ctx.fillRect(-2, -27, 4, 2); // skull mark
+    } else {
+        // Military cap: blue
+        ctx.fillStyle = isA ? '#3366bb' : '#3355aa';
+        ctx.beginPath(); ctx.arc(0, -27, 7, Math.PI, 0); ctx.fill();
+        ctx.fillRect(-7, -27, 14, 2);
+    }
+
+    // Retreating white flag
+    if (entity.retreating) {
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(5, -35, 2, 12);
+        ctx.fillRect(7, -35, 6, 4);
+    }
+
+    // Thief gold bag indicator
+    if (entity.isThief && !isP && !isA) {
+        if (entity.stolenGold > 0) {
+            // Gold bag on back
+            ctx.fillStyle = '#d4a020';
+            ctx.beginPath(); ctx.arc(-6, -8, 6, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#b8860b';
+            ctx.fillRect(-9, -10, 6, 2);
+            // Gold sparkle
+            if (Math.sin(oceanTime * 5 + entity.x) > 0.5) {
+                ctx.fillStyle = '#ffd700'; ctx.globalAlpha = 0.9;
+                ctx.fillRect(-4, -14, 3, 3);
+                ctx.globalAlpha = alpha;
+            }
+            // Stolen amount label
+            ctx.fillStyle = '#ffd700'; ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
+            ctx.fillText(entity.stolenGold + 'g', 0, -48);
+        } else if (entity.alive && gold > 0) {
+            // Thief marker — show they're after gold
+            ctx.fillStyle = '#ffd700'; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
+            ctx.globalAlpha = 0.6 + Math.sin(oceanTime * 4) * 0.3;
+            ctx.fillText('\u{1F4B0}', 0, -42);
+            ctx.globalAlpha = alpha;
+        }
+    }
+
+    // Player crown
+    if (isP) {
+        ctx.fillStyle = '#ffd700'; ctx.beginPath();
+        ctx.moveTo(0, -42); ctx.lineTo(-4, -37); ctx.lineTo(4, -37); ctx.closePath(); ctx.fill();
+    }
+    // Ally diamond marker
+    if (isA && entity.alive) {
+        const dc = entity.crewType === 'goldguard' ? '#ffd700' : entity.crewType === 'gunsman' ? '#fc8' : entity.crewType === 'cannon' ? '#f88' : '#4af';
+        ctx.fillStyle = dc; ctx.beginPath();
+        ctx.moveTo(0, -40); ctx.lineTo(-3, -36); ctx.lineTo(0, -32); ctx.lineTo(3, -36); ctx.closePath(); ctx.fill();
+    }
+
+    // Weapon drawing
+    if (isA && entity.crewType === 'gunsman') {
+        // Musket
+        const gx = Math.cos(entity.facing) * 8, gy = Math.sin(entity.facing) * 4 - 10;
+        ctx.save(); ctx.translate(gx, gy);
+        ctx.strokeStyle = '#555'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(18, -8); ctx.stroke();
+        ctx.strokeStyle = '#8b6914'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-3, 1); ctx.lineTo(4, -2); ctx.stroke();
+        if (entity.attacking) {
+            // Muzzle flash
+            ctx.fillStyle = '#ff8'; ctx.globalAlpha = 0.8;
+            ctx.beginPath(); ctx.arc(20, -10, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = alpha;
+        }
+        ctx.restore();
+    } else if (isA && entity.crewType === 'goldguard') {
+        // Sword + gold shield
+        const gx = Math.cos(entity.facing) * 8, gy = Math.sin(entity.facing) * 4 - 10;
+        ctx.save(); ctx.translate(gx, gy);
+        ctx.fillStyle = '#d4a020';
+        ctx.beginPath(); ctx.arc(-6, 0, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffd700'; ctx.beginPath(); ctx.arc(-6, 0, 4, 0, Math.PI * 2); ctx.fill();
+        const bsl = entity.attacking ? 20 : 14;
+        ctx.strokeStyle = '#ccc'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(bsl * Math.cos(-0.3), -bsl * Math.sin(0.3)); ctx.stroke();
+        ctx.restore();
+    } else if (isA && entity.crewType === 'bodyguard') {
+        // Sword + shield
+        const gx = Math.cos(entity.facing) * 8, gy = Math.sin(entity.facing) * 4 - 10;
+        ctx.save(); ctx.translate(gx, gy);
+        // Shield
+        ctx.fillStyle = '#667';
+        ctx.beginPath(); ctx.arc(-6, 0, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#889'; ctx.beginPath(); ctx.arc(-6, 0, 4, 0, Math.PI * 2); ctx.fill();
+        // Sword
+        const bsl = entity.attacking ? 20 : 14;
+        ctx.strokeStyle = '#ccc'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(bsl * Math.cos(-0.3), -bsl * Math.sin(0.3)); ctx.stroke();
+        ctx.restore();
+    } else if (isA && entity.crewType === 'cannon') {
+        // Small cannon
+        const cx = Math.cos(entity.facing) * 6, cy = Math.sin(entity.facing) * 3 - 6;
+        ctx.save(); ctx.translate(cx, cy);
+        ctx.fillStyle = '#444';
+        ctx.beginPath();
+        ctx.moveTo(-4, 2); ctx.lineTo(14, -4); ctx.lineTo(14, -8); ctx.lineTo(-4, -2); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#666'; ctx.fillRect(-6, -1, 5, 4); // wheels
+        if (entity.attacking) {
+            ctx.fillStyle = '#f60'; ctx.globalAlpha = 0.9;
+            ctx.beginPath(); ctx.arc(16, -6, 6, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = alpha;
+        }
+        ctx.restore();
+    } else {
+        // Sword (player spin attack or normal)
+        if (isP && entity.attacking) {
+            // SPIN ATTACK: draw circular slash
+            const spinProgress = entity.spinAngle;
+            const sl = entity.attackRange * 0.6;
+
+            // Draw spinning sword
+            const swordAngle = entity.facing + spinProgress;
+            const hx = Math.cos(swordAngle) * 12, hy = Math.sin(swordAngle) * 6 - 10;
+            ctx.save(); ctx.translate(hx, hy);
+            ctx.strokeStyle = '#ccc'; ctx.lineWidth = 2.5;
+            const sx2 = Math.cos(swordAngle - 0.3) * 18, sy2 = Math.sin(swordAngle - 0.3) * 9;
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(sx2, -sy2); ctx.stroke();
+            ctx.restore();
+
+            // Circular slash trail
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 3;
+            ctx.beginPath();
+            const trailLen = Math.min(spinProgress, Math.PI * 2);
+            for (let a = 0; a < trailLen; a += 0.2) {
+                const ta = entity.facing + spinProgress - a;
+                const tx = Math.cos(ta) * 25, tz = Math.sin(ta) * 12;
+                if (a === 0) ctx.moveTo(tx, -10 + tz);
+                else ctx.lineTo(tx, -10 + tz);
+            }
+            ctx.stroke();
+        } else {
+            // Normal sword draw
+            const sl = entity.attacking ? 22 : 16;
+            const hx = Math.cos(entity.facing) * 8, hy = Math.sin(entity.facing) * 4 - 10;
+            ctx.save(); ctx.translate(hx, hy);
+            if (entity.attacking) {
+                const sp = entity.attackTimer / 0.2;
+                ctx.rotate((1 - sp) * Math.PI * 0.8 - Math.PI * 0.4);
+                if (isA) {
+                    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 3;
+                    ctx.beginPath(); ctx.arc(0, 0, sl, -Math.PI * 0.5, Math.PI * 0.3); ctx.stroke();
+                }
+            }
+            if (!entity.retreating) {
+                ctx.strokeStyle = '#ccc'; ctx.lineWidth = 2.5;
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(sl * Math.cos(-0.3), -sl * Math.sin(0.3)); ctx.stroke();
+                ctx.strokeStyle = '#8b4513'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(-2, 2); ctx.lineTo(2, -2); ctx.stroke();
+            }
+            ctx.restore();
+        }
+    }
+
+    // Health bar
+    ctx.globalAlpha = alpha;
+    if (entity.alive) {
+        let barY, barColor, barW;
+        if (isP) { barY = -50; barColor = '#4f4'; barW = 30; }
+        else if (isA) { barY = -45; barColor = entity.crewType === 'goldguard' ? '#ffd700' : entity.crewType === 'gunsman' ? '#fc8' : entity.crewType === 'cannon' ? '#f88' : '#4af'; barW = 24; }
+        else { barY = -35; barColor = entity.retreating ? '#ff4' : '#f44'; barW = 24; }
+        drawHealthBar(0, barY, entity.hp, entity.maxHP, barColor, barW);
+    }
+
+    ctx.restore();
+}
+
+function drawProjectile(p) {
+    const pos = isoProject(p.x, p.y, p.z);
+    if (p.type === 'cannonball') {
+        ctx.fillStyle = '#333';
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, p.size, 0, Math.PI * 2); ctx.fill();
+        // Trail
+        ctx.fillStyle = 'rgba(100,100,100,0.3)';
+        const tx = pos.x - p.vx * 0.01, ty = pos.y - p.vz * 0.005;
+        ctx.beginPath(); ctx.arc(tx, ty, p.size * 0.7, 0, Math.PI * 2); ctx.fill();
+    } else {
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, p.size, 0, Math.PI * 2); ctx.fill();
+        // Glow
+        ctx.fillStyle = 'rgba(255,255,200,0.3)';
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, p.size * 2, 0, Math.PI * 2); ctx.fill();
+    }
+}
+
+function drawParticle(p) {
+    const pos = isoProject(p.x, p.y, p.z);
+    ctx.fillStyle = p.color; ctx.globalAlpha = p.life / p.maxLife;
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, p.size, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+}
+
+function drawFloatingText(t) {
+    const pos = isoProject(t.x, t.y, t.z);
+    ctx.fillStyle = t.color; ctx.globalAlpha = t.life / t.maxLife;
+    ctx.font = 'bold 16px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillText(t.text, pos.x, pos.y); ctx.globalAlpha = 1;
+}
+
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize); resize();
+
+function gameLoop(time) {
+    dt = Math.min((time - lastTime) / 1000, 0.05);
+    lastTime = time;
+    update(dt); render();
+    requestAnimationFrame(gameLoop);
+}
+lastTime = performance.now();
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
