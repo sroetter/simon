@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beekeeper</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#111; overflow:hidden; font-family:'Segoe UI',sans-serif; color:#fff; }
+canvas { display:block; }
+#title-screen { position:fixed; inset:0; background:linear-gradient(135deg,#2d5016,#4a7c23); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:100; }
+#title-screen h1 { font-size:72px; color:#ffd700; text-shadow:3px 3px 0 #8B6914, 0 0 30px rgba(255,215,0,0.5); margin-bottom:10px; }
+#title-screen .subtitle { color:#ffe082; font-size:20px; margin-bottom:40px; }
+.honeycomb { display:flex; gap:4px; margin-bottom:30px; }
+.hex { width:40px; height:46px; background:#f0a500; clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%); }
+.title-btn { padding:14px 40px; font-size:20px; border:none; border-radius:8px; cursor:pointer; margin:8px; font-weight:bold; transition:transform 0.1s; }
+.title-btn:hover { transform:scale(1.05); }
+.title-btn:active { transform:scale(0.95); }
+#btn-new { background:#ffd700; color:#333; }
+#btn-how { background:#555; color:#fff; }
+#btn-back { background:none; color:#ffe082; border:2px solid #ffe082; padding:10px 24px; font-size:16px; margin-top:20px; text-decoration:none; border-radius:6px; display:inline-block; }
+#btn-back:hover { background:rgba(255,224,130,0.2); }
+#how-panel { display:none; background:rgba(0,0,0,0.85); border-radius:12px; padding:30px; max-width:500px; max-height:70vh; overflow-y:auto; text-align:left; line-height:1.6; }
+#how-panel h2 { color:#ffd700; margin-bottom:12px; }
+#how-panel kbd { background:#333; padding:2px 6px; border-radius:3px; font-size:14px; }
+
+#hud { position:fixed; top:0; left:0; right:0; pointer-events:none; z-index:10; }
+#money { position:fixed; top:12px; left:12px; font-size:22px; font-weight:bold; color:#ffd700; text-shadow:1px 1px 2px #000; z-index:10; }
+#stats { position:fixed; top:40px; left:12px; font-size:13px; color:#ddd; text-shadow:1px 1px 2px #000; z-index:10; line-height:1.5; }
+#time-display { position:fixed; top:12px; right:12px; font-size:16px; color:#ffe082; text-shadow:1px 1px 2px #000; z-index:10; text-align:right; }
+#notification { position:fixed; top:60px; left:50%; transform:translateX(-50%); font-size:18px; font-weight:bold; color:#fff; text-shadow:1px 1px 3px #000; z-index:10; opacity:0; transition:opacity 0.3s; text-align:center; }
+#hotbar { position:fixed; bottom:12px; left:50%; transform:translateX(-50%); display:flex; gap:4px; z-index:10; pointer-events:auto; }
+.hotbar-slot { width:48px; height:48px; background:rgba(0,0,0,0.7); border:2px solid #555; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11px; color:#ccc; cursor:pointer; flex-direction:column; position:relative; }
+.hotbar-slot.selected { border-color:#ffd700; background:rgba(255,215,0,0.2); }
+.hotbar-slot .key { position:absolute; top:1px; left:3px; font-size:9px; color:#888; }
+.hotbar-slot .icon { font-size:20px; }
+
+#shop { position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:50; display:none; align-items:center; justify-content:center; }
+#shop-panel { background:#1a1a2e; border:2px solid #ffd700; border-radius:12px; padding:24px; max-width:450px; width:90%; max-height:80vh; overflow-y:auto; }
+#shop-panel h2 { color:#ffd700; text-align:center; margin-bottom:16px; }
+.shop-item { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; margin:4px 0; background:#16213e; border-radius:6px; cursor:pointer; transition:background 0.15s; }
+.shop-item:hover { background:#0f3460; }
+.shop-item .name { flex:1; }
+.shop-item .price { color:#ffd700; font-weight:bold; margin-left:12px; }
+.shop-item.cant-afford { opacity:0.4; cursor:not-allowed; }
+#shop-close { display:block; margin:16px auto 0; padding:8px 24px; background:#c0392b; border:none; color:#fff; border-radius:6px; cursor:pointer; font-size:16px; }
+
+#goals { position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:10; }
+#goals-toggle { background:rgba(0,0,0,0.6); border:1px solid #888; color:#fff; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; pointer-events:auto; }
+#goals-list { display:none; background:rgba(0,0,0,0.85); border-radius:8px; padding:12px; margin-top:4px; font-size:13px; min-width:200px; }
+.goal { padding:2px 0; }
+.goal.done { color:#4caf50; text-decoration:line-through; }
+</style>
+</head>
+<body>
+
+<div id="title-screen">
+  <div class="honeycomb">
+    <div class="hex"></div><div class="hex"></div><div class="hex"></div><div class="hex"></div><div class="hex"></div>
+  </div>
+  <h1>BEEKEEPER</h1>
+  <div class="subtitle">Grow flowers. Raise bees. Harvest honey.</div>
+  <div>
+    <button class="title-btn" id="btn-new">New Game</button>
+    <button class="title-btn" id="btn-how">How to Play</button>
+  </div>
+  <div id="how-panel">
+    <h2>How to Play</h2>
+    <p><kbd>WASD</kbd> - Move your beekeeper</p>
+    <p><kbd>E</kbd> - Interact (harvest hive, use extractor, sell honey)</p>
+    <p><kbd>B</kbd> - Open/close shop</p>
+    <p><kbd>1-9</kbd> - Select hotbar item to place</p>
+    <p><kbd>Left Click</kbd> - Place item / Shoo bears</p>
+    <p><kbd>Right Click</kbd> - Remove placed item</p>
+    <p><kbd>Space</kbd> - Use smoker (calms bees, drives wasps)</p>
+    <br>
+    <p><strong>Tips:</strong></p>
+    <p>Plant flowers near hives for faster honey.</p>
+    <p>Keep a pond nearby - bees need water!</p>
+    <p>Build fences to slow down bears.</p>
+    <p>Harvest full hives, extract, then sell!</p>
+    <button class="title-btn" id="btn-how-close" style="background:#555;color:#fff;font-size:14px;padding:8px 20px;">Close</button>
+  </div>
+  <a href="index.html" id="btn-back">&larr; Back to Gallery</a>
+</div>
+
+<canvas id="game"></canvas>
+<div id="money">$50</div>
+<div id="stats"></div>
+<div id="time-display"></div>
+<div id="notification"></div>
+<div id="hotbar"></div>
+<div id="goals">
+  <button id="goals-toggle" style="pointer-events:auto;">Goals</button>
+  <button id="save-btn" style="pointer-events:auto;background:rgba(0,80,0,0.7);border:1px solid #4a4;color:#fff;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;margin-left:6px;" onclick="saveGame();notify('Game saved!');">Save</button>
+  <button id="load-btn-hud" style="pointer-events:auto;background:rgba(0,0,80,0.7);border:1px solid #44a;color:#fff;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;margin-left:4px;" onclick="if(loadGame()){initBees();notify('Game loaded!');}else{notify('No save found!');}">Load</button>
+  <div id="goals-list"></div>
+</div>
+
+<div id="shop">
+  <div id="shop-panel">
+    <h2>Shop</h2>
+    <div id="shop-items"></div>
+    <button id="shop-close">Close (B)</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// --- CONSTANTS ---
+const TILE = 16;
+const MAP_W = 100, MAP_H = 80;
+const WORLD_W = MAP_W * TILE, WORLD_H = MAP_H * TILE;
+
+const T_GRASS=0, T_FLOWER_WILD=1, T_FLOWER_LAV=2, T_FLOWER_SUN=3, T_FLOWER_ROSE=4, T_FLOWER_CLOV=5,
+      T_HIVE=6, T_EXTRACTOR=7, T_SHOP_STAND=8, T_FENCE=9, T_TREE=10, T_POND=11, T_PATH=12,
+      T_SPRINKLER=13, T_BEAR_TRAP=14, T_FOREST=15;
+
+const FLOWER_TYPES = [T_FLOWER_WILD,T_FLOWER_LAV,T_FLOWER_SUN,T_FLOWER_ROSE,T_FLOWER_CLOV];
+const SOLID_TILES = [T_FOREST,T_POND,T_TREE,T_FENCE,T_HIVE,T_EXTRACTOR,T_SHOP_STAND];
+const FLOWER_NAMES = {[T_FLOWER_WILD]:'Wildflower',[T_FLOWER_LAV]:'Lavender',[T_FLOWER_SUN]:'Sunflower',[T_FLOWER_ROSE]:'Rose',[T_FLOWER_CLOV]:'Clover'};
+const HONEY_PRICES = {[T_FLOWER_WILD]:5,[T_FLOWER_LAV]:8,[T_FLOWER_SUN]:10,[T_FLOWER_ROSE]:12,[T_FLOWER_CLOV]:7,royal:25};
+const FLOWER_COLORS = {[T_FLOWER_WILD]:'#e8e855',[T_FLOWER_LAV]:'#b388ff',[T_FLOWER_SUN]:'#ffb300',[T_FLOWER_ROSE]:'#e53935',[T_FLOWER_CLOV]:'#81c784'};
+
+// --- GAME STATE ---
+let state = null;
+let camera = {x:0,y:0};
+let keys = {};
+let mouse = {x:0,y:0,worldX:0,worldY:0};
+let selectedSlot = -1;
+let shopOpen = false;
+let notifTimer = 0;
+let notifText = '';
+let gameStarted = false;
+let dt = 0, lastTime = 0;
+let goalsVisible = false;
+
+// Audio
+let audioCtx = null;
+function initAudio() { if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }
+function playTone(freq,dur,type='sine',vol=0.1) {
+  if(!audioCtx) return;
+  let o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=type; o.frequency.value=freq;
+  g.gain.setValueAtTime(vol,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+dur);
+}
+function sndHarvest() { playTone(600,0.15,'sine',0.08); setTimeout(()=>playTone(800,0.15,'sine',0.08),100); }
+function sndCash() { playTone(1200,0.08,'square',0.05); setTimeout(()=>playTone(1500,0.08,'square',0.05),80); }
+function sndBuild() { playTone(300,0.1,'triangle',0.08); }
+function sndBear() { playTone(100,0.4,'sawtooth',0.1); }
+function sndError() { playTone(200,0.2,'square',0.06); }
+
+function notify(msg) { notifText=msg; notifTimer=3; document.getElementById('notification').textContent=msg; document.getElementById('notification').style.opacity='1'; }
+
+function newState() {
+  let map = [];
+  for(let y=0;y<MAP_H;y++) { map[y]=[]; for(let x=0;x<MAP_W;x++) {
+    if(x<2||x>=MAP_W-2||y<2||y>=MAP_H-2) map[y][x]=T_FOREST;
+    else map[y][x]=T_GRASS;
+  }}
+  // Pond
+  let px=30+Math.floor(Math.random()*20), py=20+Math.floor(Math.random()*15);
+  for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++) {
+    if(dx*dx+dy*dy<=5 && map[py+dy] && map[py+dy][px+dx]===T_GRASS) map[py+dy][px+dx]=T_POND;
+  }
+  // Trees
+  for(let i=0;i<40;i++) {
+    let tx=3+Math.floor(Math.random()*(MAP_W-6)), ty=3+Math.floor(Math.random()*(MAP_H-6));
+    if(map[ty][tx]===T_GRASS && (Math.abs(tx-50)>8||Math.abs(ty-40)>8)) map[ty][tx]=T_TREE;
+  }
+  // Natural wildflowers
+  for(let i=0;i<25;i++) {
+    let fx=3+Math.floor(Math.random()*(MAP_W-6)), fy=3+Math.floor(Math.random()*(MAP_H-6));
+    if(map[fy][fx]===T_GRASS) map[fy][fx]=T_FLOWER_WILD;
+  }
+  // Starting buildings
+  map[40][50]=T_HIVE;
+  map[40][53]=T_EXTRACTOR;
+  map[40][47]=T_SHOP_STAND;
+
+  return {
+    map,
+    player:{x:50*TILE+8,y:41*TILE+8,hasSmoker:false,hasSuit:false},
+    money:50,
+    totalEarned:0,
+    hives:[{x:50,y:40,honey:0,maxHoney:100,beeCount:10,maxBees:10,upgraded:false,flowerType:T_FLOWER_WILD}],
+    bees:[],
+    rawHoney:[],  // {type, amount}
+    processedHoney:[],  // {type, amount}
+    bears:[],
+    animals:[], // {type:'cow'|'pig'|'chicken', x, y, prodTimer, product:0}
+    barns:[],   // {x, y}
+    troughs:[], // {x, y, feed:0}
+    wasps:[],
+    customers:[],
+    particles:[],
+    events:{rain:false,drought:false,winter:false},
+    time:0, // game seconds
+    dayTime:0, // 0-240 (day cycle)
+    season:'spring',
+    seasonTimer:0,
+    bearTimer:30+Math.random()*30,
+    waspTimer:45+Math.random()*45,
+    customerTimer:15+Math.random()*10,
+    rainTimer:60+Math.random()*60,
+    droughtTimer:120+Math.random()*60,
+    winterTimer:300, // 5 minutes
+    bearsSurvived:0,
+    inventory:{
+      hive:0,wildSeed:0,lavSeed:0,sunSeed:0,roseSeed:0,clovSeed:0,
+      fence:0,extractor:0,shopStand:0,smoker:0,bearTrap:0,sprinkler:0,path:0,
+      cow:0,pig:0,chicken:0,barn:0,trough:0,animalFeed:0
+    },
+    hotbar:['hive','wildSeed','lavSeed','fence','extractor','shopStand','cow','pig','chicken'],
+    extractorProcessing:false,
+    extractorTimer:0,
+  };
+}
+
+function initBees() {
+  state.bees = [];
+  for(let h of state.hives) {
+    for(let i=0;i<h.beeCount;i++) {
+      state.bees.push(newBee(h));
+    }
+  }
+}
+
+function newBee(hive) {
+  return {
+    x:hive.x*TILE+8+Math.random()*8-4,
+    y:hive.y*TILE+8+Math.random()*8-4,
+    hiveX:hive.x, hiveY:hive.y,
+    state:'idle', // idle, toFlower, collecting, toHive
+    targetX:0, targetY:0,
+    hasPollen:false,
+    timer:Math.random()*3,
+    angle:Math.random()*Math.PI*2,
+    wobble:Math.random()*10,
+  };
+}
+
+// --- SHOP ---
+const SHOP_ITEMS = [
+  {id:'hive',name:'Beehive',price:30,desc:'Place to house bees'},
+  {id:'wildSeed',name:'Wildflower Seeds',price:5},
+  {id:'lavSeed',name:'Lavender Seeds',price:10},
+  {id:'sunSeed',name:'Sunflower Seeds',price:15},
+  {id:'roseSeed',name:'Rose Seeds',price:20},
+  {id:'clovSeed',name:'Clover Seeds',price:8},
+  {id:'fence',name:'Fence (x4)',price:10,qty:4},
+  {id:'extractor',name:'Honey Extractor',price:50},
+  {id:'shopStand',name:'Shop Stand',price:40},
+  {id:'smoker',name:'Smoker Tool',price:25},
+  {id:'bearTrap',name:'Bear Trap',price:20},
+  {id:'sprinkler',name:'Sprinkler',price:35},
+  {id:'suit',name:'Bee Suit Upgrade',price:100},
+  {id:'hiveUpgrade',name:'Hive Upgrade',price:60},
+  {id:'path',name:'Path Stones (x5)',price:3,qty:5},
+  {id:'cow',name:'Cow',price:80,desc:'Produces milk over time'},
+  {id:'pig',name:'Pig',price:50,desc:'Finds truffles, sell for $15'},
+  {id:'chicken',name:'Chicken',price:25,desc:'Lays eggs, sell for $8'},
+  {id:'barn',name:'Barn',price:120,desc:'Houses animals, keeps them safe'},
+  {id:'trough',name:'Feed Trough',price:15,desc:'Feed animals to boost production'},
+  {id:'animalFeed',name:'Animal Feed (x10)',price:10,qty:10},
+];
+
+function buildShopUI() {
+  let c = document.getElementById('shop-items');
+  c.innerHTML = '';
+  for(let item of SHOP_ITEMS) {
+    let d = document.createElement('div');
+    d.className = 'shop-item' + (state.money<item.price?' cant-afford':'');
+    d.innerHTML = `<span class="name">${item.name}</span><span class="price">$${item.price}</span>`;
+    d.onclick = () => buyItem(item);
+    c.appendChild(d);
+  }
+}
+
+function buyItem(item) {
+  if(state.money < item.price) { sndError(); return; }
+  if(item.id==='suit') { state.player.hasSuit=true; state.money-=item.price; notify('Bee Suit purchased!'); sndCash(); buildShopUI(); return; }
+  if(item.id==='smoker') { state.player.hasSmoker=true; state.money-=item.price; notify('Smoker purchased!'); sndCash(); buildShopUI(); return; }
+  if(item.id==='hiveUpgrade') {
+    let h = state.hives.find(h=>!h.upgraded);
+    if(!h) { notify('All hives already upgraded!'); sndError(); return; }
+    h.upgraded=true; h.maxHoney=200; h.maxBees=20;
+    state.money-=item.price; notify('Hive upgraded!'); sndCash(); buildShopUI(); return;
+  }
+  let qty = item.qty||1;
+  if(state.inventory[item.id]!==undefined) { state.inventory[item.id]+=qty; }
+  state.money -= item.price;
+  sndCash();
+  notify(`Bought ${item.name}!`);
+  buildShopUI();
+  updateHotbar();
+}
+
+function toggleShop() {
+  shopOpen=!shopOpen;
+  document.getElementById('shop').style.display=shopOpen?'flex':'none';
+  if(shopOpen) buildShopUI();
+}
+
+// --- HOTBAR ---
+const HOTBAR_ICONS = {
+  hive:'Hive',wildSeed:'Wild',lavSeed:'Lav',sunSeed:'Sun',roseSeed:'Rose',clovSeed:'Clov',
+  fence:'Fnce',extractor:'Extr',shopStand:'Shop',bearTrap:'Trap',sprinkler:'Sprk',path:'Path',
+  cow:'Cow',pig:'Pig',chicken:'Chick',barn:'Barn',trough:'Trgh',animalFeed:'Feed'
+};
+const HOTBAR_EMOJI = {
+  hive:'🐝',wildSeed:'🌼',lavSeed:'💜',sunSeed:'🌻',roseSeed:'🌹',clovSeed:'☘️',
+  fence:'🔲',extractor:'⚙️',shopStand:'🏪',bearTrap:'🪤',sprinkler:'💧',path:'🪨',
+  cow:'🐄',pig:'🐷',chicken:'🐔',barn:'🏠',trough:'🪣',animalFeed:'🌾'
+};
+
+function updateHotbar() {
+  let bar = document.getElementById('hotbar');
+  bar.innerHTML='';
+  for(let i=0;i<9;i++) {
+    let id = state.hotbar[i];
+    let d = document.createElement('div');
+    d.className='hotbar-slot'+(selectedSlot===i?' selected':'');
+    let qty = state.inventory[id]||0;
+    d.innerHTML=`<span class="key">${i+1}</span><span class="icon">${HOTBAR_EMOJI[id]||''}</span><span style="font-size:8px;color:#ccc">${HOTBAR_ICONS[id]||''}</span><span style="font-size:9px">${qty}</span>`;
+    d.onclick = () => { selectedSlot=(selectedSlot===i?-1:i); updateHotbar(); };
+    bar.appendChild(d);
+  }
+}
+
+function seedToTile(id) {
+  switch(id) {
+    case 'wildSeed': return T_FLOWER_WILD;
+    case 'lavSeed': return T_FLOWER_LAV;
+    case 'sunSeed': return T_FLOWER_SUN;
+    case 'roseSeed': return T_FLOWER_ROSE;
+    case 'clovSeed': return T_FLOWER_CLOV;
+    case 'hive': return T_HIVE;
+    case 'extractor': return T_EXTRACTOR;
+    case 'shopStand': return T_SHOP_STAND;
+    case 'fence': return T_FENCE;
+    case 'bearTrap': return T_BEAR_TRAP;
+    case 'sprinkler': return T_SPRINKLER;
+    case 'path': return T_PATH;
+  }
+  return -1;
+}
+
+// --- PLACEMENT ---
+function placeItem(wx,wy) {
+  if(selectedSlot<0) return;
+  let id = state.hotbar[selectedSlot];
+  if(!id || (state.inventory[id]||0)<=0) { sndError(); return; }
+  let tx=Math.floor(wx/TILE), ty=Math.floor(wy/TILE);
+  if(tx<2||tx>=MAP_W-2||ty<2||ty>=MAP_H-2) return;
+  if(state.map[ty][tx]!==T_GRASS) { sndError(); return; }
+  // Animals are entities, not tiles
+  if(id==='cow'||id==='pig'||id==='chicken'){
+    state.animals.push({type:id,x:tx*TILE+8,y:ty*TILE+8,prodTimer:0,product:0,
+      vx:(Math.random()-0.5)*0.3,vy:(Math.random()-0.5)*0.3,moveTimer:Math.random()*3});
+    state.inventory[id]--;
+    sndBuild();notify(`Placed a ${id}!`);updateHotbar();return;
+  }
+  if(id==='barn'){
+    state.map[ty][tx]=T_GRASS; // barn is tracked separately
+    state.barns.push({x:tx,y:ty});
+    state.inventory[id]--;
+    sndBuild();notify('Barn built!');updateHotbar();return;
+  }
+  if(id==='trough'){
+    state.troughs.push({x:tx,y:ty,feed:0});
+    state.inventory[id]--;
+    sndBuild();notify('Feed trough placed!');updateHotbar();return;
+  }
+  if(id==='animalFeed'){
+    // Fill nearest trough
+    let nearest=null,nd=999;
+    for(let t of state.troughs){
+      let d=Math.hypot(t.x*TILE-wx,t.y*TILE-wy);
+      if(d<nd){nd=d;nearest=t;}
+    }
+    if(nearest&&nd<TILE*3){
+      nearest.feed=Math.min(10,nearest.feed+1);
+      state.inventory[id]--;
+      notify('Trough filled!');updateHotbar();
+    }else{notify('Place near a trough!');}
+    return;
+  }
+  let tile = seedToTile(id);
+  if(tile<0) return;
+  state.map[ty][tx]=tile;
+  state.inventory[id]--;
+  sndBuild();
+  if(tile===T_HIVE) {
+    let hive={x:tx,y:ty,honey:0,maxHoney:100,beeCount:5,maxBees:10,upgraded:false,flowerType:T_FLOWER_WILD};
+    state.hives.push(hive);
+    for(let i=0;i<5;i++) state.bees.push(newBee(hive));
+  }
+  updateHotbar();
+}
+
+function checkStarterKit() {
+  const hasExtractor = state.inventory.extractor>0 || state.map.some(row=>row.includes(T_EXTRACTOR));
+  const hasShop = state.inventory.shopStand>0 || state.map.some(row=>row.includes(T_SHOP_STAND));
+  const hasHive = state.inventory.hive>0 || state.hives.length>0;
+  let gave=false;
+  if(!hasExtractor) { state.inventory.extractor++; addToHotbar('extractor'); notify('Free Extractor! Check hotbar'); gave=true; }
+  if(!hasShop) { state.inventory.shopStand++; addToHotbar('shopStand'); notify('Free Shop Stand! Check hotbar'); gave=true; }
+  if(!hasHive) { state.inventory.hive++; addToHotbar('hive'); notify('Free Hive! Check hotbar'); gave=true; }
+  if(gave) updateHotbar();
+}
+function addToHotbar(id) {
+  // Put item in hotbar if not already there
+  if(state.hotbar.includes(id)) return;
+  // Find empty or replace last slot
+  let empty = state.hotbar.indexOf('');
+  if(empty<0) empty = state.hotbar.indexOf(undefined);
+  if(empty>=0) state.hotbar[empty]=id;
+  else state.hotbar[8]=id; // force into last slot
+}
+
+function removeItem(wx,wy) {
+  let tx=Math.floor(wx/TILE), ty=Math.floor(wy/TILE);
+  if(tx<2||tx>=MAP_W-2||ty<2||ty>=MAP_H-2) return;
+  let t=state.map[ty][tx];
+  if(t===T_GRASS||t===T_FOREST||t===T_POND||t===T_TREE) return;
+  // Return to inventory
+  if(FLOWER_TYPES.includes(t)) { /* flowers just removed */ }
+  else if(t===T_FENCE) state.inventory.fence++;
+  else if(t===T_PATH) state.inventory.path++;
+  else if(t===T_BEAR_TRAP) state.inventory.bearTrap++;
+  else if(t===T_SPRINKLER) state.inventory.sprinkler++;
+  else if(t===T_HIVE) {
+    state.inventory.hive++;
+    let idx=state.hives.findIndex(h=>h.x===tx&&h.y===ty);
+    if(idx>=0) { state.bees=state.bees.filter(b=>b.hiveX!==tx||b.hiveY!==ty); state.hives.splice(idx,1); }
+  }
+  else if(t===T_EXTRACTOR) state.inventory.extractor++;
+  else if(t===T_SHOP_STAND) state.inventory.shopStand++;
+  state.map[ty][tx]=T_GRASS;
+  updateHotbar();
+}
+
+// --- INTERACTIONS ---
+function interact() {
+  let px=Math.floor(state.player.x/TILE), py=Math.floor(state.player.y/TILE);
+  // Check adjacent tiles
+  for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) {
+    let tx=px+dx,ty=py+dy;
+    if(tx<0||ty<0||tx>=MAP_W||ty>=MAP_H) continue;
+    let t=state.map[ty][tx];
+    // Harvest hive
+    if(t===T_HIVE) {
+      let hive=state.hives.find(h=>h.x===tx&&h.y===ty);
+      if(hive && hive.honey>=20) {
+        let amt=Math.floor(hive.honey);
+        let fType=hive.flowerType;
+        hive.honey=0;
+        state.rawHoney.push({type:fType,amount:amt});
+        sndHarvest();
+        notify(`Harvested ${amt} raw honey!`);
+        // Particles
+        for(let i=0;i<8;i++) state.particles.push({x:tx*TILE+8,y:ty*TILE+8,vx:Math.random()*2-1,vy:Math.random()*2-1,life:1,color:'#f0a500',size:3});
+        return;
+      }
+    }
+    // Extractor
+    if(t===T_EXTRACTOR) {
+      if(state.rawHoney.length>0 && !state.extractorProcessing) {
+        state.extractorProcessing=true;
+        state.extractorTimer=3;
+        notify('Processing honey...');
+        sndBuild();
+        return;
+      }
+      if(state.extractorProcessing) {
+        notify('Extractor is working...');
+        return;
+      }
+      if(state.rawHoney.length===0 && state.processedHoney.length===0) {
+        notify('No raw honey to process!');
+      }
+    }
+    // Shop stand - sell
+    if(t===T_SHOP_STAND) {
+      if(state.processedHoney.length>0) {
+        let total=0;
+        for(let h of state.processedHoney) {
+          let price=HONEY_PRICES[h.type]||5;
+          total+=Math.ceil(h.amount/20)*price;
+        }
+        state.processedHoney=[];
+        state.money+=total;
+        state.totalEarned+=total;
+        sndCash();
+        notify(`Sold honey for $${total}!`);
+        return;
+      } else {
+        notify('No processed honey to sell!');
+      }
+    }
+  }
+  // Collect from animals nearby
+  for(let a of state.animals) {
+    if(Math.hypot(a.x-state.player.x,a.y-state.player.y)<TILE*2 && a.product>0) {
+      let value=0,name='';
+      if(a.type==='cow'){value=a.product*10;name=`${a.product} milk ($${value})`;}
+      if(a.type==='pig'){value=a.product*15;name=`${a.product} truffle${a.product>1?'s':''} ($${value})`;}
+      if(a.type==='chicken'){value=a.product*8;name=`${a.product} egg${a.product>1?'s':''} ($${value})`;}
+      state.money+=value;state.totalEarned+=value;
+      a.product=0;
+      sndCash();
+      notify(`Collected ${name}!`);
+      for(let i=0;i<5;i++)state.particles.push({x:a.x,y:a.y,vx:Math.random()*2-1,vy:Math.random()*2-1,life:0.8,color:a.type==='cow'?'#fff':a.type==='pig'?'#8b4513':'#ffd700',size:3});
+      return;
+    }
+  }
+}
+
+// --- UPDATE ---
+function update() {
+  if(!gameStarted || !state) return;
+  let speed = 2;
+  // Player movement
+  let dx=0,dy=0;
+  if(keys['w']||keys['arrowup']) dy=-1;
+  if(keys['s']||keys['arrowdown']) dy=1;
+  if(keys['a']||keys['arrowleft']) dx=-1;
+  if(keys['d']||keys['arrowright']) dx=1;
+  if(dx&&dy) { dx*=0.707; dy*=0.707; }
+  let nx=state.player.x+dx*speed, ny=state.player.y+dy*speed;
+  let ntx=Math.floor(nx/TILE), nty=Math.floor(ny/TILE);
+  if(ntx>=0&&ntx<MAP_W&&nty>=0&&nty<MAP_H) {
+    let t=state.map[nty][ntx];
+    if(t!==T_FOREST&&t!==T_POND&&t!==T_TREE&&t!==T_FENCE&&t!==T_HIVE&&t!==T_EXTRACTOR&&t!==T_SHOP_STAND) {
+      state.player.x=nx; state.player.y=ny;
+    } else {
+      // Try sliding
+      let tx2=Math.floor(nx/TILE), ty2=Math.floor(state.player.y/TILE);
+      let t2=state.map[ty2]&&state.map[ty2][tx2];
+      if(t2!==undefined&&t2!==T_FOREST&&t2!==T_POND&&t2!==T_TREE&&t2!==T_FENCE&&t2!==T_HIVE&&t2!==T_EXTRACTOR&&t2!==T_SHOP_STAND) {
+        state.player.x=nx;
+      } else {
+        let tx3=Math.floor(state.player.x/TILE), ty3=Math.floor(ny/TILE);
+        let t3=state.map[ty3]&&state.map[ty3][tx3];
+        if(t3!==undefined&&t3!==T_FOREST&&t3!==T_POND&&t3!==T_TREE&&t3!==T_FENCE&&t3!==T_HIVE&&t3!==T_EXTRACTOR&&t3!==T_SHOP_STAND) {
+          state.player.y=ny;
+        }
+      }
+    }
+  }
+  // Clamp
+  state.player.x=Math.max(2*TILE,Math.min((MAP_W-3)*TILE,state.player.x));
+  state.player.y=Math.max(2*TILE,Math.min((MAP_H-3)*TILE,state.player.y));
+
+  // Time
+  state.time+=dt;
+  state.dayTime=(state.dayTime+dt*4)%240;
+  state.seasonTimer+=dt;
+
+  // Winter cycle
+  state.winterTimer-=dt;
+  if(state.winterTimer<=0 && !state.events.winter) {
+    state.events.winter=true;
+    state.winterTimer=20;
+    notify('Winter has come! Bees hibernating...');
+  } else if(state.events.winter) {
+    state.winterTimer-=dt;
+    if(state.winterTimer<=0) {
+      state.events.winter=false;
+      state.winterTimer=300;
+      notify('Spring returns!');
+    }
+  }
+
+  // Rain
+  state.rainTimer-=dt;
+  if(state.rainTimer<=0) {
+    if(!state.events.rain) {
+      state.events.rain=true;
+      state.rainTimer=15+Math.random()*15;
+      notify('It starts to rain...');
+    } else {
+      state.events.rain=false;
+      state.rainTimer=60+Math.random()*60;
+    }
+  }
+
+  // Drought
+  state.droughtTimer-=dt;
+  if(state.droughtTimer<=0) {
+    if(!state.events.drought) {
+      state.events.drought=true;
+      state.droughtTimer=20+Math.random()*10;
+      notify('Drought! Flowers wilting!');
+      // Wilt flowers not near water/sprinkler
+      for(let y=2;y<MAP_H-2;y++) for(let x=2;x<MAP_W-2;x++) {
+        if(FLOWER_TYPES.includes(state.map[y][x])) {
+          let nearWater=false;
+          for(let dy2=-4;dy2<=4;dy2++) for(let dx2=-4;dx2<=4;dx2++) {
+            let yy=y+dy2,xx=x+dx2;
+            if(yy>=0&&yy<MAP_H&&xx>=0&&xx<MAP_W) {
+              if(state.map[yy][xx]===T_POND||state.map[yy][xx]===T_SPRINKLER) nearWater=true;
+            }
+          }
+          if(!nearWater && Math.random()<0.3) state.map[y][x]=T_GRASS;
+        }
+      }
+    } else {
+      state.events.drought=false;
+      state.droughtTimer=120+Math.random()*60;
+    }
+  }
+
+  // Extractor
+  if(state.extractorProcessing) {
+    state.extractorTimer-=dt;
+    if(state.extractorTimer<=0) {
+      state.extractorProcessing=false;
+      for(let rh of state.rawHoney) state.processedHoney.push({type:rh.type,amount:rh.amount});
+      state.rawHoney=[];
+      notify('Honey processed! Sell at shop stand.');
+      sndHarvest();
+    }
+  }
+
+  // Honey production
+  if(!state.events.winter && !state.events.rain) {
+    for(let hive of state.hives) {
+      // Count nearby flowers
+      let flowers={};
+      let flowerCount=0;
+      for(let dy2=-6;dy2<=6;dy2++) for(let dx2=-6;dx2<=6;dx2++) {
+        let yy=hive.y+dy2, xx=hive.x+dx2;
+        if(yy>=0&&yy<MAP_H&&xx>=0&&xx<MAP_W && FLOWER_TYPES.includes(state.map[yy][xx])) {
+          flowerCount++;
+          flowers[state.map[yy][xx]]=(flowers[state.map[yy][xx]]||0)+1;
+        }
+      }
+      // Near water bonus
+      let nearWater=false;
+      for(let dy2=-5;dy2<=5;dy2++) for(let dx2=-5;dx2<=5;dx2++) {
+        let yy=hive.y+dy2,xx=hive.x+dx2;
+        if(yy>=0&&yy<MAP_H&&xx>=0&&xx<MAP_W&&(state.map[yy][xx]===T_POND||state.map[yy][xx]===T_SPRINKLER)) nearWater=true;
+      }
+      let rate = 0.5 + flowerCount*0.3 + (nearWater?1:0);
+      rate *= hive.beeCount/10;
+      hive.honey = Math.min(hive.maxHoney, hive.honey + rate*dt);
+      // Dominant flower type
+      let best=T_FLOWER_WILD, bestC=0;
+      for(let ft in flowers) if(flowers[ft]>bestC) { bestC=flowers[ft]; best=parseInt(ft); }
+      hive.flowerType=best;
+
+      // Bee swarm check
+      if(hive.beeCount>=hive.maxBees && hive.honey>=hive.maxHoney*0.9 && Math.random()<0.001) {
+        // Look for empty hive nearby
+        let emptyHive=state.hives.find(h=>h!==hive&&h.beeCount<h.maxBees/2);
+        if(emptyHive) {
+          let transfer=Math.floor(hive.beeCount/3);
+          hive.beeCount-=transfer;
+          emptyHive.beeCount+=transfer;
+          for(let i=0;i<transfer;i++) state.bees.push(newBee(emptyHive));
+          notify('Bee swarm! Bees moved to another hive!');
+        }
+      }
+
+      // Breed bees slowly
+      if(hive.beeCount<hive.maxBees && flowerCount>2 && Math.random()<0.002*dt) {
+        hive.beeCount++;
+        state.bees.push(newBee(hive));
+      }
+    }
+  }
+
+  // Update bees
+  for(let bee of state.bees) {
+    if(state.events.winter) { bee.state='idle'; continue; }
+    if(state.events.rain) { bee.state='idle'; }
+    bee.wobble+=dt*5;
+    bee.timer-=dt;
+    if(bee.state==='idle') {
+      // Buzz near hive
+      bee.angle+=Math.sin(bee.wobble)*0.1;
+      bee.x+=Math.cos(bee.angle)*0.3;
+      bee.y+=Math.sin(bee.angle)*0.3;
+      let hx=bee.hiveX*TILE+8, hy=bee.hiveY*TILE+8;
+      let dist=Math.hypot(bee.x-hx,bee.y-hy);
+      if(dist>20) { bee.x+=(hx-bee.x)*0.02; bee.y+=(hy-bee.y)*0.02; }
+      if(bee.timer<=0 && !state.events.rain) {
+        // Find flower
+        let flowers2=[];
+        for(let dy2=-6;dy2<=6;dy2++) for(let dx2=-6;dx2<=6;dx2++) {
+          let yy=bee.hiveY+dy2,xx=bee.hiveX+dx2;
+          if(yy>=0&&yy<MAP_H&&xx>=0&&xx<MAP_W&&FLOWER_TYPES.includes(state.map[yy][xx])) flowers2.push({x:xx,y:yy});
+        }
+        if(flowers2.length>0) {
+          let f=flowers2[Math.floor(Math.random()*flowers2.length)];
+          bee.targetX=f.x*TILE+8+Math.random()*6-3;
+          bee.targetY=f.y*TILE+8+Math.random()*6-3;
+          bee.state='toFlower';
+        } else {
+          bee.timer=2+Math.random()*3;
+        }
+      }
+    } else if(bee.state==='toFlower') {
+      let ddx=bee.targetX-bee.x, ddy=bee.targetY-bee.y;
+      let d=Math.hypot(ddx,ddy);
+      if(d<2) { bee.state='collecting'; bee.timer=1+Math.random(); }
+      else { bee.x+=ddx/d*1.5; bee.y+=ddy/d*1.5; bee.x+=Math.sin(bee.wobble)*0.3; bee.y+=Math.cos(bee.wobble)*0.3; }
+    } else if(bee.state==='collecting') {
+      bee.x+=Math.sin(bee.wobble)*0.2; bee.y+=Math.cos(bee.wobble)*0.2;
+      if(bee.timer<=0) { bee.hasPollen=true; bee.state='toHive'; bee.targetX=bee.hiveX*TILE+8; bee.targetY=bee.hiveY*TILE+8; }
+    } else if(bee.state==='toHive') {
+      let ddx2=bee.targetX-bee.x, ddy2=bee.targetY-bee.y;
+      let d2=Math.hypot(ddx2,ddy2);
+      if(d2<3) { bee.state='idle'; bee.hasPollen=false; bee.timer=1+Math.random()*2; }
+      else { bee.x+=ddx2/d2*1.5; bee.y+=ddy2/d2*1.5; bee.x+=Math.sin(bee.wobble)*0.3; }
+    }
+  }
+
+  // Bears
+  state.bearTimer-=dt;
+  if(state.bearTimer<=0 && !state.events.winter) {
+    spawnBear();
+    state.bearTimer=40+Math.random()*40;
+  }
+  for(let i=state.bears.length-1;i>=0;i--) {
+    let bear=state.bears[i];
+    // Find nearest hive
+    let nearHive=null, nearDist=Infinity;
+    for(let h of state.hives) {
+      let d=Math.hypot(h.x*TILE-bear.x,h.y*TILE-bear.y);
+      if(d<nearDist) { nearDist=d; nearHive=h; }
+    }
+    if(bear.fleeing) {
+      bear.x+=bear.fleeVx*dt*60;
+      bear.y+=bear.fleeVy*dt*60;
+      bear.fleeTimer-=dt;
+      if(bear.fleeTimer<=0 || bear.x<0||bear.x>WORLD_W||bear.y<0||bear.y>WORLD_H) {
+        state.bears.splice(i,1); state.bearsSurvived++;
+      }
+      continue;
+    }
+    if(nearHive) {
+      let tx4=nearHive.x*TILE+8, ty4=nearHive.y*TILE+8;
+      let ddx3=tx4-bear.x, ddy3=ty4-bear.y;
+      let d3=Math.hypot(ddx3,ddy3);
+      // Check fence
+      let nextTx=Math.floor((bear.x+ddx3/d3)/TILE), nextTy=Math.floor((bear.y+ddy3/d3)/TILE);
+      if(nextTx>=0&&nextTx<MAP_W&&nextTy>=0&&nextTy<MAP_H&&state.map[nextTy][nextTx]===T_FENCE) {
+        state.map[nextTy][nextTx]=T_GRASS;
+        bear.stuckTimer=(bear.stuckTimer||0)+dt;
+        if(bear.stuckTimer<2) continue;
+        bear.stuckTimer=0;
+      }
+      // Check bear trap
+      let btx=Math.floor(bear.x/TILE), bty=Math.floor(bear.y/TILE);
+      if(btx>=0&&btx<MAP_W&&bty>=0&&bty<MAP_H&&state.map[bty][btx]===T_BEAR_TRAP) {
+        state.map[bty][btx]=T_GRASS;
+        bear.fleeing=true;
+        bear.fleeVx=(bear.x-WORLD_W/2)/200;
+        bear.fleeVy=(bear.y-WORLD_H/2)/200;
+        bear.fleeTimer=3;
+        notify('Bear caught in trap!');
+        continue;
+      }
+      if(d3<10 && nearHive.honey>0) {
+        nearHive.honey=Math.max(0,nearHive.honey-20*dt);
+        if(nearHive.honey<=0) { notify('Bear stole all honey from a hive!'); }
+      } else {
+        bear.x+=ddx3/d3*0.5;
+        bear.y+=ddy3/d3*0.5;
+      }
+    }
+  }
+
+  // Animals
+  for(let a of state.animals) {
+    // Wander
+    a.moveTimer-=dt;
+    if(a.moveTimer<=0) {
+      a.vx=(Math.random()-0.5)*0.4;
+      a.vy=(Math.random()-0.5)*0.4;
+      a.moveTimer=2+Math.random()*4;
+    }
+    let anx=a.x+a.vx,any=a.y+a.vy;
+    let atx=Math.floor(anx/TILE),aty=Math.floor(any/TILE);
+    if(atx>3&&atx<MAP_W-3&&aty>3&&aty<MAP_H-3&&!SOLID_TILES.includes(state.map[aty][atx])){
+      a.x=anx;a.y=any;
+    }else{a.vx*=-1;a.vy*=-1;}
+    // Production
+    a.prodTimer+=dt;
+    // Check if near a trough with feed for bonus speed
+    let fedBonus=1;
+    for(let t of state.troughs){
+      if(Math.hypot(t.x*TILE-a.x,t.y*TILE-a.y)<TILE*3&&t.feed>0){fedBonus=2;t.feed-=dt*0.01;break;}
+    }
+    let prodTime = a.type==='cow'?20:a.type==='pig'?25:12;
+    if(a.prodTimer>=prodTime/fedBonus){
+      a.prodTimer=0;
+      a.product++;
+      if(a.type==='cow')notify('Cow produced milk!');
+      if(a.type==='pig')notify('Pig found a truffle!');
+      if(a.type==='chicken')notify('Chicken laid an egg!');
+    }
+  }
+
+  // Safety check - always ensure player has essential buildings available
+  if(Math.floor(state.time)%10===0) checkStarterKit();
+
+  // Wasps
+  state.waspTimer-=dt;
+  if(state.waspTimer<=0 && !state.events.winter && state.hives.length>0) {
+    let h2=state.hives[Math.floor(Math.random()*state.hives.length)];
+    state.wasps.push({x:h2.x*TILE+Math.random()*100-50, y:h2.y*TILE+Math.random()*100-50, targetHive:h2, life:15, angle:0});
+    state.waspTimer=50+Math.random()*50;
+    notify('Wasps attacking! Use smoker near hive!');
+  }
+  for(let i=state.wasps.length-1;i>=0;i--) {
+    let w=state.wasps[i];
+    w.life-=dt;
+    if(w.life<=0) { state.wasps.splice(i,1); continue; }
+    let tx5=w.targetHive.x*TILE+8, ty5=w.targetHive.y*TILE+8;
+    let d4=Math.hypot(tx5-w.x, ty5-w.y);
+    if(d4>5) { w.x+=(tx5-w.x)/d4*1; w.y+=(ty5-w.y)/d4*1; }
+    w.angle+=0.2;
+    w.x+=Math.sin(w.angle)*0.5;
+    w.y+=Math.cos(w.angle)*0.5;
+    // Damage bees
+    if(d4<20 && Math.random()<0.01*dt) {
+      if(w.targetHive.beeCount>1) {
+        w.targetHive.beeCount--;
+        let bIdx=state.bees.findIndex(b=>b.hiveX===w.targetHive.x&&b.hiveY===w.targetHive.y);
+        if(bIdx>=0) state.bees.splice(bIdx,1);
+      }
+    }
+  }
+
+  // Customers
+  state.customerTimer-=dt;
+  if(state.customerTimer<=0) {
+    // Find shop stand
+    for(let y=2;y<MAP_H-2;y++) for(let x=2;x<MAP_W-2;x++) {
+      if(state.map[y][x]===T_SHOP_STAND && state.customers.length<3) {
+        let side=Math.floor(Math.random()*4);
+        let cx,cy;
+        if(side===0) { cx=2*TILE; cy=y*TILE; }
+        else if(side===1) { cx=(MAP_W-3)*TILE; cy=y*TILE; }
+        else if(side===2) { cx=x*TILE; cy=2*TILE; }
+        else { cx=x*TILE; cy=(MAP_H-3)*TILE; }
+        state.customers.push({x:cx,y:cy,targetX:x*TILE,targetY:(y+1)*TILE,state:'walking',waitTimer:8,shopX:x,shopY:y});
+        break;
+      }
+    }
+    state.customerTimer=20+Math.random()*15;
+  }
+  for(let i=state.customers.length-1;i>=0;i--) {
+    let c=state.customers[i];
+    if(c.state==='walking') {
+      let ddx4=c.targetX-c.x, ddy4=c.targetY-c.y;
+      let d5=Math.hypot(ddx4,ddy4);
+      if(d5<4) { c.state='waiting'; }
+      else { c.x+=ddx4/d5*0.8; c.y+=ddy4/d5*0.8; }
+    } else if(c.state==='waiting') {
+      c.waitTimer-=dt;
+      if(c.waitTimer<=0) {
+        // Auto-buy if honey available
+        if(state.processedHoney.length>0) {
+          let h3=state.processedHoney.shift();
+          let price=HONEY_PRICES[h3.type]||5;
+          let earn=Math.ceil(h3.amount/20)*price;
+          state.money+=earn;
+          state.totalEarned+=earn;
+          sndCash();
+          notify(`Customer bought honey for $${earn}!`);
+        }
+        c.state='leaving';
+        c.targetX=c.x<WORLD_W/2?2*TILE:(MAP_W-3)*TILE;
+        c.targetY=c.y;
+      }
+    } else if(c.state==='leaving') {
+      let ddx5=c.targetX-c.x, ddy5=c.targetY-c.y;
+      let d6=Math.hypot(ddx5,ddy5);
+      if(d6<4||c.x<TILE||c.x>WORLD_W-TILE||c.y<TILE||c.y>WORLD_H-TILE) { state.customers.splice(i,1); }
+      else { c.x+=ddx5/d6*0.8; c.y+=ddy5/d6*0.8; }
+    }
+  }
+
+  // Rain particles
+  if(state.events.rain) {
+    for(let i=0;i<3;i++) {
+      state.particles.push({
+        x:camera.x+Math.random()*canvas.width,
+        y:camera.y,
+        vx:-0.5, vy:4+Math.random()*2,
+        life:2, color:'#7ec8e3', size:1
+      });
+    }
+  }
+
+  // Update particles
+  for(let i=state.particles.length-1;i>=0;i--) {
+    let p=state.particles[i];
+    p.x+=p.vx; p.y+=p.vy;
+    p.life-=dt;
+    if(p.life<=0) state.particles.splice(i,1);
+  }
+
+  // Notification timer
+  if(notifTimer>0) {
+    notifTimer-=dt;
+    if(notifTimer<=0) document.getElementById('notification').style.opacity='0';
+  }
+
+  // Camera
+  camera.x=state.player.x-canvas.width/2;
+  camera.y=state.player.y-canvas.height/2;
+  camera.x=Math.max(0,Math.min(WORLD_W-canvas.width,camera.x));
+  camera.y=Math.max(0,Math.min(WORLD_H-canvas.height,camera.y));
+}
+
+function spawnBear() {
+  let side=Math.floor(Math.random()*4);
+  let bx,by;
+  if(side===0) { bx=2*TILE; by=(10+Math.random()*(MAP_H-20))*TILE; }
+  else if(side===1) { bx=(MAP_W-3)*TILE; by=(10+Math.random()*(MAP_H-20))*TILE; }
+  else if(side===2) { bx=(10+Math.random()*(MAP_W-20))*TILE; by=2*TILE; }
+  else { bx=(10+Math.random()*(MAP_W-20))*TILE; by=(MAP_H-3)*TILE; }
+  state.bears.push({x:bx,y:by,fleeing:false,fleeVx:0,fleeVy:0,fleeTimer:0,stuckTimer:0});
+  sndBear();
+  notify('A bear is approaching!');
+}
+
+function shooBear(wx,wy) {
+  for(let bear of state.bears) {
+    if(Math.hypot(bear.x-wx,bear.y-wy)<24 && !bear.fleeing) {
+      bear.fleeing=true;
+      bear.fleeVx=(bear.x-state.player.x)/100;
+      bear.fleeVy=(bear.y-state.player.y)/100;
+      bear.fleeTimer=3;
+      notify('Bear scared away!');
+      sndBear();
+      return true;
+    }
+  }
+  return false;
+}
+
+function useSmoker() {
+  if(!state.player.hasSmoker) { notify('You need a smoker tool!'); return; }
+  let px=state.player.x, py=state.player.y;
+  // Drive away wasps
+  for(let i=state.wasps.length-1;i>=0;i--) {
+    let w=state.wasps[i];
+    if(Math.hypot(w.x-px,w.y-py)<60) {
+      state.wasps.splice(i,1);
+      notify('Wasps driven away!');
+    }
+  }
+  // Smoke particles
+  for(let i=0;i<10;i++) {
+    state.particles.push({x:px,y:py,vx:Math.random()*2-1,vy:-Math.random()*1.5,life:2,color:'#aaa',size:4+Math.random()*3});
+  }
+  playTone(150,0.3,'triangle',0.04);
+}
+
+// --- DRAW ---
+function draw() {
+  canvas.width=window.innerWidth;
+  canvas.height=window.innerHeight;
+  if(!gameStarted||!state) return;
+
+  ctx.save();
+  ctx.translate(-camera.x,-camera.y);
+
+  // Day/night tint
+  let dayPhase=state.dayTime/240; // 0-1
+  let brightness=0.7+0.3*Math.sin(dayPhase*Math.PI);
+  let tintR=1, tintG=1, tintB=1;
+  if(dayPhase<0.25||dayPhase>0.75) { tintR=0.7; tintG=0.7; tintB=0.9; } // Night
+  else if(dayPhase>0.4&&dayPhase<0.6) { tintR=1; tintG=0.95; tintB=0.85; } // Warm day
+  if(state.events.winter) { tintR=0.8; tintG=0.85; tintB=1; brightness=0.8; }
+
+  // Visible tile range
+  let sx=Math.max(0,Math.floor(camera.x/TILE)-1);
+  let sy=Math.max(0,Math.floor(camera.y/TILE)-1);
+  let ex=Math.min(MAP_W,Math.ceil((camera.x+canvas.width)/TILE)+1);
+  let ey=Math.min(MAP_H,Math.ceil((camera.y+canvas.height)/TILE)+1);
+
+  // Draw tiles
+  for(let y=sy;y<ey;y++) for(let x=sx;x<ex;x++) {
+    let t=state.map[y][x];
+    let px2=x*TILE, py2=y*TILE;
+    // Base grass
+    let grassGreen = state.events.winter?'#9caf88':'#5a8f29';
+    ctx.fillStyle=grassGreen;
+    ctx.fillRect(px2,py2,TILE,TILE);
+
+    // Tile grid subtle
+    ctx.strokeStyle='rgba(0,0,0,0.05)';
+    ctx.strokeRect(px2,py2,TILE,TILE);
+
+    switch(t) {
+      case T_FOREST:
+        ctx.fillStyle=state.events.winter?'#556b2f':'#2d5016';
+        ctx.fillRect(px2,py2,TILE,TILE);
+        // Mini trees
+        ctx.fillStyle='#1a3a0a';
+        ctx.beginPath(); ctx.arc(px2+8,py2+8,6,0,Math.PI*2); ctx.fill();
+        break;
+      case T_FLOWER_WILD: case T_FLOWER_LAV: case T_FLOWER_SUN: case T_FLOWER_ROSE: case T_FLOWER_CLOV:
+        let fc=FLOWER_COLORS[t];
+        ctx.fillStyle=fc;
+        ctx.beginPath(); ctx.arc(px2+5,py2+5,3,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(px2+11,py2+8,2.5,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(px2+7,py2+12,2,0,Math.PI*2); ctx.fill();
+        // Stems
+        ctx.strokeStyle='#3a7d12';
+        ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(px2+5,py2+8); ctx.lineTo(px2+5,py2+14); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(px2+11,py2+10); ctx.lineTo(px2+11,py2+15); ctx.stroke();
+        break;
+      case T_HIVE:
+        // Hive body
+        ctx.fillStyle='#d4a017';
+        ctx.fillRect(px2+2,py2+3,12,10);
+        ctx.fillStyle='#b8860b';
+        ctx.fillRect(px2+2,py2+3,12,2);
+        ctx.fillRect(px2+2,py2+7,12,1);
+        ctx.fillRect(px2+2,py2+11,12,2);
+        // Entrance
+        ctx.fillStyle='#333';
+        ctx.fillRect(px2+6,py2+11,4,3);
+        // Honey fill bar
+        let hive=state.hives.find(h=>h.x===x&&h.y===y);
+        if(hive) {
+          let fill=hive.honey/hive.maxHoney;
+          ctx.fillStyle='rgba(0,0,0,0.5)';
+          ctx.fillRect(px2,py2-3,TILE,3);
+          ctx.fillStyle=fill>0.8?'#f0a500':'#ffd700';
+          ctx.fillRect(px2,py2-3,TILE*fill,3);
+        }
+        break;
+      case T_EXTRACTOR:
+        ctx.fillStyle='#888';
+        ctx.fillRect(px2+2,py2+2,12,12);
+        ctx.fillStyle='#666';
+        ctx.beginPath(); ctx.arc(px2+8,py2+8,4,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#aaa';
+        ctx.beginPath(); ctx.arc(px2+8,py2+8,2,0,Math.PI*2); ctx.fill();
+        if(state.extractorProcessing) {
+          ctx.fillStyle='#f0a500';
+          ctx.beginPath(); ctx.arc(px2+8,py2+8,3,0,Math.PI*2*((3-state.extractorTimer)/3)); ctx.lineTo(px2+8,py2+8); ctx.fill();
+        }
+        break;
+      case T_SHOP_STAND:
+        ctx.fillStyle='#8B4513';
+        ctx.fillRect(px2+1,py2+4,14,10);
+        ctx.fillStyle='#D2691E';
+        ctx.fillRect(px2+1,py2+2,14,4);
+        ctx.fillStyle='#ffd700';
+        ctx.font='8px sans-serif';
+        ctx.fillText('$',px2+6,py2+10);
+        break;
+      case T_FENCE:
+        ctx.fillStyle='#8B6914';
+        ctx.fillRect(px2+1,py2+6,14,2);
+        ctx.fillRect(px2+1,py2+10,14,2);
+        ctx.fillRect(px2+2,py2+3,2,12);
+        ctx.fillRect(px2+12,py2+3,2,12);
+        break;
+      case T_TREE:
+        ctx.fillStyle='#5d3a1a';
+        ctx.fillRect(px2+6,py2+8,4,8);
+        ctx.fillStyle=state.events.winter?'#7a9a6a':'#2d7a1a';
+        ctx.beginPath(); ctx.arc(px2+8,py2+6,6,0,Math.PI*2); ctx.fill();
+        break;
+      case T_POND:
+        ctx.fillStyle='#2196f3';
+        ctx.fillRect(px2,py2,TILE,TILE);
+        ctx.fillStyle='rgba(255,255,255,0.2)';
+        ctx.beginPath(); ctx.arc(px2+5,py2+5,2,0,Math.PI*2); ctx.fill();
+        break;
+      case T_PATH:
+        ctx.fillStyle='#9e9e9e';
+        ctx.fillRect(px2,py2,TILE,TILE);
+        ctx.fillStyle='#bdbdbd';
+        ctx.fillRect(px2+2,py2+2,5,4);
+        ctx.fillRect(px2+9,py2+8,5,5);
+        break;
+      case T_SPRINKLER:
+        ctx.fillStyle='#555';
+        ctx.fillRect(px2+5,py2+5,6,6);
+        ctx.fillStyle='#2196f3';
+        ctx.beginPath(); ctx.arc(px2+8,py2+8,2,0,Math.PI*2); ctx.fill();
+        // Water spray
+        let t2=state.time*3;
+        ctx.strokeStyle='rgba(33,150,243,0.4)';
+        ctx.lineWidth=1;
+        for(let a=0;a<6;a++) {
+          let ang=t2+a*Math.PI/3;
+          ctx.beginPath(); ctx.moveTo(px2+8,py2+8); ctx.lineTo(px2+8+Math.cos(ang)*7,py2+8+Math.sin(ang)*7); ctx.stroke();
+        }
+        break;
+      case T_BEAR_TRAP:
+        ctx.fillStyle='#555';
+        ctx.beginPath(); ctx.arc(px2+8,py2+8,5,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle='#888';
+        ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(px2+8,py2+8,5,0,Math.PI*2); ctx.stroke();
+        ctx.fillStyle='#c62828';
+        ctx.beginPath(); ctx.arc(px2+8,py2+8,2,0,Math.PI*2); ctx.fill();
+        break;
+    }
+  }
+
+  // Draw bees
+  if(!state.events.winter) {
+    for(let bee of state.bees) {
+      if(bee.x<camera.x-20||bee.x>camera.x+canvas.width+20||bee.y<camera.y-20||bee.y>camera.y+canvas.height+20) continue;
+      ctx.fillStyle=bee.hasPollen?'#ff9800':'#ffd700';
+      ctx.beginPath(); ctx.arc(bee.x,bee.y,2,0,Math.PI*2); ctx.fill();
+      // Wings
+      ctx.fillStyle='rgba(255,255,255,0.6)';
+      ctx.beginPath(); ctx.arc(bee.x-1,bee.y-1,1.2,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(bee.x+1,bee.y-1,1.2,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  // Draw wasps
+  for(let w of state.wasps) {
+    ctx.fillStyle='#c62828';
+    ctx.beginPath(); ctx.arc(w.x,w.y,3,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#333';
+    ctx.fillRect(w.x-1,w.y-1,2,1);
+  }
+
+  // Draw bears
+  for(let bear of state.bears) {
+    ctx.fillStyle='#5d4037';
+    ctx.beginPath(); ctx.arc(bear.x,bear.y,8,0,Math.PI*2); ctx.fill();
+    // Ears
+    ctx.beginPath(); ctx.arc(bear.x-5,bear.y-6,3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(bear.x+5,bear.y-6,3,0,Math.PI*2); ctx.fill();
+    // Snout
+    ctx.fillStyle='#8d6e63';
+    ctx.beginPath(); ctx.arc(bear.x,bear.y+2,3,0,Math.PI*2); ctx.fill();
+    // Eyes
+    ctx.fillStyle='#000';
+    ctx.beginPath(); ctx.arc(bear.x-3,bear.y-2,1,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(bear.x+3,bear.y-2,1,0,Math.PI*2); ctx.fill();
+    if(bear.fleeing) {
+      ctx.fillStyle='rgba(255,0,0,0.3)';
+      ctx.beginPath(); ctx.arc(bear.x,bear.y,12,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  // Draw animals
+  for(let a of state.animals) {
+    let col=a.type==='cow'?'#f5f5f5':a.type==='pig'?'#ffb0b0':'#f0c040';
+    let spotCol=a.type==='cow'?'#333':a.type==='pig'?'#ff8080':'#c09030';
+    ctx.fillStyle=col;
+    ctx.beginPath();ctx.ellipse(a.x,a.y,a.type==='chicken'?5:7,a.type==='chicken'?4:6,0,0,Math.PI*2);ctx.fill();
+    // Spots/details
+    ctx.fillStyle=spotCol;
+    if(a.type==='cow'){ctx.beginPath();ctx.arc(a.x-3,a.y-1,2,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(a.x+2,a.y+2,2,0,Math.PI*2);ctx.fill();}
+    if(a.type==='pig'){ctx.beginPath();ctx.ellipse(a.x,a.y+2,3,2,0,0,Math.PI*2);ctx.fill();} // snout
+    if(a.type==='chicken'){ctx.fillStyle='#e00';ctx.beginPath();ctx.arc(a.x,a.y-4,2,0,Math.PI*2);ctx.fill();ctx.fillStyle='#f80';ctx.beginPath();ctx.moveTo(a.x+4,a.y);ctx.lineTo(a.x+7,a.y+1);ctx.lineTo(a.x+4,a.y+2);ctx.fill();}
+    // Product indicator
+    if(a.product>0){
+      ctx.fillStyle='rgba(255,215,0,0.8)';ctx.font='bold 8px sans-serif';ctx.textAlign='center';
+      ctx.fillText(a.type==='cow'?'🥛':a.type==='pig'?'🍄':'🥚',a.x,a.y-10);
+      ctx.fillText('x'+a.product,a.x,a.y-3);
+      ctx.textAlign='left';
+    }
+  }
+  // Draw barns
+  for(let b of state.barns) {
+    let sx=b.x*TILE,sy=b.y*TILE;
+    ctx.fillStyle='#8B4513';ctx.fillRect(sx+1,sy+1,TILE-2,TILE-2);
+    ctx.fillStyle='#D2691E';ctx.fillRect(sx+2,sy+2,TILE-4,6);
+    ctx.fillStyle='#A0522D';
+    ctx.beginPath();ctx.moveTo(sx,sy+2);ctx.lineTo(sx+TILE/2,sy-4);ctx.lineTo(sx+TILE,sy+2);ctx.fill();
+    ctx.fillStyle='#333';ctx.fillRect(sx+5,sy+7,6,TILE-8);
+  }
+  // Draw troughs
+  for(let t of state.troughs) {
+    let sx=t.x*TILE,sy=t.y*TILE;
+    ctx.fillStyle='#8B7355';ctx.fillRect(sx+2,sy+4,TILE-4,TILE-8);
+    ctx.fillStyle=t.feed>0?'#DAA520':'#555';ctx.fillRect(sx+3,sy+5,TILE-6,TILE-10);
+  }
+
+  // Draw customers
+  for(let c of state.customers) {
+    ctx.fillStyle='#e8c170';
+    ctx.beginPath(); ctx.arc(c.x,c.y,5,0,Math.PI*2); ctx.fill();
+    // Body
+    ctx.fillStyle='#3f51b5';
+    ctx.fillRect(c.x-3,c.y+4,6,7);
+    // Waiting indicator
+    if(c.state==='waiting') {
+      ctx.fillStyle='#fff';
+      ctx.font='8px sans-serif';
+      ctx.fillText('$?',c.x-4,c.y-8);
+    }
+  }
+
+  // Draw player
+  let ppx=state.player.x, ppy=state.player.y;
+  // Body
+  ctx.fillStyle=state.player.hasSuit?'#fff9c4':'#1565c0';
+  ctx.fillRect(ppx-4,ppy-2,8,10);
+  // Head
+  ctx.fillStyle='#ffcc80';
+  ctx.beginPath(); ctx.arc(ppx,ppy-4,4,0,Math.PI*2); ctx.fill();
+  // Hat
+  ctx.fillStyle='#f5f5dc';
+  ctx.fillRect(ppx-5,ppy-8,10,3);
+  ctx.fillRect(ppx-3,ppy-10,6,3);
+  // Smoker indicator
+  if(state.player.hasSmoker) {
+    ctx.fillStyle='#888';
+    ctx.fillRect(ppx+5,ppy,3,6);
+  }
+  // Show what player is holding above their head
+  if(selectedSlot>=0 && state.hotbar[selectedSlot]) {
+    let heldId=state.hotbar[selectedSlot];
+    let heldName=HOTBAR_ICONS[heldId]||heldId;
+    let heldEmoji=HOTBAR_EMOJI[heldId]||'?';
+    let heldQty=state.inventory[heldId]||0;
+    ctx.fillStyle='rgba(0,0,0,0.7)';
+    ctx.fillRect(ppx-30,ppy-26,60,14);
+    ctx.fillStyle='#ffd700';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+    ctx.fillText(`${heldEmoji} ${heldName} x${heldQty}`,ppx,ppy-16);
+    ctx.textAlign='left';
+  }
+
+  // Particles
+  for(let p of state.particles) {
+    ctx.globalAlpha=Math.min(1,p.life);
+    ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size||2,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // Placement preview
+  if(selectedSlot>=0) {
+    let mx=mouse.worldX, my=mouse.worldY;
+    let mtx=Math.floor(mx/TILE), mty=Math.floor(my/TILE);
+    if(mtx>=0&&mtx<MAP_W&&mty>=0&&mty<MAP_H) {
+      let ok=state.map[mty][mtx]===T_GRASS;
+      ctx.fillStyle=ok?'rgba(0,255,0,0.3)':'rgba(255,0,0,0.3)';
+      ctx.fillRect(mtx*TILE,mty*TILE,TILE,TILE);
+    }
+  }
+
+  ctx.restore();
+
+  // Day/night overlay
+  if(dayPhase<0.2||dayPhase>0.8) {
+    let nightAlpha = dayPhase<0.2 ? 0.3*(1-dayPhase/0.2) : 0.3*((dayPhase-0.8)/0.2);
+    ctx.fillStyle=`rgba(10,10,40,${nightAlpha})`;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
+  if(state.events.winter) {
+    ctx.fillStyle='rgba(200,220,255,0.1)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
+
+  // HUD updates
+  document.getElementById('money').textContent='$'+state.money;
+  let totalBees=state.hives.reduce((s,h)=>s+h.beeCount,0);
+  let honeyStock=state.processedHoney.length+state.rawHoney.length;
+  document.getElementById('stats').innerHTML=`Hives: ${state.hives.length} | Bees: ${totalBees} | Honey stock: ${honeyStock}`;
+
+  let timeStr = state.dayTime<60?'Morning':state.dayTime<120?'Noon':state.dayTime<180?'Evening':'Night';
+  let seasonStr = state.events.winter?'WINTER':state.events.rain?'Raining':state.events.drought?'Drought':'Clear';
+  document.getElementById('time-display').innerHTML=`${timeStr}<br>${seasonStr}`;
+}
+
+// --- GOALS ---
+function checkGoals() {
+  if(!state) return;
+  let goals = [
+    {text:'Reach 5 hives', done:state.hives.length>=5},
+    {text:'Earn $500 total', done:state.totalEarned>=500},
+    {text:'Have 10 flower patches', done:countFlowers()>=10},
+    {text:'Survive 3 bear attacks', done:state.bearsSurvived>=3},
+    {text:'Earn $1000 total', done:state.totalEarned>=1000},
+    {text:'Have all flower types', done:hasAllFlowerTypes()},
+    {text:'Own 10 hives - Master Beekeeper!', done:state.hives.length>=10},
+  ];
+  let html='';
+  let allDone=true;
+  for(let g of goals) {
+    html+=`<div class="goal${g.done?' done':''}">${g.done?'✓':'○'} ${g.text}</div>`;
+    if(!g.done) allDone=false;
+  }
+  if(allDone) html+='<div style="color:#ffd700;margin-top:8px;font-weight:bold">🎉 MASTER BEEKEEPER! You win!</div>';
+  document.getElementById('goals-list').innerHTML=html;
+}
+
+function countFlowers() {
+  let c=0;
+  for(let y=0;y<MAP_H;y++) for(let x=0;x<MAP_W;x++) if(FLOWER_TYPES.includes(state.map[y][x])) c++;
+  return c;
+}
+
+function hasAllFlowerTypes() {
+  let found=new Set();
+  for(let y=0;y<MAP_H;y++) for(let x=0;x<MAP_W;x++) if(FLOWER_TYPES.includes(state.map[y][x])) found.add(state.map[y][x]);
+  return found.size>=5;
+}
+
+// --- GAME LOOP ---
+function gameLoop(time) {
+  dt=Math.min(0.05,(time-lastTime)/1000);
+  lastTime=time;
+  update();
+  draw();
+  if(gameStarted && state && Math.floor(state.time)%2===0) checkGoals();
+  requestAnimationFrame(gameLoop);
+}
+
+// --- EVENTS ---
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()]=true;
+  if(e.key==='e'||e.key==='E') { if(gameStarted) interact(); }
+  if(e.key==='b'||e.key==='B') { if(gameStarted) toggleShop(); }
+  if(e.key===' ') { if(gameStarted) { useSmoker(); e.preventDefault(); } }
+  if(e.key>='1'&&e.key<='9') { let idx=parseInt(e.key)-1; selectedSlot=(selectedSlot===idx?-1:idx); updateHotbar(); }
+  if(e.key==='Escape') { if(shopOpen) toggleShop(); selectedSlot=-1; updateHotbar(); }
+});
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()]=false; });
+
+canvas.addEventListener('mousemove', e => {
+  mouse.x=e.clientX; mouse.y=e.clientY;
+  mouse.worldX=e.clientX+camera.x; mouse.worldY=e.clientY+camera.y;
+});
+
+canvas.addEventListener('mousedown', e => {
+  if(!gameStarted||shopOpen) return;
+  initAudio();
+  let wx=e.clientX+camera.x, wy=e.clientY+camera.y;
+  if(e.button===0) {
+    // Left click - place or shoo bear
+    if(!shooBear(wx,wy)) {
+      placeItem(wx,wy);
+    }
+  } else if(e.button===2) {
+    removeItem(wx,wy);
+  }
+});
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('resize', () => { canvas.width=window.innerWidth; canvas.height=window.innerHeight; });
+
+// --- SAVE / LOAD ---
+function saveGame() {
+  if(!state) return;
+  try {
+    localStorage.setItem('beekeeper_save', JSON.stringify({
+      map:state.map, player:state.player, money:state.money, totalEarned:state.totalEarned,
+      hives:state.hives, rawHoney:state.rawHoney, processedHoney:state.processedHoney,
+      inventory:state.inventory, bearsSurvived:state.bearsSurvived,
+      animals:state.animals, barns:state.barns, troughs:state.troughs,
+      time:state.time, dayTime:state.dayTime, winterTimer:state.winterTimer,
+    }));
+  } catch(e) {}
+}
+
+function loadGame() {
+  try {
+    let s=localStorage.getItem('beekeeper_save');
+    if(!s) return false;
+    let d=JSON.parse(s);
+    state=newState();
+    Object.assign(state,d);
+    if(!state.animals) state.animals=[];
+    if(!state.barns) state.barns=[];
+    if(!state.troughs) state.troughs=[];
+    initBees();
+    checkStarterKit(); // ensure essentials
+    return true;
+  } catch(e) { return false; }
+}
+
+// --- TITLE SCREEN ---
+document.getElementById('btn-new').onclick = () => {
+  initAudio();
+  state=newState();
+  initBees();
+  gameStarted=true;
+  document.getElementById('title-screen').style.display='none';
+  updateHotbar();
+};
+document.getElementById('btn-how').onclick = () => {
+  document.getElementById('how-panel').style.display='block';
+};
+document.getElementById('btn-how-close').onclick = () => {
+  document.getElementById('how-panel').style.display='none';
+};
+document.getElementById('shop-close').onclick = toggleShop;
+document.getElementById('goals-toggle').onclick = () => {
+  goalsVisible=!goalsVisible;
+  document.getElementById('goals-list').style.display=goalsVisible?'block':'none';
+  if(goalsVisible) checkGoals();
+};
+
+// Auto-save every 30s
+setInterval(()=>{ if(gameStarted) saveGame(); }, 30000);
+
+// Try loading saved game on title screen
+if(loadGame()) {
+  let loadBtn=document.createElement('button');
+  loadBtn.className='title-btn';
+  loadBtn.style.background='#4caf50';
+  loadBtn.style.color='#fff';
+  loadBtn.textContent='Continue';
+  loadBtn.onclick=()=>{
+    initAudio();
+    gameStarted=true;
+    document.getElementById('title-screen').style.display='none';
+    updateHotbar();
+  };
+  document.getElementById('btn-new').parentNode.insertBefore(loadBtn, document.getElementById('btn-new'));
+}
+
+// Start loop
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>

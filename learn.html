@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My First Program</title>
+    <style>
+        body {
+            background: #1a1a2e;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding-top: 100px;
+        }
+
+        h1 {
+            font-size: 48px;
+        }
+
+        #count {
+            font-size: 120px;
+            color: #ffd700;
+        }
+
+        button {
+            font-size: 32px;
+            padding: 15px 40px;
+            background: #e94560;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        button:hover {
+            background: #ff6b81;
+        }
+    </style>
+</head>
+<body>
+    <h1>Click Counter</h1>
+    <div id="count">0</div>
+    <button onclick="addOne()">Click Me!</button>
+
+    <script>
+        var clicks = 0;
+
+        function addOne() {
+            clicks = clicks + 1;
+            document.getElementById("count").textContent = clicks;
+        }
+    </script>
+</body>
+</html>

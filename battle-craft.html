@@ -1,0 +1,1809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Battle Craft</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;overflow:hidden;font-family:'Courier New',monospace;display:flex;justify-content:center;align-items:center;height:100vh;}
+canvas{display:block;image-rendering:pixelated;cursor:crosshair;position:relative;z-index:1;}
+#title-screen{position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(180deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;}
+#title-screen h1{font-size:72px;color:#e94560;text-shadow:4px 4px 0 #533483,8px 8px 0 #0f3460;margin-bottom:10px;letter-spacing:8px;}
+#title-screen .subtitle{color:#aaa;font-size:18px;margin-bottom:40px;}
+.menu-btn{background:#533483;color:#fff;border:3px solid #e94560;padding:15px 40px;font-size:22px;font-family:'Courier New',monospace;cursor:pointer;margin:8px;min-width:280px;text-align:center;transition:all 0.15s;}
+.menu-btn:hover{background:#e94560;transform:scale(1.05);}
+.back-link{color:#e94560;text-decoration:none;font-size:16px;margin-top:30px;font-family:'Courier New',monospace;}
+.back-link:hover{color:#fff;}
+#back-btn{position:absolute;top:15px;left:15px;background:rgba(0,0,0,0.6);color:#fff;border:2px solid #e94560;padding:8px 18px;font-size:16px;font-family:'Courier New',monospace;cursor:pointer;z-index:200;text-decoration:none;display:none;}
+#back-btn:hover{background:#e94560;}
+#game-over-screen{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:150;}
+#game-over-screen h2{font-size:56px;margin-bottom:20px;text-shadow:3px 3px 0 #000;}
+#game-over-screen .stats{color:#ccc;font-size:18px;margin-bottom:30px;text-align:center;line-height:1.8;}
+#crafting-panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;max-width:90vw;max-height:80vh;background:rgba(20,15,30,0.95);border:3px solid #e94560;display:none;z-index:160;overflow:hidden;border-radius:4px;}
+#crafting-panel .panel-header{display:flex;justify-content:space-between;align-items:center;padding:10px 15px;background:#2a1a3e;border-bottom:2px solid #e94560;}
+#crafting-panel .panel-header h3{color:#e94560;font-size:20px;}
+#crafting-panel .close-btn{background:none;border:2px solid #e94560;color:#e94560;font-size:20px;cursor:pointer;padding:2px 10px;font-family:'Courier New',monospace;}
+#crafting-panel .close-btn:hover{background:#e94560;color:#fff;}
+#crafting-panel .panel-body{display:flex;height:calc(80vh - 50px);max-height:500px;}
+#crafting-panel .inventory-side{width:45%;padding:10px;overflow-y:auto;border-right:2px solid #533483;}
+#crafting-panel .recipes-side{width:55%;padding:10px;overflow-y:auto;}
+#crafting-panel h4{color:#aaa;font-size:14px;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px;}
+.inv-grid{display:flex;flex-wrap:wrap;gap:4px;}
+.inv-slot{width:60px;height:58px;background:rgba(40,30,60,0.8);border:2px solid #533483;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;color:#fff;position:relative;gap:0;cursor:pointer;}
+.inv-slot:hover{border-color:#e94560;}
+.inv-slot.selected{border-color:#ff0;background:rgba(80,60,20,0.8);}
+.hotbar-row{display:flex;flex-wrap:wrap;gap:3px;margin-top:10px;padding-top:8px;border-top:2px solid #533483;}
+.hotbar-slot{width:32px;height:40px;background:rgba(40,30,60,0.8);border:2px solid #533483;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:8px;color:#fff;position:relative;cursor:pointer;}
+.hotbar-slot:hover{border-color:#e94560;}
+.hotbar-slot .slot-num{position:absolute;top:0px;left:2px;font-size:7px;color:rgba(200,200,200,0.5);}
+.hotbar-slot .icon{font-size:14px;}
+.hotbar-slot .label{font-size:6px;color:#aaa;text-align:center;line-height:1;}
+.inv-slot .count{position:absolute;top:1px;right:3px;font-size:10px;color:#ff0;font-weight:bold;}
+.inv-slot .icon{font-size:20px;margin-top:2px;}
+.inv-slot .label{font-size:7px;color:#aaa;margin-top:1px;text-align:center;line-height:1;}
+.recipe-item{display:flex;align-items:center;padding:8px;margin-bottom:4px;background:rgba(40,30,60,0.6);border:2px solid #533483;cursor:pointer;transition:all 0.1s;}
+.recipe-item:hover{border-color:#e94560;background:rgba(60,40,80,0.8);}
+.recipe-item.craftable{border-color:#4a4;}
+.recipe-item.not-craftable{opacity:0.5;}
+.recipe-item .r-icon{font-size:24px;margin-right:10px;width:30px;text-align:center;}
+.recipe-item .r-info{flex:1;}
+.recipe-item .r-name{color:#fff;font-size:14px;}
+.recipe-item .r-cost{font-size:11px;margin-top:2px;}
+.r-cost span.has{color:#4a4;}
+.r-cost span.need{color:#e94560;}
+#crafting-panel ::-webkit-scrollbar{width:8px;}
+#crafting-panel ::-webkit-scrollbar-track{background:#1a1a2e;}
+#crafting-panel ::-webkit-scrollbar-thumb{background:#533483;border-radius:4px;}
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<div id="title-screen">
+<h1>BATTLE CRAFT</h1>
+<div class="subtitle">Top-Down Survival Combat</div>
+<button class="menu-btn" onclick="startGame('royale')">&#x2694; Battle Royale</button>
+<button class="menu-btn" onclick="startGame('arena')">&#x1F3AF; Arena 1v1</button>
+<button class="menu-btn" onclick="startGame('siege')">&#x1F3F0; Siege</button>
+<a class="back-link" href="index.html">&larr; Back to Menu</a>
+</div>
+<a id="back-btn" href="#" onclick="backToMenu();return false;">&larr; Menu</a>
+<div id="game-over-screen">
+<h2 id="go-title" style="color:#4a4;">VICTORY!</h2>
+<div class="stats" id="go-stats"></div>
+<button class="menu-btn" onclick="backToMenu()">Back to Menu</button>
+</div>
+<div id="crafting-panel">
+<div class="panel-header"><h3>Inventory &amp; Crafting</h3><button class="close-btn" onclick="toggleCrafting()">X</button></div>
+<div class="panel-body">
+<div class="inventory-side"><h4>Inventory</h4><div class="inv-grid" id="inv-grid"></div><h4 style="margin-top:10px;">Hotbar</h4><div class="hotbar-row" id="hotbar-row"></div></div>
+<div class="recipes-side"><h4>Recipes</h4><div id="recipe-list"></div></div>
+</div>
+</div>
+<script>
+const canvas=document.getElementById('gameCanvas');
+const ctx=canvas.getContext('2d');
+const TILE=16;
+let W,H,cols,rows;
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;cols=Math.ceil(W/TILE)+2;rows=Math.ceil(H/TILE)+2;}
+resize();window.addEventListener('resize',resize);
+
+// Audio
+const audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+function playSound(freq,dur,type='square',vol=0.15){
+  try{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.value=freq;g.gain.value=vol;g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur);}catch(e){}
+}
+function sndHit(){playSound(200,0.1,'sawtooth',0.2);}
+function sndMine(){playSound(400,0.08,'square',0.1);}
+function sndCraft(){playSound(600,0.15,'sine',0.15);setTimeout(()=>playSound(800,0.15,'sine',0.15),100);}
+function sndPickup(){playSound(500,0.1,'sine',0.12);}
+function sndExplosion(){playSound(80,0.4,'sawtooth',0.3);}
+
+// Game state
+let gameState='menu'; // menu, playing, gameover
+let gameMode='royale';
+let world=[];
+let mapW=120,mapH=80;
+let player; let enemies=[];
+let selectedInvItem=null;
+let killFeed=[];
+let camera={x:0,y:0};
+let keys={};
+let mouse={x:0,y:0,down:false,right:false};
+let prepTime=180; // seconds
+let fightTime=300;
+let timer=0;
+let prepPhase=true;
+let dt=0,lastTime=0;
+let particles=[];
+let projectiles=[];
+let pickups=[];
+let craftingOpen=false;
+let miningTarget=null;
+let miningProgress=0;
+let selectedSlot=0;
+let animFrame=0;
+
+// Tile types
+const T={
+  GRASS:0,DARK_GRASS:1,DIRT:2,STONE:3,TREE_TRUNK:4,TREE_LEAVES:5,
+  IRON_ORE:6,GOLD_ORE:7,DIAMOND_ORE:8,COAL_ORE:9,WATER:10,LAVA:11,
+  SAND:12,WALL:13,FLOWER_R:14,FLOWER_Y:15,FLOWER_B:16,
+  CRAFTING_TABLE:17,LIGHT_GRASS:18,YELLOW_GRASS:19,DEAD_TREE:20,
+  ACACIA_TRUNK:21,ACACIA_LEAVES:22,CASTLE_WALL:23,CASTLE_FLOOR:24
+};
+const SOLID={[T.TREE_TRUNK]:1,[T.TREE_LEAVES]:1,[T.STONE]:0,[T.WALL]:1,[T.WATER]:1,[T.LAVA]:1,[T.CASTLE_WALL]:1,[T.DEAD_TREE]:1,[T.ACACIA_TRUNK]:1,[T.ACACIA_LEAVES]:1};
+const MINEABLE={
+  [T.TREE_TRUNK]:{time:1.0,drops:[{item:'wood',count:3}]},
+  [T.TREE_LEAVES]:{time:0.5,drops:[{item:'sticks',count:2},{item:'sapling',count:1,chance:0.3}]},
+  [T.STONE]:{time:1.5,drops:[{item:'stone',count:2}]},
+  [T.IRON_ORE]:{time:2.0,drops:[{item:'iron',count:2}]},
+  [T.GOLD_ORE]:{time:2.5,drops:[{item:'gold',count:1}]},
+  [T.DIAMOND_ORE]:{time:3.5,drops:[{item:'diamond',count:1}]},
+  [T.COAL_ORE]:{time:1.2,drops:[{item:'coal',count:2}]},
+  [T.WALL]:{time:2.0,drops:[{item:'stone',count:1}]},
+  [T.DEAD_TREE]:{time:0.8,drops:[{item:'wood',count:2}]},
+  [T.ACACIA_TRUNK]:{time:1.0,drops:[{item:'wood',count:3}]},
+  [T.ACACIA_LEAVES]:{time:0.5,drops:[{item:'sticks',count:2}]},
+  [T.DIRT]:{time:0.5,drops:[{item:'dirt',count:1}]},
+  [T.SAND]:{time:0.5,drops:[{item:'sand',count:1}]},
+  [T.CASTLE_WALL]:{time:3.0,drops:[{item:'stone',count:2}]},
+};
+const REPLACETILE={
+  [T.TREE_TRUNK]:T.GRASS,[T.TREE_LEAVES]:T.GRASS,[T.STONE]:T.DIRT,[T.IRON_ORE]:T.DIRT,
+  [T.GOLD_ORE]:T.DIRT,[T.DIAMOND_ORE]:T.DIRT,[T.COAL_ORE]:T.DIRT,[T.WALL]:T.DIRT,
+  [T.DEAD_TREE]:T.STONE,[T.ACACIA_TRUNK]:T.YELLOW_GRASS,[T.ACACIA_LEAVES]:T.YELLOW_GRASS,
+  [T.DIRT]:T.GRASS,[T.SAND]:T.DIRT,[T.CASTLE_WALL]:T.CASTLE_FLOOR,
+  [T.DARK_GRASS]:T.DIRT,[T.LIGHT_GRASS]:T.DIRT,[T.YELLOW_GRASS]:T.DIRT
+};
+
+// Items
+const ITEM_ICONS={
+  wood:'🪵',stone:'🪨',iron:'🔩',gold:'🪙',diamond:'💎',coal:'⚫',
+  sticks:'🥢',sapling:'🌱',dirt:'🟫',sand:'🏖️',
+  wooden_sword:'🗡️',stone_sword:'⚔️',iron_sword:'🔱',gold_sword:'👑',diamond_sword:'💠',
+  spear:'🔱',battle_axe:'🪓',fire_sword:'🔥',trident:'🔱',
+  wooden_pick:'⛏️',stone_pick:'🪓',iron_pick:'🔨',
+  bow:'🏹',crossbow:'🏹',arrow:'🎯',fire_arrow:'🔥',poison_arrow:'☠️',
+  leather_armor:'👕',stone_armor:'🪨',iron_armor:'🦺',gold_armor:'👑',diamond_armor:'🛡️',
+  potion_hp:'🧪',potion_speed:'⚡',potion_strength:'💪',potion_invis:'👻',
+  wooden_shield:'🪵',iron_shield:'🛡️',
+  tnt:'💣',landmine:'💥',campfire:'🔥',
+  cooked_meat:'🍖',raw_meat:'🥩',
+  wall_block:'🧱',spike_trap:'⚠️',ladder:'🪜',
+  flower_r:'🌹',flower_y:'🌻',flower_b:'💐',
+  water_b:'💧',rope:'🪢',gunpowder:'💥',
+};
+// Short labels for hotbar clarity
+const ITEM_LABELS={
+  wood:'Wood',stone:'Stone',iron:'Iron',gold:'Gold',diamond:'Dia.',coal:'Coal',
+  sticks:'Sticks',sapling:'Sapl.',dirt:'Dirt',sand:'Sand',
+  wooden_sword:'W.Sword',stone_sword:'S.Sword',iron_sword:'I.Sword',gold_sword:'G.Sword',diamond_sword:'D.Sword',
+  spear:'Spear',battle_axe:'B.Axe',fire_sword:'Fire Sw.',trident:'Trident',
+  wooden_pick:'W.Pick',stone_pick:'S.Pick',iron_pick:'I.Pick',
+  bow:'Bow',crossbow:'Xbow',arrow:'Arrow',fire_arrow:'Fire Arr',poison_arrow:'Psn Arr',
+  leather_armor:'L.Armor',stone_armor:'S.Armor',iron_armor:'I.Armor',gold_armor:'G.Armor',diamond_armor:'D.Armor',
+  potion_hp:'HP Pot',potion_speed:'Spd Pot',potion_strength:'Str Pot',potion_invis:'Invis',
+  wooden_shield:'W.Shield',iron_shield:'I.Shield',tnt:'TNT',landmine:'Mine',campfire:'Fire',
+  cooked_meat:'Food',raw_meat:'Meat',wall_block:'Wall',spike_trap:'Spike',ladder:'Ladder',
+  flower_r:'R.Flwr',flower_y:'Y.Flwr',flower_b:'B.Flwr',water_b:'Water',rope:'Rope',gunpowder:'Gunpwd',
+};
+const WEAPONS={
+  wooden_sword:{dmg:0.5,range:1.5,speed:0.55,kb:2},
+  stone_sword:{dmg:1,range:1.5,speed:0.6,kb:3},
+  iron_sword:{dmg:2,range:1.6,speed:0.65,kb:4},
+  gold_sword:{dmg:2.5,range:1.5,speed:0.5,kb:4},
+  diamond_sword:{dmg:3,range:1.7,speed:0.7,kb:5},
+  spear:{dmg:1.5,range:2.5,speed:0.7,kb:3},          // long range melee
+  battle_axe:{dmg:3.5,range:1.3,speed:0.9,kb:6},      // slow but hits HARD
+  fire_sword:{dmg:2,range:1.6,speed:0.6,kb:4,burn:true}, // sets enemies on fire
+  trident:{dmg:2.5,range:2.0,speed:0.7,kb:4},          // good range + damage
+  bow:{dmg:1.5,range:12,speed:1.0,kb:2,ranged:true},
+  crossbow:{dmg:2.5,range:14,speed:1.4,kb:3,ranged:true}, // slower but more damage
+};
+const ARMOR={leather_armor:2,stone_armor:3,iron_armor:5,gold_armor:6,diamond_armor:8};
+const PICKAXES={wooden_pick:1.5,stone_pick:2.0,iron_pick:3.0};
+
+// Recipes
+const RECIPES=[
+  {name:'Wooden Sword',item:'wooden_sword',cost:{wood:3,sticks:2},cat:'Weapons'},
+  {name:'Stone Sword',item:'stone_sword',cost:{stone:3,sticks:2},cat:'Weapons'},
+  {name:'Iron Sword',item:'iron_sword',cost:{iron:3,sticks:2},cat:'Weapons'},
+  {name:'Gold Sword',item:'gold_sword',cost:{gold:3,sticks:2},cat:'Weapons'},
+  {name:'Diamond Sword',item:'diamond_sword',cost:{diamond:3,sticks:2},cat:'Weapons'},
+  {name:'Bow',item:'bow',cost:{wood:3,sticks:3},cat:'Weapons'},
+  {name:'Arrows (5)',item:'arrow',count:5,cost:{sticks:2,stone:1},cat:'Weapons'},
+  {name:'Wooden Pickaxe',item:'wooden_pick',cost:{wood:3,sticks:2},cat:'Tools'},
+  {name:'Stone Pickaxe',item:'stone_pick',cost:{stone:3,sticks:2},cat:'Tools'},
+  {name:'Iron Pickaxe',item:'iron_pick',cost:{iron:3,sticks:2},cat:'Tools'},
+  {name:'Leather Armor',item:'leather_armor',cost:{wood:5,sticks:3},cat:'Armor'},
+  {name:'Iron Armor',item:'iron_armor',cost:{iron:6,coal:2},cat:'Armor'},
+  {name:'Diamond Armor',item:'diamond_armor',cost:{diamond:5,iron:3},cat:'Armor'},
+  {name:'Health Potion',item:'potion_hp',cost:{flower_r:3,water_b:1},cat:'Potions'},
+  {name:'Speed Potion',item:'potion_speed',cost:{flower_y:2,water_b:1},cat:'Potions'},
+  {name:'Spear',item:'spear',cost:{iron:2,sticks:3},cat:'Weapons'},
+  {name:'Battle Axe',item:'battle_axe',cost:{iron:4,sticks:2},cat:'Weapons'},
+  {name:'Fire Sword',item:'fire_sword',cost:{iron_sword:1,coal:5},cat:'Weapons'},
+  {name:'Trident',item:'trident',cost:{iron:3,diamond:1,sticks:1},cat:'Weapons'},
+  {name:'Crossbow',item:'crossbow',cost:{iron:2,wood:3,sticks:2},cat:'Weapons'},
+  {name:'Fire Arrows (3)',item:'fire_arrow',count:3,cost:{arrow:3,coal:2},cat:'Weapons'},
+  {name:'Poison Arrows (3)',item:'poison_arrow',count:3,cost:{arrow:3,flower_b:2},cat:'Weapons'},
+  {name:'Stone Armor',item:'stone_armor',cost:{stone:6,sticks:2},cat:'Armor'},
+  {name:'Gold Armor',item:'gold_armor',cost:{gold:5,iron:2},cat:'Armor'},
+  {name:'Wooden Shield',item:'wooden_shield',cost:{wood:4,iron:1},cat:'Armor'},
+  {name:'Iron Shield',item:'iron_shield',cost:{iron:4,wood:2},cat:'Armor'},
+  {name:'Strength Potion',item:'potion_strength',cost:{flower_r:2,coal:2,water_b:1},cat:'Potions'},
+  {name:'Invisibility Potion',item:'potion_invis',cost:{flower_b:3,diamond:1,water_b:1},cat:'Potions'},
+  {name:'TNT',item:'tnt',cost:{coal:3,sand:2},cat:'Tools'},
+  {name:'Landmine',item:'landmine',cost:{iron:2,coal:2},cat:'Tools'},
+  {name:'Spike Trap',item:'spike_trap',cost:{iron:3,stone:2},cat:'Tools'},
+  {name:'Campfire',item:'campfire',cost:{wood:3,coal:1},cat:'Tools'},
+  {name:'Rope',item:'rope',cost:{sticks:4},cat:'Materials'},
+  {name:'Ladder',item:'ladder',cost:{sticks:3,rope:1},cat:'Building'},
+  {name:'Gunpowder (3)',item:'gunpowder',count:3,cost:{coal:2,sand:1},cat:'Materials'},
+  {name:'Wall Block (4)',item:'wall_block',count:4,cost:{stone:4},cat:'Building'},
+  {name:'Sticks (4)',item:'sticks',count:4,cost:{wood:2},cat:'Materials'},
+  {name:'Cooked Meat',item:'cooked_meat',cost:{raw_meat:1,coal:1},cat:'Food'},
+];
+
+function createEntity(x,y,isPlayer){
+  return{
+    x:x*TILE+TILE/2,y:y*TILE+TILE/2,
+    spawnX:x*TILE+TILE/2,spawnY:y*TILE+TILE/2,
+    vx:0,vy:0,speed:isPlayer?1.75:1.4,
+    hp:30,maxHp:30,
+    lives:3,
+    angle:0,
+    inventory:{},
+    hotbar:['','','','','','','','',''],
+    selectedSlot:0,
+    weapon:null,armor:null,
+    attackCooldown:0,
+    knockbackX:0,knockbackY:0,
+    isPlayer:isPlayer,
+    miningTimer:0,
+    dead:false,
+    color:isPlayer?'#4488ff':'#ff4444',
+    headColor:isPlayer?'#2266dd':'#cc2222',
+    name:isPlayer?'You':'Enemy',
+    pickaxe:null,
+    shield:null,
+    speedBoost:0,
+    flashTimer:0,
+    quadrant:null,
+  };
+}
+
+function addItem(entity,item,count=1){
+  entity.inventory[item]=(entity.inventory[item]||0)+count;
+  // auto-equip
+  if(WEAPONS[item]&&(!entity.weapon||WEAPONS[item].dmg>WEAPONS[entity.weapon].dmg)){
+    entity.weapon=item;
+    autoHotbar(entity,item);
+  }
+  if(ARMOR[item]&&(!entity.armor||ARMOR[item]>ARMOR[entity.armor])){
+    entity.armor=item;
+  }
+  if(PICKAXES[item]&&(!entity.pickaxe||PICKAXES[item]>PICKAXES[entity.pickaxe])){
+    entity.pickaxe=item;
+  }
+  if(item==='wooden_shield')entity.shield=item;
+  autoHotbar(entity,item);
+}
+function removeItem(entity,item,count=1){
+  if(!entity.inventory[item])return false;
+  entity.inventory[item]-=count;
+  if(entity.inventory[item]<=0)delete entity.inventory[item];
+  return true;
+}
+function hasItem(entity,item,count=1){return(entity.inventory[item]||0)>=count;}
+function autoHotbar(entity,item){
+  for(let i=0;i<9;i++){if(entity.hotbar[i]===item)return;}
+  for(let i=0;i<9;i++){if(!entity.hotbar[i]||!entity.inventory[entity.hotbar[i]]){entity.hotbar[i]=item;return;}}
+}
+
+// World generation
+function generateWorld(){
+  world=[];
+  for(let y=0;y<mapH;y++){
+    world[y]=[];
+    for(let x=0;x<mapW;x++){
+      world[y][x]=T.GRASS;
+    }
+  }
+  if(gameMode==='royale')generateRoyale();
+  else if(gameMode==='arena')generateArena();
+  else if(gameMode==='siege')generateSiege();
+}
+
+function generateRoyale(){
+  // biomes: top-left=forest, top-right=mine, bottom-left=plains, bottom-right=savanna
+  const hw=mapW/2, hh=mapH/2;
+  // Fill base tiles per biome
+  for(let y=0;y<mapH;y++){
+    for(let x=0;x<mapW;x++){
+      if(x<hw&&y<hh) world[y][x]=T.DARK_GRASS; // forest
+      else if(x>=hw&&y<hh) world[y][x]=T.STONE; // mine
+      else if(x<hw&&y>=hh) world[y][x]=T.LIGHT_GRASS; // plains
+      else world[y][x]=T.YELLOW_GRASS; // savanna
+    }
+  }
+  // Add biome blend at edges
+  // Forest biome details
+  generateForestBiome(0,0,hw,hh);
+  // Mine biome details
+  generateMineBiome(hw,0,hw,hh);
+  // Plains biome details
+  generatePlainsBiome(0,hh,hw,hh);
+  // Savanna biome details
+  generateSavannaBiome(hw,hh,hw,hh);
+  // Center dividing walls in + shape
+  const wallX=Math.floor(mapW/2);
+  const wallY=Math.floor(mapH/2);
+  // Vertical wall
+  for(let y=0;y<mapH;y++){
+    world[y][wallX]=T.WALL;
+    if(wallX-1>=0)world[y][wallX-1]=T.WALL;
+  }
+  // Horizontal wall
+  for(let x=0;x<mapW;x++){
+    world[wallY][x]=T.WALL;
+    if(wallY-1>=0)world[wallY-1][x]=T.WALL;
+  }
+}
+
+function placeTree(cx,cy,base){
+  if(cx<1||cy<1||cx>=mapW-1||cy>=mapH-1)return;
+  if(SOLID[world[cy][cx]])return;
+  world[cy][cx]=T.TREE_TRUNK;
+  const dirs=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+  for(const[dx,dy]of dirs){
+    const nx=cx+dx,ny=cy+dy;
+    if(nx>=0&&ny>=0&&nx<mapW&&ny<mapH&&!SOLID[world[ny][nx]]){
+      if(Math.random()<0.7)world[ny][nx]=T.TREE_LEAVES;
+    }
+  }
+}
+function placeAcacia(cx,cy){
+  if(cx<2||cy<2||cx>=mapW-2||cy>=mapH-2)return;
+  if(SOLID[world[cy][cx]])return;
+  world[cy][cx]=T.ACACIA_TRUNK;
+  for(let dy=-2;dy<=2;dy++){
+    for(let dx=-2;dx<=2;dx++){
+      if(dx===0&&dy===0)continue;
+      const nx=cx+dx,ny=cy+dy;
+      if(nx>=0&&ny>=0&&nx<mapW&&ny<mapH&&!SOLID[world[ny][nx]]){
+        if(Math.abs(dx)+Math.abs(dy)<=3&&Math.random()<0.65)world[ny][nx]=T.ACACIA_LEAVES;
+      }
+    }
+  }
+}
+
+function generateForestBiome(sx,sy,w,h){
+  // Trees
+  for(let i=0;i<25;i++){
+    placeTree(sx+3+Math.floor(Math.random()*(w-6)),sy+3+Math.floor(Math.random()*(h-6)),T.DARK_GRASS);
+  }
+  // Stone patches with some ore
+  for(let i=0;i<5;i++){
+    const cx=sx+Math.floor(Math.random()*w),cy=sy+Math.floor(Math.random()*h);
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      const nx=cx+dx,ny=cy+dy;
+      if(nx>=sx&&ny>=sy&&nx<sx+w&&ny<sy+h&&Math.random()<0.7){
+        world[ny][nx]=Math.random()<0.15?T.IRON_ORE:T.STONE;
+      }
+    }
+  }
+  // Water pond
+  const wx=sx+5+Math.floor(Math.random()*(w-10)),wy=sy+5+Math.floor(Math.random()*(h-10));
+  for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+    if(dx*dx+dy*dy<=5){const nx=wx+dx,ny=wy+dy;if(nx>=sx&&ny>=sy&&nx<sx+w&&ny<sy+h)world[ny][nx]=T.WATER;}
+  }
+  // Flowers
+  for(let i=0;i<15;i++){
+    const fx=sx+Math.floor(Math.random()*w),fy=sy+Math.floor(Math.random()*h);
+    if(world[fy][fx]===T.DARK_GRASS)world[fy][fx]=[T.FLOWER_R,T.FLOWER_Y,T.FLOWER_B][Math.floor(Math.random()*3)];
+  }
+}
+
+function generateMineBiome(sx,sy,w,h){
+  // Lots of ore
+  for(let i=0;i<15;i++){
+    const cx=sx+Math.floor(Math.random()*w),cy=sy+Math.floor(Math.random()*h);
+    const oreType=[T.IRON_ORE,T.IRON_ORE,T.IRON_ORE,T.IRON_ORE,T.COAL_ORE,T.COAL_ORE,T.COAL_ORE,T.COAL_ORE,T.GOLD_ORE,T.DIAMOND_ORE][Math.floor(Math.random()*10)];
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      const nx=cx+dx,ny=cy+dy;
+      if(nx>=sx&&ny>=sy&&nx<sx+w&&ny<sy+h&&Math.random()<0.6)world[ny][nx]=oreType;
+    }
+  }
+  // Dead trees
+  for(let i=0;i<4;i++){
+    const tx=sx+2+Math.floor(Math.random()*(w-4)),ty=sy+2+Math.floor(Math.random()*(h-4));
+    if(!SOLID[world[ty][tx]])world[ty][tx]=T.DEAD_TREE;
+  }
+  // Water/lava pools
+  const px=sx+4+Math.floor(Math.random()*(w-8)),py=sy+4+Math.floor(Math.random()*(h-8));
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    if(Math.random()<0.7){const nx=px+dx,ny=py+dy;if(nx>=sx&&ny>=sy&&nx<sx+w&&ny<sy+h)world[ny][nx]=T.LAVA;}
+  }
+  const px2=sx+4+Math.floor(Math.random()*(w-8)),py2=sy+4+Math.floor(Math.random()*(h-8));
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    if(Math.random()<0.7){const nx=px2+dx,ny=py2+dy;if(nx>=sx&&ny>=sy&&nx<sx+w&&ny<sy+h)world[ny][nx]=T.WATER;}
+  }
+  // Dirt patches
+  for(let i=0;i<4;i++){
+    const cx=sx+Math.floor(Math.random()*w),cy=sy+Math.floor(Math.random()*h);
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      const nx=cx+dx,ny=cy+dy;
+      if(nx>=sx&&ny>=sy&&nx<sx+w&&ny<sy+h&&Math.random()<0.5)world[ny][nx]=T.DIRT;
+    }
+  }
+}
+
+function generatePlainsBiome(sx,sy,w,h){
+  // Few trees
+  for(let i=0;i<4;i++){
+    placeTree(sx+3+Math.floor(Math.random()*(w-6)),sy+3+Math.floor(Math.random()*(h-6)),T.LIGHT_GRASS);
+  }
+  // Lots of flowers
+  for(let i=0;i<30;i++){
+    const fx=sx+Math.floor(Math.random()*w),fy=sy+Math.floor(Math.random()*h);
+    if(world[fy][fx]===T.LIGHT_GRASS)world[fy][fx]=[T.FLOWER_R,T.FLOWER_Y,T.FLOWER_B][Math.floor(Math.random()*3)];
+  }
+  // Stone patches in corners
+  for(let i=0;i<3;i++){
+    const cx=sx+(Math.random()<0.5?2+Math.floor(Math.random()*5):w-5+Math.floor(Math.random()*3));
+    const cy=sy+(Math.random()<0.5?2+Math.floor(Math.random()*5):h-5+Math.floor(Math.random()*3));
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      const nx=cx+dx,ny=cy+dy;
+      if(nx>=sx&&ny>=sy&&nx<sx+w&&ny<sy+h&&Math.random()<0.6)world[ny][nx]=T.STONE;
+    }
+  }
+  // Animals (stored as pickups with raw_meat)
+  for(let i=0;i<5;i++){
+    pickups.push({
+      x:(sx+3+Math.floor(Math.random()*(w-6)))*TILE+TILE/2,
+      y:(sy+3+Math.floor(Math.random()*(h-6)))*TILE+TILE/2,
+      item:'raw_meat',count:1,isAnimal:true,
+      vx:(Math.random()-0.5)*0.5,vy:(Math.random()-0.5)*0.5,
+      color:['#8B4513','#fff','#888'][Math.floor(Math.random()*3)],
+      hp:3,
+    });
+  }
+}
+
+function generateSavannaBiome(sx,sy,w,h){
+  // Acacia trees
+  for(let i=0;i<8;i++){
+    placeAcacia(sx+3+Math.floor(Math.random()*(w-6)),sy+3+Math.floor(Math.random()*(h-6)));
+  }
+  // Sand patches
+  for(let i=0;i<6;i++){
+    const cx=sx+Math.floor(Math.random()*w),cy=sy+Math.floor(Math.random()*h);
+    for(let dy=-1;dy<=2;dy++)for(let dx=-1;dx<=2;dx++){
+      const nx=cx+dx,ny=cy+dy;
+      if(nx>=sx&&ny>=sy&&nx<sx+w&&ny<sy+h&&Math.random()<0.6)world[ny][nx]=T.SAND;
+    }
+  }
+  // Some stone/ore
+  for(let i=0;i<3;i++){
+    const cx=sx+Math.floor(Math.random()*w),cy=sy+Math.floor(Math.random()*h);
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      const nx=cx+dx,ny=cy+dy;
+      if(nx>=sx&&ny>=sy&&nx<sx+w&&ny<sy+h&&Math.random()<0.5)world[ny][nx]=Math.random()<0.1?T.GOLD_ORE:T.STONE;
+    }
+  }
+}
+
+function generateArena(){
+  mapW=50;mapH=50;
+  world=[];
+  const cx=mapW/2,cy=mapH/2;
+  const outerRx=23,outerRy=23; // outer wall radius
+  const innerRx=19,innerRy=19; // inner wall (arena floor edge)
+  const floorRx=17,floorRy=17; // sand floor
+
+  for(let y=0;y<mapH;y++){
+    world[y]=[];
+    for(let x=0;x<mapW;x++){
+      const dx=(x-cx)/outerRx,dy=(y-cy)/outerRy;
+      const dist=dx*dx+dy*dy;
+      const innerDist=((x-cx)/innerRx)**2+((y-cy)/innerRy)**2;
+      const floorDist=((x-cx)/floorRx)**2+((y-cy)/floorRy)**2;
+
+      if(dist>1){
+        // Outside arena - dark void
+        world[y][x]=T.STONE;
+      }else if(innerDist>1){
+        // Stands/seating area - tiered rows of "fans"
+        const ringDist=Math.sqrt(dist);
+        if(ringDist>0.95)world[y][x]=T.WALL; // outer wall
+        else if((Math.floor(ringDist*20))%2===0)world[y][x]=T.DIRT; // seat rows (alternating)
+        else world[y][x]=T.STONE; // walkway rows
+      }else if(floorDist>1){
+        // Inner wall ring (barrier)
+        world[y][x]=T.WALL;
+      }else{
+        // Arena sand floor
+        world[y][x]=T.SAND;
+      }
+    }
+  }
+
+  // Colosseum pillars around the inner wall
+  for(let a=0;a<Math.PI*2;a+=Math.PI/8){
+    const px=Math.round(cx+Math.cos(a)*(innerRx+1));
+    const py=Math.round(cy+Math.sin(a)*(innerRy+1));
+    if(px>0&&py>0&&px<mapW-1&&py<mapH-1)world[py][px]=T.WALL;
+  }
+
+  // Arena floor obstacles - some stone pillars and a center feature
+  // Center platform
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    if(Math.abs(dx)+Math.abs(dy)<=1)world[Math.floor(cy)+dy][Math.floor(cx)+dx]=T.STONE;
+  }
+  // 4 corner pillars inside arena
+  const pillarDist=10;
+  const pillarAngles=[Math.PI*0.25,Math.PI*0.75,Math.PI*1.25,Math.PI*1.75];
+  for(const a of pillarAngles){
+    const px=Math.round(cx+Math.cos(a)*pillarDist);
+    const py=Math.round(cy+Math.sin(a)*pillarDist);
+    world[py][px]=T.WALL;
+    world[py+1][px]=T.WALL;
+    world[py][px+1]=T.WALL;
+  }
+
+  // Water/lava hazard in center
+  world[Math.floor(cy)][Math.floor(cx)]=T.LAVA;
+
+  // Entry gates (gaps in inner wall) - north and south
+  for(let dx=-1;dx<=1;dx++){
+    world[Math.floor(cy-innerRy)][Math.floor(cx)+dx]=T.SAND;
+    world[Math.floor(cy+innerRy)][Math.floor(cx)+dx]=T.SAND;
+  }
+
+  // Spawn weapon/armor pickups scattered on the sand
+  const arenaItems=['stone_sword','stone_sword','iron_sword','bow','arrow','arrow','arrow','leather_armor','iron_armor','potion_hp','potion_hp','tnt'];
+  for(const item of arenaItems){
+    let px,py,attempts=0;
+    do{
+      const a=Math.random()*Math.PI*2;
+      const r=3+Math.random()*(floorRx-5);
+      px=Math.floor(cx+Math.cos(a)*r);
+      py=Math.floor(cy+Math.sin(a)*r);
+      attempts++;
+    }while((SOLID[world[py][px]]||world[py][px]===T.LAVA)&&attempts<50);
+    if(attempts<50)pickups.push({x:px*TILE+TILE/2,y:py*TILE+TILE/2,item:item,count:item==='arrow'?5:1,glow:true});
+  }
+}
+
+function generateSiege(){
+  mapW=80;mapH=60;
+  world=[];
+  for(let y=0;y<mapH;y++){
+    world[y]=[];
+    for(let x=0;x<mapW;x++){
+      world[y][x]=x<40?T.GRASS:T.CASTLE_FLOOR;
+    }
+  }
+  // Left half: gathering terrain
+  generateForestBiome(0,0,38,30);
+  generatePlainsBiome(0,30,38,30);
+  // Right half: castle
+  const cs=42,ce=78,ct=5,cb=55;
+  // Outer walls
+  for(let x=cs;x<=ce;x++){world[ct][x]=T.CASTLE_WALL;world[cb][x]=T.CASTLE_WALL;}
+  for(let y=ct;y<=cb;y++){world[y][cs]=T.CASTLE_WALL;world[y][ce]=T.CASTLE_WALL;}
+  // Gate (opening in west wall)
+  for(let y=27;y<=33;y++)world[y][cs]=T.CASTLE_FLOOR;
+  // Inner rooms
+  for(let x=cs;x<=ce;x++)world[30][x]=T.CASTLE_WALL;
+  for(let y=ct;y<=30;y++)world[y][60]=T.CASTLE_WALL;
+  // Doors
+  for(let y=13;y<=17;y++)world[y][60]=T.CASTLE_FLOOR;
+  for(let x=55;x<=58;x++)world[30][x]=T.CASTLE_FLOOR;
+  // King room inner walls
+  for(let x=62;x<=76;x++)world[15][x]=T.CASTLE_WALL;
+  for(let x=66;x<=68;x++)world[15][x]=T.CASTLE_FLOOR;
+  // Treasure/loot in castle
+  const loot=['iron_sword','iron_armor','potion_hp','gold','diamond'];
+  for(const item of loot){
+    let px,py;
+    do{px=cs+2+Math.floor(Math.random()*(ce-cs-4));py=ct+2+Math.floor(Math.random()*(cb-ct-4));}
+    while(world[py][px]===T.CASTLE_WALL);
+    pickups.push({x:px*TILE+TILE/2,y:py*TILE+TILE/2,item:item,count:1,glow:true});
+  }
+}
+
+function startGame(mode){
+  gameMode=mode;
+  gameState='playing';
+  document.getElementById('title-screen').style.display='none';
+  document.getElementById('back-btn').style.display='block';
+  document.getElementById('game-over-screen').style.display='none';
+  particles=[];projectiles=[];pickups=[];craftingOpen=false;killFeed=[];selectedInvItem=null;
+  document.getElementById('crafting-panel').style.display='none';
+
+  if(mode==='royale'){
+    mapW=160;mapH=120;prepTime=180;fightTime=300;prepPhase=true;timer=prepTime;
+    generateWorld();
+    player=createEntity(15,15,true);
+    player.color='#4488ff';player.headColor='#2266dd';player.name='You';player.quadrant='tl';
+    enemies=[];
+    const e1=createEntity(mapW-15,15,false);
+    e1.color='#ff4444';e1.headColor='#cc2222';e1.name='Red';e1.quadrant='tr';
+    enemies.push(e1);
+    const e2=createEntity(15,mapH-15,false);
+    e2.color='#44ff44';e2.headColor='#22cc22';e2.name='Green';e2.quadrant='bl';
+    enemies.push(e2);
+    const e3=createEntity(mapW-15,mapH-15,false);
+    e3.color='#ff8800';e3.headColor='#cc6600';e3.name='Orange';e3.quadrant='br';
+    enemies.push(e3);
+  }else if(mode==='arena'){
+    prepPhase=false;timer=180;
+    generateWorld();
+    // Spawn at north and south gates
+    player=createEntity(25,7,true);
+    player.name='Gladiator';
+    const ae=createEntity(25,43,false);
+    ae.name='Champion';ae.color='#cc2222';ae.headColor='#991111';
+    enemies=[ae];
+    addItem(player,'wooden_sword',1);
+    addItem(ae,'stone_sword',1);
+  }else if(mode==='siege'){
+    mapW=80;mapH=60;prepTime=120;fightTime=300;prepPhase=true;timer=prepTime;
+    generateWorld();
+    player=createEntity(10,30,true);
+    player.name='You';
+    const se=createEntity(70,10,false);
+    se.hp=40;se.maxHp=40;
+    se.color='#FFD700';se.headColor='#DAA520';se.name='King';
+    addItem(se,'diamond_sword',1);
+    addItem(se,'diamond_armor',1);
+    enemies=[se];
+  }
+  lastTime=performance.now();
+  requestAnimationFrame(gameLoop);
+}
+
+function backToMenu(){
+  gameState='menu';
+  document.getElementById('title-screen').style.display='flex';
+  document.getElementById('back-btn').style.display='none';
+  document.getElementById('game-over-screen').style.display='none';
+  document.getElementById('crafting-panel').style.display='none';
+  craftingOpen=false;
+  selectedInvItem=null;
+  killFeed=[];
+  enemies=[];
+}
+
+// Tile rendering
+const tileColors={
+  [T.GRASS]:'#4a8c3f',[T.DARK_GRASS]:'#3a7030',[T.DIRT]:'#8B6914',[T.STONE]:'#888',
+  [T.TREE_TRUNK]:'#6B3A1F',[T.TREE_LEAVES]:'#2d7a1e',[T.IRON_ORE]:'#888',
+  [T.GOLD_ORE]:'#888',[T.DIAMOND_ORE]:'#888',[T.COAL_ORE]:'#888',
+  [T.WATER]:'#2266aa',[T.LAVA]:'#dd4400',[T.SAND]:'#d4c47c',
+  [T.WALL]:'#555',[T.FLOWER_R]:'#4a8c3f',[T.FLOWER_Y]:'#4a8c3f',[T.FLOWER_B]:'#4a8c3f',
+  [T.CRAFTING_TABLE]:'#6B3A1F',[T.LIGHT_GRASS]:'#6bba5e',[T.YELLOW_GRASS]:'#b8a84a',
+  [T.DEAD_TREE]:'#5a4a3a',[T.ACACIA_TRUNK]:'#7a5030',[T.ACACIA_LEAVES]:'#8aaa40',
+  [T.CASTLE_WALL]:'#5a5a6a',[T.CASTLE_FLOOR]:'#9a9a8a',
+};
+
+function drawTile(x,y,tile,sx,sy){
+  const c=tileColors[tile]||'#f0f';
+  ctx.fillStyle=c;
+  ctx.fillRect(sx,sy,TILE,TILE);
+
+  // Details
+  if(tile===T.TREE_TRUNK){
+    ctx.fillStyle='#4a2510';
+    ctx.beginPath();ctx.arc(sx+TILE/2,sy+TILE/2,TILE*0.35,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#5a3520';
+    ctx.beginPath();ctx.arc(sx+TILE/2,sy+TILE/2,TILE*0.2,0,Math.PI*2);ctx.fill();
+  }else if(tile===T.TREE_LEAVES){
+    ctx.fillStyle='#1a6010';
+    ctx.beginPath();ctx.arc(sx+TILE/2,sy+TILE/2,TILE*0.45,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#2a8020';
+    ctx.beginPath();ctx.arc(sx+TILE/2-2,sy+TILE/2-2,TILE*0.25,0,Math.PI*2);ctx.fill();
+  }else if(tile===T.IRON_ORE){
+    ctx.fillStyle='#ccc';
+    ctx.fillRect(sx+3,sy+4,3,3);ctx.fillRect(sx+9,sy+10,4,3);ctx.fillRect(sx+5,sy+12,3,2);
+  }else if(tile===T.GOLD_ORE){
+    ctx.fillStyle='#FFD700';
+    ctx.fillRect(sx+2,sy+3,3,3);ctx.fillRect(sx+10,sy+9,3,3);ctx.fillRect(sx+6,sy+12,3,2);
+  }else if(tile===T.DIAMOND_ORE){
+    ctx.fillStyle='#00ffff';
+    ctx.fillRect(sx+3,sy+5,3,3);ctx.fillRect(sx+9,sy+10,4,3);
+  }else if(tile===T.COAL_ORE){
+    ctx.fillStyle='#222';
+    ctx.fillRect(sx+2,sy+3,4,3);ctx.fillRect(sx+9,sy+9,4,4);ctx.fillRect(sx+4,sy+11,3,3);
+  }else if(tile===T.WATER){
+    const t=animFrame*0.05;
+    ctx.fillStyle='#3388cc';
+    ctx.fillRect(sx+Math.sin(t+x)*2,sy+2,6,2);
+    ctx.fillRect(sx+8+Math.cos(t+y)*2,sy+8,5,2);
+    ctx.fillRect(sx+2+Math.sin(t+x+y)*2,sy+12,7,2);
+  }else if(tile===T.LAVA){
+    const t=animFrame*0.03;
+    ctx.fillStyle='#ff6600';
+    ctx.fillRect(sx+Math.sin(t+x)*3,sy+2,5,3);
+    ctx.fillRect(sx+7+Math.cos(t+y)*2,sy+9,6,3);
+    ctx.fillStyle='#ffaa00';
+    ctx.fillRect(sx+4+Math.sin(t)*2,sy+6,4,3);
+  }else if(tile===T.FLOWER_R){
+    ctx.fillStyle='#e33';ctx.beginPath();ctx.arc(sx+TILE/2,sy+TILE/2,3,0,Math.PI*2);ctx.fill();
+  }else if(tile===T.FLOWER_Y){
+    ctx.fillStyle='#ee2';ctx.beginPath();ctx.arc(sx+TILE/2,sy+TILE/2,3,0,Math.PI*2);ctx.fill();
+  }else if(tile===T.FLOWER_B){
+    ctx.fillStyle='#44f';ctx.beginPath();ctx.arc(sx+TILE/2,sy+TILE/2,3,0,Math.PI*2);ctx.fill();
+  }else if(tile===T.WALL){
+    ctx.fillStyle='#666';
+    ctx.fillRect(sx,sy,TILE/2-1,TILE/2-1);ctx.fillRect(sx+TILE/2,sy+TILE/2,TILE/2-1,TILE/2-1);
+    ctx.fillStyle='#444';
+    ctx.fillRect(sx+TILE/2,sy,TILE/2-1,TILE/2-1);ctx.fillRect(sx,sy+TILE/2,TILE/2-1,TILE/2-1);
+  }else if(tile===T.CASTLE_WALL){
+    ctx.fillStyle='#6a6a7a';
+    ctx.fillRect(sx+1,sy+1,TILE/2-2,TILE/2-2);ctx.fillRect(sx+TILE/2+1,sy+TILE/2+1,TILE/2-2,TILE/2-2);
+    ctx.fillStyle='#4a4a5a';
+    ctx.fillRect(sx+TILE/2+1,sy+1,TILE/2-2,TILE/2-2);ctx.fillRect(sx+1,sy+TILE/2+1,TILE/2-2,TILE/2-2);
+  }else if(tile===T.DEAD_TREE){
+    ctx.fillStyle='#4a3a2a';
+    ctx.beginPath();ctx.arc(sx+TILE/2,sy+TILE/2,TILE*0.3,0,Math.PI*2);ctx.fill();
+  }else if(tile===T.ACACIA_TRUNK){
+    ctx.fillStyle='#5a3820';
+    ctx.beginPath();ctx.arc(sx+TILE/2,sy+TILE/2,TILE*0.3,0,Math.PI*2);ctx.fill();
+  }else if(tile===T.ACACIA_LEAVES){
+    ctx.fillStyle='#7a9a30';
+    ctx.beginPath();ctx.arc(sx+TILE/2,sy+TILE/2,TILE*0.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#8aaa40';
+    ctx.beginPath();ctx.arc(sx+TILE/2-1,sy+TILE/2+1,TILE*0.3,0,Math.PI*2);ctx.fill();
+  }else if(tile===T.SAND){
+    ctx.fillStyle='#c4b46c';
+    ctx.fillRect(sx+3,sy+6,2,2);ctx.fillRect(sx+10,sy+3,2,2);ctx.fillRect(sx+7,sy+11,2,2);
+  }else if(tile===T.CRAFTING_TABLE){
+    ctx.strokeStyle='#4a2510';ctx.lineWidth=1;
+    ctx.strokeRect(sx+2,sy+2,TILE-4,TILE-4);
+    ctx.beginPath();ctx.moveTo(sx+TILE/2,sy+2);ctx.lineTo(sx+TILE/2,sy+TILE-2);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(sx+2,sy+TILE/2);ctx.lineTo(sx+TILE-2,sy+TILE/2);ctx.stroke();
+  }else if(tile===T.GRASS||tile===T.DARK_GRASS||tile===T.LIGHT_GRASS||tile===T.YELLOW_GRASS){
+    // subtle grass detail
+    ctx.fillStyle=tile===T.DARK_GRASS?'#327028':tile===T.LIGHT_GRASS?'#5aaa4e':tile===T.YELLOW_GRASS?'#a89838':'#3f7835';
+    if((x+y)%3===0){ctx.fillRect(sx+3,sy+5,1,2);ctx.fillRect(sx+10,sy+9,1,2);}
+    if((x+y)%5===0){ctx.fillRect(sx+7,sy+3,1,2);}
+  }else if(tile===T.CASTLE_FLOOR){
+    ctx.fillStyle='#8a8a7a';
+    ctx.fillRect(sx,sy+TILE-1,TILE,1);ctx.fillRect(sx+TILE-1,sy,1,TILE);
+  }else if(tile===T.DIRT){
+    ctx.fillStyle='#7a5a10';
+    if((x+y)%4===0){ctx.fillRect(sx+4,sy+6,2,2);ctx.fillRect(sx+11,sy+3,2,2);}
+    // Arena fans - colored dots on dirt seats
+    if(gameMode==='arena'){
+      const fanSeed=(x*73+y*137)%100;
+      if(fanSeed<65){
+        const fanColors=['#e44','#44e','#4e4','#ee4','#e4e','#fff','#fa0','#4ee'];
+        ctx.fillStyle=fanColors[(x*31+y*17)%fanColors.length];
+        ctx.beginPath();ctx.arc(sx+4+(fanSeed%9),sy+4+(fanSeed%7),2,0,Math.PI*2);ctx.fill();
+        // Second fan
+        if(fanSeed<40){
+          ctx.fillStyle=fanColors[(x*13+y*29)%fanColors.length];
+          ctx.beginPath();ctx.arc(sx+10+(fanSeed%5),sy+8+(fanSeed%6),2,0,Math.PI*2);ctx.fill();
+        }
+      }
+    }
+  }
+}
+
+function drawEntity(e){
+  if(e.dead)return;
+  const sx=e.x-camera.x, sy=e.y-camera.y;
+  if(sx<-30||sy<-30||sx>W+30||sy>H+30)return;
+
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.25)';
+  ctx.beginPath();ctx.ellipse(sx,sy+5,7,4,0,0,Math.PI*2);ctx.fill();
+
+  ctx.save();
+  ctx.translate(sx,sy);
+  ctx.rotate(e.angle);
+
+  // Body
+  ctx.fillStyle=e.flashTimer>0?'#fff':e.color;
+  ctx.fillRect(-5,-6,10,12);
+
+  // Armor tint
+  if(e.armor){
+    ctx.fillStyle=e.armor==='diamond_armor'?'rgba(0,255,255,0.3)':e.armor==='iron_armor'?'rgba(200,200,200,0.3)':'rgba(139,90,43,0.3)';
+    ctx.fillRect(-5,-6,10,12);
+  }
+
+  // Head
+  ctx.fillStyle=e.flashTimer>0?'#ddd':e.headColor;
+  ctx.beginPath();ctx.arc(0,-3,4,0,Math.PI*2);ctx.fill();
+
+  // Weapon
+  if(e.weapon){
+    const w=WEAPONS[e.weapon];
+    if(w){
+      if(w.ranged){
+        ctx.strokeStyle='#8B4513';ctx.lineWidth=2;
+        ctx.beginPath();ctx.moveTo(3,-6);ctx.lineTo(6,0);ctx.lineTo(3,6);ctx.stroke();
+      }else{
+        ctx.fillStyle=e.weapon.includes('diamond')?'#0ff':e.weapon.includes('gold')?'#FFD700':e.weapon.includes('iron')?'#ccc':e.weapon.includes('stone')?'#999':'#8B4513';
+        ctx.fillRect(5,-2,w.range*TILE*0.4,3);
+      }
+    }
+  }
+
+  ctx.restore();
+
+  // Name tag (no health bar - play by feel)
+  if(!e.isPlayer){
+    ctx.fillStyle=e.color;ctx.font='bold 9px Courier New';ctx.textAlign='center';
+    ctx.fillText(e.name,sx,sy-18);
+    ctx.textAlign='left';
+  }
+
+  // Mining indicator
+  if(e.isPlayer&&miningTarget&&miningProgress>0){
+    const mt=MINEABLE[world[miningTarget.y][miningTarget.x]];
+    if(mt){
+      const mx=miningTarget.x*TILE+TILE/2-camera.x,my=miningTarget.y*TILE-4-camera.y;
+      ctx.fillStyle='#333';ctx.fillRect(mx-12,my,24,4);
+      const mineSpd=e.pickaxe?PICKAXES[e.pickaxe]:1;
+      ctx.fillStyle='#0f0';ctx.fillRect(mx-12,my,24*(miningProgress/(mt.time/mineSpd)),4);
+    }
+  }
+}
+
+function drawPickup(p){
+  const sx=p.x-camera.x,sy=p.y-camera.y;
+  if(sx<-20||sy<-20||sx>W+20||sy>H+20)return;
+  if(p.isAnimal){
+    // Draw animal as colored square
+    ctx.fillStyle=p.color;
+    ctx.fillRect(sx-4,sy-4,8,8);
+    ctx.fillStyle='#000';
+    ctx.fillRect(sx+2,sy-3,2,2);
+    if(p.hp<=0){
+      ctx.fillStyle='rgba(255,0,0,0.5)';ctx.fillRect(sx-4,sy-4,8,8);
+    }
+    return;
+  }
+  // Glow
+  if(p.glow){
+    const t=animFrame*0.05;
+    ctx.fillStyle=`rgba(255,255,100,${0.1+Math.sin(t)*0.05})`;
+    ctx.beginPath();ctx.arc(sx,sy,10+Math.sin(t)*2,0,Math.PI*2);ctx.fill();
+  }
+  // Item dot
+  ctx.fillStyle='#fff';
+  ctx.beginPath();ctx.arc(sx,sy,4,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#FFD700';
+  ctx.beginPath();ctx.arc(sx,sy,3,0,Math.PI*2);ctx.fill();
+}
+
+// Update
+function updatePlayer(dt){
+  if(player.dead||craftingOpen)return;
+  let mx=0,my=0;
+  const spd=player.speed*(player.speedBoost>0?1.6:1);
+  if(keys['w']||keys['arrowup'])my=-spd;
+  if(keys['s']||keys['arrowdown'])my=spd;
+  if(keys['a']||keys['arrowleft'])mx=-spd;
+  if(keys['d']||keys['arrowright'])mx=spd;
+  if(mx&&my){mx*=0.707;my*=0.707;}
+
+  // Apply knockback
+  mx+=player.knockbackX;my+=player.knockbackY;
+  player.knockbackX*=0.8;player.knockbackY*=0.8;
+  if(Math.abs(player.knockbackX)<0.1)player.knockbackX=0;
+  if(Math.abs(player.knockbackY)<0.1)player.knockbackY=0;
+
+  const nx=player.x+mx,ny=player.y+my;
+  // Collision
+  if(canMove(nx,player.y,player))player.x=nx;
+  if(canMove(player.x,ny,player))player.y=ny;
+
+  // Prep phase boundary - keep player in top-left quadrant
+  if(prepPhase){
+    if(gameMode==='royale'){
+      if(player.x>(mapW/2-2)*TILE)player.x=(mapW/2-2)*TILE;
+      if(player.y>(mapH/2-2)*TILE)player.y=(mapH/2-2)*TILE;
+    }else if(gameMode==='siege'){
+      if(player.x>40*TILE)player.x=40*TILE;
+    }
+  }
+
+  // Clamp to map
+  player.x=Math.max(TILE,Math.min(mapW*TILE-TILE,player.x));
+  player.y=Math.max(TILE,Math.min(mapH*TILE-TILE,player.y));
+
+  // Face mouse
+  const wmx=mouse.x+camera.x,wmy=mouse.y+camera.y;
+  player.angle=Math.atan2(wmy-player.y,wmx-player.x);
+
+  // Attack cooldown
+  if(player.attackCooldown>0)player.attackCooldown-=dt;
+  if(player.speedBoost>0)player.speedBoost-=dt;
+  if(player.flashTimer>0)player.flashTimer-=dt;
+
+  // Mining
+  if(mouse.down&&!craftingOpen){
+    const tx=Math.floor((mouse.x+camera.x)/TILE),ty=Math.floor((mouse.y+camera.y)/TILE);
+    const dist=Math.hypot(tx*TILE+TILE/2-player.x,ty*TILE+TILE/2-player.y);
+    if(tx>=0&&ty>=0&&tx<mapW&&ty<mapH&&dist<TILE*3&&MINEABLE[world[ty][tx]]){
+      if(!miningTarget||miningTarget.x!==tx||miningTarget.y!==ty){
+        miningTarget={x:tx,y:ty};miningProgress=0;
+      }
+      const mt=MINEABLE[world[ty][tx]];
+      const mineSpd=player.pickaxe?PICKAXES[player.pickaxe]:1;
+      miningProgress+=dt;
+      if(miningProgress>=mt.time/mineSpd){
+        // Break block
+        for(const drop of mt.drops){
+          if(drop.chance&&Math.random()>drop.chance)continue;
+          addItem(player,drop.item,drop.count);
+          sndPickup();
+        }
+        // Special drops for flowers
+        const tile=world[ty][tx];
+        if(tile===T.FLOWER_R)addItem(player,'flower_r',1);
+        if(tile===T.FLOWER_Y)addItem(player,'flower_y',1);
+        if(tile===T.FLOWER_B)addItem(player,'flower_b',1);
+        world[ty][tx]=REPLACETILE[tile]!==undefined?REPLACETILE[tile]:T.GRASS;
+        sndMine();
+        miningTarget=null;miningProgress=0;
+        spawnParticles(tx*TILE+TILE/2,ty*TILE+TILE/2,tileColors[tile]||'#888',5);
+      }
+    }else{
+      // Try melee attack on enemies
+      if(player.weapon&&!WEAPONS[player.weapon].ranged&&player.attackCooldown<=0){
+        for(const e of enemies){if(!e.dead){tryMeleeAttack(player,e);if(player.attackCooldown>0)break;}}
+      }
+      miningTarget=null;miningProgress=0;
+    }
+  }else{
+    if(!mouse.down){miningTarget=null;miningProgress=0;}
+  }
+
+  // Right-click place block
+  if(mouse.right){
+    const tx=Math.floor((mouse.x+camera.x)/TILE),ty=Math.floor((mouse.y+camera.y)/TILE);
+    const dist=Math.hypot(tx*TILE+TILE/2-player.x,ty*TILE+TILE/2-player.y);
+    if(tx>=0&&ty>=0&&tx<mapW&&ty<mapH&&dist<TILE*4&&!SOLID[world[ty][tx]]){
+      if(hasItem(player,'wall_block',1)){
+        world[ty][tx]=T.WALL;
+        removeItem(player,'wall_block',1);
+        sndMine();
+      }
+    }
+    mouse.right=false;
+  }
+
+  // Pickup items
+  for(let i=pickups.length-1;i>=0;i--){
+    const p=pickups[i];
+    if(p.isAnimal)continue;
+    const dist=Math.hypot(p.x-player.x,p.y-player.y);
+    if(dist<TILE){
+      addItem(player,p.item,p.count);
+      sndPickup();
+      pickups.splice(i,1);
+    }
+  }
+
+  // Use item from hotbar (attack animals with melee)
+  for(let i=pickups.length-1;i>=0;i--){
+    const p=pickups[i];
+    if(!p.isAnimal||p.hp<=0)continue;
+    const dist=Math.hypot(p.x-player.x,p.y-player.y);
+    if(dist<TILE*2&&mouse.down&&player.attackCooldown<=0){
+      p.hp--;
+      if(p.hp<=0){
+        addItem(player,'raw_meat',2);
+        sndHit();
+        pickups.splice(i,1);
+      }else{
+        sndHit();
+        player.attackCooldown=0.3;
+      }
+    }
+  }
+}
+
+function canMove(nx,ny,entity){
+  const r=5;
+  const checks=[[nx-r,ny-r],[nx+r,ny-r],[nx-r,ny+r],[nx+r,ny+r]];
+  for(const[cx,cy]of checks){
+    const tx=Math.floor(cx/TILE),ty=Math.floor(cy/TILE);
+    if(tx<0||ty<0||tx>=mapW||ty>=mapH)return false;
+    if(SOLID[world[ty][tx]])return false;
+  }
+  return true;
+}
+
+function tryMeleeAttack(attacker,target){
+  if(target.dead)return;
+  const w=WEAPONS[attacker.weapon];
+  if(!w)return;
+  const dist=Math.hypot(target.x-attacker.x,target.y-attacker.y);
+  if(dist>w.range*TILE)return;
+  // Check angle
+  const angle=Math.atan2(target.y-attacker.y,target.x-attacker.x);
+  let diff=angle-attacker.angle;
+  while(diff>Math.PI)diff-=Math.PI*2;
+  while(diff<-Math.PI)diff+=Math.PI*2;
+  if(Math.abs(diff)>Math.PI/2)return;
+
+  attacker.attackCooldown=w.speed;
+  // Strength potion boost
+  let dmg=w.dmg*(attacker.strengthBoost>0?2:1);
+  if(target.armor)dmg=Math.max(0.5,dmg-ARMOR[target.armor]*0.3);
+  target.hp-=dmg;
+  target.flashTimer=0.1;
+  // Burn effect from fire sword
+  if(w.burn){target.burnTimer=(target.burnTimer||0)+3;spawnParticles(target.x,target.y,'#f80',3);}
+  // Knockback
+  const kb=w.kb;
+  target.knockbackX=Math.cos(angle)*kb;
+  target.knockbackY=Math.sin(angle)*kb;
+  sndHit();
+  spawnParticles(target.x,target.y,'#f00',4);
+  if(target.hp<=0){onKill(attacker,target);}
+}
+
+function shootArrow(shooter){
+  // Try special arrows first, then regular
+  let arrowType='arrow',arrowExtra=null;
+  const isCrossbow=shooter.weapon==='crossbow';
+  if(hasItem(shooter,'fire_arrow',1)){arrowType='fire_arrow';arrowExtra='fire';}
+  else if(hasItem(shooter,'poison_arrow',1)){arrowType='poison_arrow';arrowExtra='poison';}
+  else if(!hasItem(shooter,'arrow',1))return;
+  removeItem(shooter,arrowType,1);
+  const w=WEAPONS[isCrossbow?'crossbow':'bow'];
+  projectiles.push({
+    x:shooter.x,y:shooter.y,
+    vx:Math.cos(shooter.angle)*3.5,vy:Math.sin(shooter.angle)*3.5,
+    dmg:w.dmg,kb:w.kb,owner:shooter,life:2.0,
+  });
+  shooter.attackCooldown=w.speed;
+  playSound(300,0.1,'triangle',0.1);
+}
+
+function onKill(killer,victim){
+  victim.lives--;
+  killFeed.push({text:`${killer.name} killed ${victim.name}!`,timer:4});
+  if(victim.lives>0){
+    // Respawn with full HP, keep inventory
+    victim.hp=victim.maxHp;
+    victim.dead=false;
+    victim.x=victim.spawnX;
+    victim.y=victim.spawnY;
+    victim.knockbackX=0;
+    victim.knockbackY=0;
+    victim.flashTimer=1.0;
+    spawnParticles(victim.x,victim.y,'#ff0',10);
+    killFeed.push({text:`${victim.name} has ${victim.lives} lives left!`,timer:3});
+  }else{
+    victim.dead=true;
+    killFeed.push({text:`${victim.name} eliminated!`,timer:5});
+    checkGameEnd();
+  }
+}
+
+function checkGameEnd(){
+  const allEntities=[player,...enemies];
+  const alive=allEntities.filter(e=>!e.dead||e.lives>0);
+  if(alive.length<=1){
+    gameState='gameover';
+    if(alive.length===1&&alive[0]===player){
+      document.getElementById('go-title').textContent='VICTORY!';
+      document.getElementById('go-title').style.color='#4a4';
+      document.getElementById('go-stats').textContent=`You are the last one standing!\nMode: ${gameMode}`;
+    }else if(alive.length===1&&alive[0]!==player){
+      document.getElementById('go-title').textContent='DEFEATED';
+      document.getElementById('go-title').style.color='#e94560';
+      document.getElementById('go-stats').textContent=`${alive[0].name} wins!\nMode: ${gameMode}`;
+    }else{
+      document.getElementById('go-title').textContent='DRAW';
+      document.getElementById('go-title').style.color='#aaa';
+      document.getElementById('go-stats').textContent=`No one survived!\nMode: ${gameMode}`;
+    }
+    document.getElementById('game-over-screen').style.display='flex';
+  }
+}
+
+// AI
+function explodeTNT(tx,ty,user){
+  for(let dy=-2;dy<=2;dy++){
+    for(let dx=-2;dx<=2;dx++){
+      const nx=tx+dx,ny=ty+dy;
+      if(nx>=0&&ny>=0&&nx<mapW&&ny<mapH&&dx*dx+dy*dy<=5){
+        if(MINEABLE[world[ny][nx]]){
+          const mt=MINEABLE[world[ny][nx]];
+          for(const drop of mt.drops){
+            if(drop.chance&&Math.random()>drop.chance)continue;
+            if(user)addItem(user,drop.item,drop.count);
+          }
+          world[ny][nx]=REPLACETILE[world[ny][nx]]||T.DIRT;
+        }
+      }
+    }
+  }
+  sndExplosion();
+  spawnParticles(tx*TILE,ty*TILE,'#ff8800',15);
+  spawnParticles(tx*TILE,ty*TILE,'#ff0',10);
+  // Damage all entities
+  const allEnts=[player,...enemies];
+  for(const ent of allEnts){
+    if(ent.dead)continue;
+    const d=Math.hypot(ent.x-tx*TILE,ent.y-ty*TILE);
+    if(d<TILE*3){
+      ent.hp-=15;ent.flashTimer=0.2;
+      if(ent.hp<=0){onKill(user||player,ent);}
+    }
+  }
+}
+
+function updateAllEnemies(dt){
+  for(const e of enemies){updateSingleEnemy(e,dt);}
+}
+
+function updateSingleEnemy(enemy,dt){
+  if(enemy.dead)return;
+  enemy.attackCooldown=Math.max(0,enemy.attackCooldown-dt);
+  enemy.flashTimer=Math.max(0,enemy.flashTimer-dt);
+  enemy.knockbackX*=0.8;enemy.knockbackY*=0.8;
+
+  if(prepPhase){
+    aiGatherFor(enemy,dt);
+  }else{
+    aiFightFor(enemy,dt);
+  }
+
+  // Apply knockback
+  const nx=enemy.x+enemy.knockbackX,ny=enemy.y+enemy.knockbackY;
+  if(canMove(nx,enemy.y,enemy))enemy.x=nx;
+  if(canMove(enemy.x,ny,enemy))enemy.y=ny;
+  enemy.x=Math.max(TILE,Math.min(mapW*TILE-TILE,enemy.x));
+  enemy.y=Math.max(TILE,Math.min(mapH*TILE-TILE,enemy.y));
+}
+
+function getQuadrantBounds(enemy){
+  if(gameMode!=='royale')return{minX:0,minY:0,maxX:mapW,maxY:mapH};
+  const q=enemy.quadrant;
+  const hw=Math.floor(mapW/2),hh=Math.floor(mapH/2);
+  if(q==='tr')return{minX:hw+2,minY:0,maxX:mapW,maxY:hh};
+  if(q==='bl')return{minX:0,minY:hh+2,maxX:hw,maxY:mapH};
+  if(q==='br')return{minX:hw+2,minY:hh+2,maxX:mapW,maxY:mapH};
+  return{minX:0,minY:0,maxX:hw,maxY:hh}; // tl
+}
+
+function aiGatherFor(enemy,dt){
+  // Simple: wander and mine nearby resources
+  if(!enemy._target||enemy._targetTimer<=0){
+    const etx=Math.floor(enemy.x/TILE),ety=Math.floor(enemy.y/TILE);
+    let best=null,bestD=999;
+    const searchR=20;
+    const bounds=getQuadrantBounds(enemy);
+    for(let dy=-searchR;dy<=searchR;dy++){
+      for(let dx=-searchR;dx<=searchR;dx++){
+        const tx=etx+dx,ty=ety+dy;
+        if(tx<bounds.minX||ty<bounds.minY||tx>=bounds.maxX||ty>=bounds.maxY)continue;
+        if(MINEABLE[world[ty][tx]]&&world[ty][tx]!==T.WALL){
+          const d=Math.abs(dx)+Math.abs(dy);
+          if(d<bestD){bestD=d;best={x:tx,y:ty};}
+        }
+      }
+    }
+    enemy._target=best;
+    enemy._targetTimer=3+Math.random()*3;
+  }
+  enemy._targetTimer-=dt;
+
+  if(enemy._target){
+    const tx=enemy._target.x*TILE+TILE/2,ty=enemy._target.y*TILE+TILE/2;
+    const dist=Math.hypot(tx-enemy.x,ty-enemy.y);
+    if(dist>TILE*1.5){
+      const angle=Math.atan2(ty-enemy.y,tx-enemy.x);
+      enemy.angle=angle;
+      const mx=Math.cos(angle)*enemy.speed,my=Math.sin(angle)*enemy.speed;
+      const nx=enemy.x+mx,ny=enemy.y+my;
+      if(canMove(nx,enemy.y,enemy))enemy.x=nx;
+      if(canMove(enemy.x,ny,enemy))enemy.y=ny;
+    }else{
+      const bx=enemy._target.x,by=enemy._target.y;
+      if(MINEABLE[world[by][bx]]){
+        enemy.miningTimer+=dt;
+        const mt=MINEABLE[world[by][bx]];
+        const mineSpd=enemy.pickaxe?PICKAXES[enemy.pickaxe]:1;
+        if(enemy.miningTimer>=mt.time/mineSpd){
+          for(const drop of mt.drops){
+            if(drop.chance&&Math.random()>drop.chance)continue;
+            addItem(enemy,drop.item,drop.count);
+          }
+          world[by][bx]=REPLACETILE[world[by][bx]]!==undefined?REPLACETILE[world[by][bx]]:T.GRASS;
+          enemy.miningTimer=0;
+          enemy._target=null;
+        }
+      }else{
+        enemy._target=null;enemy.miningTimer=0;
+      }
+    }
+  }
+
+  // Try to craft frequently
+  if(Math.random()<0.06){
+    aiTryCraftFor(enemy);
+  }
+}
+
+function aiTryCraftFor(enemy){
+  const priorities=['diamond_sword','iron_sword','stone_sword','diamond_armor','iron_armor','leather_armor','iron_pick','stone_pick','wooden_pick','bow','shield','tnt','potion_hp','wooden_sword'];
+  for(const pItem of priorities){
+    const recipe=RECIPES.find(r=>r.item===pItem);
+    if(!recipe)continue;
+    let canCraft=true;
+    for(const[mat,count]of Object.entries(recipe.cost)){
+      if(!hasItem(enemy,mat,count)){canCraft=false;break;}
+    }
+    if(canCraft){
+      for(const[mat,count]of Object.entries(recipe.cost))removeItem(enemy,mat,count);
+      addItem(enemy,recipe.item,recipe.count||1);
+      if(WEAPONS&&WEAPONS[recipe.item])enemy.weapon=recipe.item;
+      if(ARMOR&&ARMOR[recipe.item])enemy.armor=recipe.item;
+      if(PICKAXES&&PICKAXES[recipe.item])enemy.pickaxe=recipe.item;
+    }
+  }
+  if(hasItem(enemy,'bow',1)){
+    const arrowR=RECIPES.find(r=>r.item==='arrow');
+    if(arrowR){
+      let canCraft=true;
+      for(const[mat,count]of Object.entries(arrowR.cost)){
+        if(!hasItem(enemy,mat,count)){canCraft=false;break;}
+      }
+      if(canCraft){
+        for(const[mat,count]of Object.entries(arrowR.cost))removeItem(enemy,mat,count);
+        addItem(enemy,'arrow',arrowR.count||1);
+      }
+    }
+  }
+}
+
+function findNearestTarget(enemy){
+  // Find nearest living entity that isn't this enemy
+  const allTargets=[player,...enemies].filter(e=>e!==enemy&&!e.dead);
+  let best=null,bestD=Infinity;
+  for(const t of allTargets){
+    const d=Math.hypot(t.x-enemy.x,t.y-enemy.y);
+    if(d<bestD){bestD=d;best=t;}
+  }
+  return best;
+}
+
+function aiFightFor(enemy,dt){
+  const target=findNearestTarget(enemy);
+  if(!target)return;
+  const dist=Math.hypot(target.x-enemy.x,target.y-enemy.y);
+  const angle=Math.atan2(target.y-enemy.y,target.x-enemy.x);
+  enemy.angle=angle;
+
+  // Use potion when low
+  if(enemy.hp<enemy.maxHp*0.4&&hasItem(enemy,'potion_hp',1)){
+    removeItem(enemy,'potion_hp',1);
+    enemy.hp=Math.min(enemy.maxHp,enemy.hp+8);
+    spawnParticles(enemy.x,enemy.y,'#f44',5);
+  }
+  // Use TNT when close-ish
+  if(dist<TILE*6&&dist>TILE*2.5&&hasItem(enemy,'tnt',1)&&Math.random()<0.01){
+    removeItem(enemy,'tnt',1);
+    const tx=Math.floor((enemy.x+Math.cos(angle)*TILE*2)/TILE);
+    const ty=Math.floor((enemy.y+Math.sin(angle)*TILE*2)/TILE);
+    if(tx>=0&&ty>=0&&tx<mapW&&ty<mapH){
+      explodeTNT(tx,ty,enemy);
+    }
+  }
+  // Place blocks defensively
+  if(enemy.hp<enemy.maxHp*0.6&&hasItem(enemy,'stone',1)&&Math.random()<0.008){
+    const bx=Math.floor(enemy.x/TILE)+Math.round(Math.cos(angle+Math.PI));
+    const by=Math.floor(enemy.y/TILE)+Math.round(Math.sin(angle+Math.PI));
+    if(bx>=0&&by>=0&&bx<mapW&&by<mapH&&!SOLID[world[by][bx]]){
+      world[by][bx]=T.STONE;removeItem(enemy,'stone',1);
+    }
+  }
+
+  if(enemy.weapon&&WEAPONS[enemy.weapon].ranged&&dist>TILE*4&&dist<TILE*10){
+    if(enemy.attackCooldown<=0&&hasItem(enemy,'arrow',1)){
+      shootArrow(enemy);
+    }
+    const sx=Math.cos(angle+Math.PI/2)*enemy.speed*0.5;
+    const sy=Math.sin(angle+Math.PI/2)*enemy.speed*0.5;
+    const nx=enemy.x+sx,ny=enemy.y+sy;
+    if(canMove(nx,enemy.y,enemy))enemy.x=nx;
+    if(canMove(enemy.x,ny,enemy))enemy.y=ny;
+  }else{
+    if(dist>TILE*1.5){
+      const mx=Math.cos(angle)*enemy.speed,my=Math.sin(angle)*enemy.speed;
+      const nx=enemy.x+mx,ny=enemy.y+my;
+      if(canMove(nx,enemy.y,enemy))enemy.x=nx;
+      if(canMove(enemy.x,ny,enemy))enemy.y=ny;
+    }
+    if(enemy.weapon&&!WEAPONS[enemy.weapon].ranged&&enemy.attackCooldown<=0){
+      tryMeleeAttack(enemy,target);
+    }else if(!enemy.weapon&&dist<TILE*1.5&&enemy.attackCooldown<=0){
+      enemy.attackCooldown=0.5;
+      let dmg=2;
+      if(target.armor)dmg=Math.max(1,dmg-ARMOR[target.armor]*0.3);
+      target.hp-=dmg;target.flashTimer=0.1;
+      target.knockbackX=Math.cos(angle)*2;target.knockbackY=Math.sin(angle)*2;
+      sndHit();
+      if(target.hp<=0){onKill(enemy,target);}
+    }
+  }
+}
+
+function updateProjectiles(dt){
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];
+    p.x+=p.vx;p.y+=p.vy;
+    p.life-=dt;
+    // Check tile collision
+    const tx=Math.floor(p.x/TILE),ty=Math.floor(p.y/TILE);
+    if(tx<0||ty<0||tx>=mapW||ty>=mapH||SOLID[world[ty][tx]]||p.life<=0){
+      projectiles.splice(i,1);continue;
+    }
+    // Hit entity - check all entities except owner
+    const allTargets=[player,...enemies].filter(e=>e!==p.owner&&!e.dead);
+    let hit=false;
+    for(const target of allTargets){
+      const dist=Math.hypot(target.x-p.x,target.y-p.y);
+      if(dist<TILE*0.7){
+        let dmg=p.dmg;
+        if(target.armor)dmg=Math.max(1,dmg-ARMOR[target.armor]*0.3);
+        target.hp-=dmg;target.flashTimer=0.1;
+        const angle=Math.atan2(target.y-p.y,target.x-p.x);
+        target.knockbackX=Math.cos(angle)*p.kb;target.knockbackY=Math.sin(angle)*p.kb;
+        sndHit();
+        spawnParticles(target.x,target.y,'#f00',3);
+        if(target.hp<=0){onKill(p.owner,target);}
+        projectiles.splice(i,1);
+        hit=true;
+        break;
+      }
+    }
+    if(hit)continue;
+  }
+}
+
+function updatePickups(dt){
+  for(const p of pickups){
+    if(p.isAnimal&&p.hp>0){
+      // Wander
+      if(Math.random()<0.02){p.vx=(Math.random()-0.5)*0.5;p.vy=(Math.random()-0.5)*0.5;}
+      const nx=p.x+p.vx,ny=p.y+p.vy;
+      const tx=Math.floor(nx/TILE),ty=Math.floor(ny/TILE);
+      if(tx>=0&&ty>=0&&tx<mapW&&ty<mapH&&!SOLID[world[ty][tx]]){p.x=nx;p.y=ny;}
+      else{p.vx=-p.vx;p.vy=-p.vy;}
+      // Flee from player
+      const dist=Math.hypot(player.x-p.x,player.y-p.y);
+      if(dist<TILE*4){
+        const angle=Math.atan2(p.y-player.y,p.x-player.x);
+        p.vx=Math.cos(angle)*0.8;p.vy=Math.sin(angle)*0.8;
+      }
+    }
+  }
+}
+
+function spawnParticles(x,y,color,count){
+  for(let i=0;i<count;i++){
+    particles.push({
+      x,y,vx:(Math.random()-0.5)*3,vy:(Math.random()-0.5)*3,
+      life:0.5+Math.random()*0.3,color,size:2+Math.random()*2,
+    });
+  }
+}
+
+function updateParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx;p.y+=p.vy;p.life-=dt;p.size*=0.97;
+    if(p.life<=0)particles.splice(i,1);
+  }
+}
+
+// Crafting UI
+function toggleCrafting(){
+  craftingOpen=!craftingOpen;
+  document.getElementById('crafting-panel').style.display=craftingOpen?'block':'none';
+  if(craftingOpen)updateCraftingUI();
+}
+
+function updateCraftingUI(){
+  // Inventory
+  const grid=document.getElementById('inv-grid');
+  grid.innerHTML='';
+  for(const[item,count]of Object.entries(player.inventory)){
+    const slot=document.createElement('div');
+    slot.className='inv-slot'+(selectedInvItem===item?' selected':'');
+    slot.innerHTML=`<span class="icon">${ITEM_ICONS[item]||'?'}</span><span class="count">${count}</span><span class="label">${ITEM_LABELS[item]||item}</span>`;
+    slot.title=(ITEM_LABELS[item]||item)+' x'+count+' (click to select)';
+    slot.addEventListener('click',()=>{
+      if(selectedInvItem===item){selectedInvItem=null;}
+      else{selectedInvItem=item;}
+      updateCraftingUI();
+    });
+    grid.appendChild(slot);
+  }
+
+  // Hotbar slots in crafting panel
+  const hbRow=document.getElementById('hotbar-row');
+  hbRow.innerHTML='';
+  for(let i=0;i<9;i++){
+    const hslot=document.createElement('div');
+    hslot.className='hotbar-slot';
+    const hItem=player.hotbar[i];
+    let inner=`<span class="slot-num">${i+1}</span>`;
+    if(hItem&&player.inventory[hItem]){
+      inner+=`<span class="icon">${ITEM_ICONS[hItem]||'?'}</span><span class="label">${ITEM_LABELS[hItem]||hItem}</span>`;
+    }
+    hslot.innerHTML=inner;
+    hslot.title=hItem?`Slot ${i+1}: ${ITEM_LABELS[hItem]||hItem} (click to assign/clear)`:`Slot ${i+1}: empty`;
+    hslot.addEventListener('click',()=>{
+      if(selectedInvItem){
+        // Remove from other hotbar slot if already assigned
+        for(let j=0;j<9;j++){if(player.hotbar[j]===selectedInvItem)player.hotbar[j]='';}
+        player.hotbar[i]=selectedInvItem;
+        if(WEAPONS[selectedInvItem])player.weapon=selectedInvItem;
+        selectedInvItem=null;
+      }else if(hItem){
+        // Clear this slot
+        player.hotbar[i]='';
+      }
+      updateCraftingUI();
+    });
+    hbRow.appendChild(hslot);
+  }
+
+  // Recipes
+  const list=document.getElementById('recipe-list');
+  list.innerHTML='';
+  for(const recipe of RECIPES){
+    const div=document.createElement('div');
+    let canCraft=true;
+    let costHtml='';
+    for(const[mat,count]of Object.entries(recipe.cost)){
+      const has=player.inventory[mat]||0;
+      const cls=has>=count?'has':'need';
+      costHtml+=`<span class="${cls}">${ITEM_ICONS[mat]||''} ${ITEM_LABELS[mat]||mat}: ${has}/${count}</span> `;
+      if(has<count)canCraft=false;
+    }
+    div.className=`recipe-item ${canCraft?'craftable':'not-craftable'}`;
+    div.innerHTML=`<span class="r-icon">${ITEM_ICONS[recipe.item]||'?'}</span><div class="r-info"><div class="r-name">${recipe.name}</div><div class="r-cost">${costHtml}</div></div>`;
+    if(canCraft){
+      div.addEventListener('click',()=>{
+        for(const[mat,count]of Object.entries(recipe.cost))removeItem(player,mat,count);
+        addItem(player,recipe.item,recipe.count||1);
+        sndCraft();
+        updateCraftingUI();
+      });
+    }
+    list.appendChild(div);
+  }
+}
+
+// Draw HUD
+function drawHUD(){
+  // Timer only - no health/stats shown
+  const mins=Math.floor(timer/60),secs=Math.floor(timer%60);
+  ctx.fillStyle='#fff';ctx.font='bold 18px Courier New';ctx.textAlign='center';
+  ctx.fillText(`${prepPhase?'PREP':'FIGHT'} ${mins}:${secs.toString().padStart(2,'0')}`,W/2,25);
+
+  // Lives left (just icons, no numbers)
+  ctx.fillStyle='#ff0';ctx.font='bold 14px Courier New';ctx.textAlign='left';
+  let livesStr='';
+  for(let i=0;i<player.lives;i++)livesStr+='\u2764 ';
+  ctx.fillText(livesStr,10,22);
+
+  // Mode info
+  ctx.textAlign='right';ctx.font='14px Courier New';
+  ctx.fillStyle='#aaa';
+  const biome=getBiomeName();
+  ctx.fillText(gameMode.toUpperCase()+' | '+biome,W-15,20);
+
+  // Scoreboard - just names, lives, alive/dead (no HP numbers)
+  const allEnts=[player,...enemies];
+  const sbX=W-150,sbY=35;
+  ctx.fillStyle='rgba(10,5,20,0.7)';
+  ctx.fillRect(sbX,sbY,140,allEnts.length*20+10);
+  ctx.font='bold 11px Courier New';ctx.textAlign='left';
+  for(let i=0;i<allEnts.length;i++){
+    const e=allEnts[i];
+    ctx.fillStyle=e.dead?'#555':e.color;
+    let hearts='';for(let j=0;j<e.lives;j++)hearts+='\u2764';
+    const status=e.dead?'OUT':hearts;
+    ctx.fillText(`${e.name} ${status}`,sbX+6,sbY+16+i*20);
+  }
+
+  // Kill feed
+  ctx.textAlign='center';ctx.font='bold 14px Courier New';
+  for(let i=killFeed.length-1;i>=0;i--){
+    killFeed[i].timer-=dt;
+    if(killFeed[i].timer<=0){killFeed.splice(i,1);continue;}
+    const alpha=Math.min(1,killFeed[i].timer);
+    ctx.fillStyle=`rgba(255,255,100,${alpha})`;
+    ctx.fillText(killFeed[i].text,W/2,50+i*20);
+  }
+
+  // Hotbar - bigger with labels
+  const hbSlotW=52,hbSlotH=52;
+  const hbW=9*hbSlotW+8*3;
+  const hbX=(W-hbW)/2;
+  const hbY=H-hbSlotH-18;
+  // Background bar
+  ctx.fillStyle='rgba(10,5,20,0.75)';
+  ctx.fillRect(hbX-5,hbY-5,hbW+10,hbSlotH+24);
+  for(let i=0;i<9;i++){
+    const x=hbX+i*(hbSlotW+3);
+    ctx.fillStyle=i===selectedSlot?'rgba(229,69,96,0.5)':'rgba(30,20,50,0.8)';
+    ctx.fillRect(x,hbY,hbSlotW,hbSlotH);
+    ctx.strokeStyle=i===selectedSlot?'#e94560':'#533483';ctx.lineWidth=i===selectedSlot?3:1.5;
+    ctx.strokeRect(x,hbY,hbSlotW,hbSlotH);
+    const item=player.hotbar[i];
+    if(item&&player.inventory[item]){
+      // Icon
+      ctx.fillStyle='#fff';ctx.font='22px serif';ctx.textAlign='center';
+      ctx.fillText(ITEM_ICONS[item]||'?',x+hbSlotW/2,hbY+24);
+      // Label
+      ctx.fillStyle='#ccc';ctx.font='bold 8px Courier New';
+      ctx.fillText(ITEM_LABELS[item]||item,x+hbSlotW/2,hbY+37);
+      // Count
+      ctx.fillStyle='#ff0';ctx.font='bold 11px Courier New';
+      ctx.fillText('x'+player.inventory[item],x+hbSlotW/2,hbY+49);
+    }
+    // Slot number
+    ctx.fillStyle='rgba(200,200,200,0.4)';ctx.font='9px Courier New';ctx.textAlign='center';
+    ctx.fillText(i+1,x+7,hbY+10);
+  }
+  ctx.textAlign='left';
+
+  // Controls hint
+  ctx.fillStyle='rgba(255,255,255,0.5)';ctx.font='11px Courier New';
+  ctx.fillText('[E] Craft/Inventory   [LClick] Mine/Attack   [RClick] Place Block   [Space] Use Item   [1-9] Hotbar',10,hbY-8);
+}
+
+function getBiomeName(){
+  const px=Math.floor(player.x/TILE),py=Math.floor(player.y/TILE);
+  if(gameMode==='arena')return'Arena';
+  if(gameMode==='siege')return px<40?'Gathering Grounds':'Castle';
+  const hw=mapW/2,hh=mapH/2;
+  if(px<hw&&py<hh)return'Forest';
+  if(px>=hw&&py<hh)return'Mines';
+  if(px<hw&&py>=hh)return'Plains';
+  return'Savanna';
+}
+
+// Main render
+function render(){
+  ctx.fillStyle='#2a2a2a';
+  ctx.fillRect(0,0,W,H);
+
+  // Camera
+  camera.x=player.x-W/2;
+  camera.y=player.y-H/2;
+  camera.x=Math.max(0,Math.min(mapW*TILE-W,camera.x));
+  camera.y=Math.max(0,Math.min(mapH*TILE-H,camera.y));
+
+  // Draw tiles
+  const startTX=Math.floor(camera.x/TILE);
+  const startTY=Math.floor(camera.y/TILE);
+  const endTX=Math.min(mapW-1,startTX+cols);
+  const endTY=Math.min(mapH-1,startTY+rows);
+
+  for(let ty=startTY;ty<=endTY;ty++){
+    for(let tx=startTX;tx<=endTX;tx++){
+      if(ty<0||tx<0)continue;
+      // Fog of war in prep phase - only show player's quadrant
+      if(prepPhase&&gameMode==='royale'&&(tx>=mapW/2||ty>=mapH/2))continue;
+      if(prepPhase&&gameMode==='siege'&&tx>40)continue;
+      const sx=tx*TILE-camera.x,sy=ty*TILE-camera.y;
+      drawTile(tx,ty,world[ty][tx],sx,sy);
+    }
+  }
+
+  // Fog of war fill - cover quadrants player can't see
+  if(prepPhase){
+    ctx.fillStyle='rgba(10,5,20,0.92)';
+    if(gameMode==='royale'){
+      const fogX=Math.floor(mapW/2)*TILE-camera.x;
+      const fogY=Math.floor(mapH/2)*TILE-camera.y;
+      // Right half (top-right + bottom-right)
+      if(fogX<W)ctx.fillRect(fogX,0,W-fogX,H);
+      // Bottom-left quadrant
+      if(fogY<H)ctx.fillRect(0,fogY,Math.max(0,fogX),H-fogY);
+    }else if(gameMode==='siege'){
+      const fogX=40*TILE-camera.x;
+      if(fogX<W)ctx.fillRect(fogX,0,W-fogX,H);
+    }
+  }
+
+  // Mining highlight
+  if(miningTarget){
+    const sx=miningTarget.x*TILE-camera.x,sy=miningTarget.y*TILE-camera.y;
+    ctx.strokeStyle='#ff0';ctx.lineWidth=2;ctx.strokeRect(sx,sy,TILE,TILE);
+    // Crack effect
+    const mt=MINEABLE[world[miningTarget.y][miningTarget.x]];
+    if(mt){
+      const mineSpd=player.pickaxe?PICKAXES[player.pickaxe]:1;
+      const pct=miningProgress/(mt.time/mineSpd);
+      if(pct>0.3){
+        ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(sx+4,sy+2);ctx.lineTo(sx+TILE/2,sy+TILE/2);ctx.lineTo(sx+TILE-3,sy+4);ctx.stroke();
+      }
+      if(pct>0.6){
+        ctx.beginPath();ctx.moveTo(sx+2,sy+TILE-3);ctx.lineTo(sx+TILE/2,sy+TILE/2);ctx.lineTo(sx+TILE-2,sy+TILE-4);ctx.stroke();
+      }
+    }
+  }
+
+  // Pickups
+  for(const p of pickups)drawPickup(p);
+
+  // Projectiles
+  ctx.fillStyle='#8B4513';
+  for(const p of projectiles){
+    const sx=p.x-camera.x,sy=p.y-camera.y;
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(Math.atan2(p.vy,p.vx));
+    ctx.fillRect(-4,-1,8,2);
+    ctx.fillStyle='#aaa';ctx.fillRect(-4,-2,2,4); // arrowhead
+    ctx.restore();
+    ctx.fillStyle='#8B4513';
+  }
+
+  // Entities
+  drawEntity(player);
+  for(const e of enemies){
+    if(gameMode==='siege'){
+      drawEntity(e); // Always draw king in siege
+    }else if(!prepPhase||gameMode==='arena'){
+      drawEntity(e);
+    }
+  }
+
+  // Particles
+  for(const p of particles){
+    ctx.fillStyle=p.color;
+    ctx.globalAlpha=p.life*2;
+    ctx.fillRect(p.x-camera.x-p.size/2,p.y-camera.y-p.size/2,p.size,p.size);
+  }
+  ctx.globalAlpha=1;
+
+  // HUD
+  drawHUD();
+}
+
+// Timer and phase transitions
+function updateTimer(dt){
+  timer-=dt;
+  if(timer<=0){
+    if(prepPhase){
+      prepPhase=false;
+      timer=fightTime;
+      // Explode + walls in royale
+      if(gameMode==='royale'){
+        const wallX=Math.floor(mapW/2);
+        const wallY=Math.floor(mapH/2);
+        // Remove vertical wall
+        for(let y=0;y<mapH;y++){
+          if(world[y][wallX]===T.WALL)world[y][wallX]=T.DIRT;
+          if(wallX-1>=0&&world[y][wallX-1]===T.WALL)world[y][wallX-1]=T.DIRT;
+        }
+        // Remove horizontal wall
+        for(let x=0;x<mapW;x++){
+          if(world[wallY][x]===T.WALL)world[wallY][x]=T.DIRT;
+          if(wallY-1>=0&&world[wallY-1][x]===T.WALL)world[wallY-1][x]=T.DIRT;
+        }
+        sndExplosion();
+        // Particles along both walls
+        for(let y=0;y<mapH;y+=3)spawnParticles(wallX*TILE,y*TILE,'#ff8800',3);
+        for(let x=0;x<mapW;x+=3)spawnParticles(x*TILE,wallY*TILE,'#ff8800',3);
+      }
+      // Siege: wall already has gates
+      if(gameMode==='siege'){
+        sndExplosion();
+      }
+    }else{
+      // Time's up - determine winner by most HP
+      const allEnts=[player,...enemies].filter(e=>!e.dead);
+      if(allEnts.length>1){
+        allEnts.sort((a,b)=>b.hp-a.hp);
+        // Kill everyone except the one with most HP
+        for(let i=1;i<allEnts.length;i++){
+          onKill(allEnts[0],allEnts[i]);
+        }
+      }
+    }
+  }
+}
+
+// Main loop
+function gameLoop(time){
+  if(gameState!=='playing')return;
+  dt=Math.min((time-lastTime)/1000,0.05);
+  lastTime=time;
+  animFrame++;
+
+  updateTimer(dt);
+  updatePlayer(dt);
+  updateAllEnemies(dt);
+  updateProjectiles(dt);
+  updatePickups(dt);
+  updateParticles(dt);
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+// Input handlers
+document.addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  keys[k]=true;
+  if(k==='e'&&gameState==='playing'){
+    e.preventDefault();
+    toggleCrafting();
+  }
+  if(k>='1'&&k<='9'){
+    selectedSlot=parseInt(k)-1;
+    const item=player.hotbar[selectedSlot];
+    if(item&&WEAPONS[item])player.weapon=item;
+  }
+  // Use potion from hotbar
+  if(k===' '&&gameState==='playing'){
+    const item=player.hotbar[selectedSlot];
+    if(item==='potion_hp'&&hasItem(player,'potion_hp',1)){
+      removeItem(player,'potion_hp',1);
+      player.hp=Math.min(player.maxHp,player.hp+8);
+      playSound(600,0.2,'sine',0.15);
+    }else if(item==='potion_speed'&&hasItem(player,'potion_speed',1)){
+      removeItem(player,'potion_speed',1);
+      player.speedBoost=10;
+      playSound(700,0.2,'sine',0.15);
+    }else if(item==='tnt'&&hasItem(player,'tnt',1)){
+      removeItem(player,'tnt',1);
+      const tx=Math.floor(player.x/TILE+Math.cos(player.angle)*3);
+      const ty=Math.floor(player.y/TILE+Math.sin(player.angle)*3);
+      explodeTNT(tx,ty,player);
+    }
+  }
+});
+document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+canvas.addEventListener('mousedown',e=>{
+  if(e.button===0)mouse.down=true;
+  if(e.button===2)mouse.right=true;
+  // Left click attack with bow
+  if(e.button===0&&gameState==='playing'&&!craftingOpen){
+    if(player.weapon&&WEAPONS[player.weapon]&&WEAPONS[player.weapon].ranged&&player.attackCooldown<=0){
+      shootArrow(player);
+    }else if(player.weapon&&player.attackCooldown<=0){
+      for(const e of enemies){if(!e.dead){tryMeleeAttack(player,e);if(player.attackCooldown>0)break;}}
+    }
+  }
+  // Resume audio context
+  if(audioCtx.state==='suspended')audioCtx.resume();
+});
+canvas.addEventListener('mouseup',e=>{
+  if(e.button===0)mouse.down=false;
+  if(e.button===2)mouse.right=false;
+});
+canvas.addEventListener('mousemove',e=>{
+  const rect=canvas.getBoundingClientRect();
+  mouse.x=e.clientX-rect.left;mouse.y=e.clientY-rect.top;
+});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+
+// Prevent scrolling
+window.addEventListener('keydown',e=>{
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();
+});
+</script>
+</body>
+</html>
