@@ -79,6 +79,22 @@ h2 { font-size: 18px; color: #b3d9ff; font-weight: normal; margin-bottom: 18px; 
 .btn.diff.active { background: linear-gradient(135deg, #ff7f50, #d63300); border-color: #ffd9c2; box-shadow: 0 4px 0 #771c00; }
 .label { font-size: 13px; color: #b3d9ff; margin: 6px 0 4px; }
 
+.color-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.color-swatch {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 2px solid #777;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.color-swatch:hover { transform: scale(1.12); }
+.color-swatch.active {
+    border-color: #ffd54f;
+    box-shadow: 0 0 10px rgba(255,213,79,0.7);
+    transform: scale(1.18);
+}
+
 .score-line { font-size: 22px; margin: 4px 0; }
 .winner { font-size: 30px; font-weight: bold; margin: 12px 0; }
 .winner.p1 { color: #ff5d5d; text-shadow: 0 0 16px rgba(255,93,93,0.55); }
@@ -116,6 +132,8 @@ h2 { font-size: 18px; color: #b3d9ff; font-weight: normal; margin-bottom: 18px; 
                 <p>Arrow keys — Move &amp; aim<br>Enter — Throw<br>Right-Shift — Build fort</p>
             </div>
         </div>
+        <div class="label">Your color (Player 1):</div>
+        <div class="row color-row" id="colorPicker"></div>
         <div class="label">Number of bots:</div>
         <div class="row">
             <button class="btn diff bots" data-bots="1">1</button>
@@ -246,6 +264,7 @@ const POWERUP_COLORS = {
 // ===== State =====
 let state = null;
 let botCount = 3;
+let p1ColorIdx = 0;          // chosen palette slot for Player 1 (default red)
 
 // Color palette for bots (P1=red, P2=blue, then a varied palette)
 const PLAYER_PALETTE = [
@@ -328,13 +347,19 @@ function makeState(mode, difficulty, bots) {
     // Build the roster: humans first, then bots. Spawn around the arena perimeter.
     const humans = mode; // 1 or 2
     const total = humans + bots;
+    // Palette assignment: P1 uses their picked color; everyone else cycles
+    // through the remaining palette entries so colors don't collide.
+    const paletteOrder = [p1ColorIdx];
+    for (let i = 0; i < PLAYER_PALETTE.length; i++) {
+        if (i !== p1ColorIdx) paletteOrder.push(i);
+    }
     const players = [];
     for (let i = 0; i < total; i++) {
         const ang = (i / total) * Math.PI * 2 - Math.PI / 2;
         const sx = arena.x + arena.w / 2 + Math.cos(ang) * (arena.w * 0.42);
         const sy = arena.y + arena.h / 2 + Math.sin(ang) * (arena.h * 0.42);
         const isBot = i >= humans;
-        players.push(makePlayer(i, sx, sy, isBot));
+        players.push(makePlayer(i, sx, sy, isBot, paletteOrder[i % paletteOrder.length]));
     }
 
     return {
@@ -365,8 +390,9 @@ function computeArena() {
     return { x, y, w, h };
 }
 
-function makePlayer(idx, x, y, isBot) {
-    const palette = PLAYER_PALETTE[idx % PLAYER_PALETTE.length];
+function makePlayer(idx, x, y, isBot, palIdx) {
+    if (palIdx === undefined || palIdx === null) palIdx = idx;
+    const palette = PLAYER_PALETTE[palIdx % PLAYER_PALETTE.length];
     // P1 keys (idx 0), P2 keys (idx 1 only if human). Bots have no keys.
     let keys = null;
     if (idx === 0 && !isBot) {
@@ -501,6 +527,24 @@ document.querySelectorAll('.btn.diff').forEach(b => {
         else currentDifficulty = b.dataset.diff;
     });
 });
+// Build the color picker swatches from the palette
+(function buildColorPicker() {
+    const pickerEl = document.getElementById('colorPicker');
+    PLAYER_PALETTE.forEach((pal, i) => {
+        const sw = document.createElement('button');
+        sw.className = 'color-swatch';
+        sw.style.background = `linear-gradient(135deg, ${pal.coat}, ${pal.dark})`;
+        sw.title = pal.coat;
+        if (i === p1ColorIdx) sw.classList.add('active');
+        sw.addEventListener('click', () => {
+            p1ColorIdx = i;
+            pickerEl.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+            sw.classList.add('active');
+        });
+        pickerEl.appendChild(sw);
+    });
+})();
+
 document.getElementById('start1P').addEventListener('click', () => startGame(1));
 document.getElementById('start2P').addEventListener('click', () => startGame(2));
 document.getElementById('rematchBtn').addEventListener('click', () => startGame(state.mode));
@@ -2200,11 +2244,11 @@ function drawPlayerBody(x, y, p, defeated) {
     ctx.beginPath();
     ctx.arc(x, y - PLAYER_R * 0.95, PLAYER_R * 0.6, 0, Math.PI * 2);
     ctx.fill();
-    // Cheek tint
+    // Subtle cheek tint (toned down)
     if (!flash) {
-        ctx.fillStyle = 'rgba(220,90,90,0.45)';
-        ctx.beginPath(); ctx.arc(x - 4, y - PLAYER_R * 0.85, 2.5, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(x + 4, y - PLAYER_R * 0.85, 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(220,120,110,0.22)';
+        ctx.beginPath(); ctx.arc(x - 4, y - PLAYER_R * 0.83, 1.8, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 4, y - PLAYER_R * 0.83, 1.8, 0, Math.PI * 2); ctx.fill();
     }
 
     // Eyes
@@ -2229,24 +2273,29 @@ function drawPlayerBody(x, y, p, defeated) {
         ctx.beginPath(); ctx.arc(x + 4 + eyeOffX, y - PLAYER_R + eyeOffY, 1.2, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Hat
+    // Beanie — domed top, no Santa-style white fur trim
     ctx.fillStyle = flash ? '#fff' : p.hatColor;
     ctx.beginPath();
-    ctx.ellipse(x, y - PLAYER_R * 1.4, PLAYER_R * 0.55, PLAYER_R * 0.4, 0, Math.PI, 0);
+    ctx.ellipse(x, y - PLAYER_R * 1.34, PLAYER_R * 0.62, PLAYER_R * 0.5, 0, Math.PI, 0);
     ctx.fill();
-    // Hat brim
-    ctx.fillStyle = flash ? '#fff' : '#fff';
-    ctx.beginPath();
-    ctx.ellipse(x, y - PLAYER_R * 1.18, PLAYER_R * 0.65, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Pom-pom
+    // Subtle highlight on the dome
+    if (!flash) {
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.beginPath();
+        ctx.ellipse(x - PLAYER_R * 0.18, y - PLAYER_R * 1.45, PLAYER_R * 0.22, PLAYER_R * 0.28, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    // Cuff/band: darker version of hat color, with a thin scarf-color stripe
+    ctx.fillStyle = flash ? '#ddd' : p.coatDark;
+    ctx.fillRect(x - PLAYER_R * 0.6, y - PLAYER_R * 1.18, PLAYER_R * 1.2, 5);
+    if (!flash) {
+        ctx.fillStyle = p.scarfColor;
+        ctx.fillRect(x - PLAYER_R * 0.6, y - PLAYER_R * 1.16, PLAYER_R * 1.2, 1.4);
+    }
+    // Tiny pom-pom (much smaller than before so it doesn't read as Santa)
     ctx.fillStyle = flash ? '#fff' : p.pomColor;
     ctx.beginPath();
-    ctx.arc(x, y - PLAYER_R * 1.6, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.beginPath();
-    ctx.arc(x - 1, y - PLAYER_R * 1.7, 1.5, 0, Math.PI * 2);
+    ctx.arc(x + PLAYER_R * 0.05, y - PLAYER_R * 1.55, 2.5, 0, Math.PI * 2);
     ctx.fill();
 
     // P# tag
