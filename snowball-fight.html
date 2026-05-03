@@ -206,7 +206,7 @@ const START_AMMO = 5;
 const PLAYER_HP = 6;
 const FORT_HP = 4;
 const SNOW_PILE_R = 22;
-const PLAYER_SPEED = 220;
+const PLAYER_SPEED = 150;
 const SNOWBALL_SPEED = 520;
 const THROW_COOLDOWN = 0.45;
 const BUILD_COOLDOWN = 0.4;
@@ -1852,17 +1852,28 @@ function drawHUD() {
         }
     });
 
-    // Aim reticle for P1 (mouse mode)
+    // Aim reticle for P1 (mouse mode) — black with a faint white halo for contrast
     if (mouse.inside && state.players[0] && state.players[0].alive && !state.players[0].isBot) {
+        const drawReticle = () => {
+            ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 11, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(mouse.x - 16, mouse.y); ctx.lineTo(mouse.x - 4, mouse.y);
+            ctx.moveTo(mouse.x + 4, mouse.y); ctx.lineTo(mouse.x + 16, mouse.y);
+            ctx.moveTo(mouse.x, mouse.y - 16); ctx.lineTo(mouse.x, mouse.y - 4);
+            ctx.moveTo(mouse.x, mouse.y + 4); ctx.lineTo(mouse.x, mouse.y + 16);
+            ctx.stroke();
+        };
+        // White halo (so the black reticle stays visible over dark trees/rocks)
         ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 10, 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(mouse.x - 14, mouse.y); ctx.lineTo(mouse.x - 4, mouse.y);
-        ctx.moveTo(mouse.x + 4, mouse.y); ctx.lineTo(mouse.x + 14, mouse.y);
-        ctx.moveTo(mouse.x, mouse.y - 14); ctx.lineTo(mouse.x, mouse.y - 4);
-        ctx.moveTo(mouse.x, mouse.y + 4); ctx.lineTo(mouse.x, mouse.y + 14);
-        ctx.stroke();
+        ctx.lineWidth = 4;
+        drawReticle();
+        // Black foreground
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        drawReticle();
+        // Tiny center dot
+        ctx.fillStyle = '#000';
+        ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 1.6, 0, Math.PI * 2); ctx.fill();
     }
 }
 
