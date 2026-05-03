@@ -924,7 +924,9 @@ function aiCommand(p, dt) {
         }
         if (opp) {
             p.ai.targetIdx = opp.idx;
-            p.ai.targetTimer = 2.5 + Math.random() * 1.8;
+            // Commit to a target for ~10 seconds (range 8-12s) so bots
+            // really stop flip-flopping between equidistant enemies.
+            p.ai.targetTimer = 8 + Math.random() * 4;
         }
     }
     if (!opp) return out;
