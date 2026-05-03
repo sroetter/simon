@@ -272,7 +272,46 @@ let state = null;
 function makeState(mode, difficulty, bots) {
     const arena = computeArena();
     const bushes = [];
+    const rocks = [];
+    const logs = [];
     const decorations = [];
+
+    // Big rocks — large landmark obstacles you can dodge around. Pretty
+    // sparse so they read as distinct landmarks rather than walls.
+    const rockCount = Math.round((arena.w * arena.h) / 240000);
+    for (let i = 0; i < rockCount; i++) {
+        let x, y, ok;
+        const rx = 40 + Math.random() * 28;
+        const ry = rx * (0.6 + Math.random() * 0.2);
+        for (let tries = 0; tries < 30; tries++) {
+            x = arena.x + 140 + Math.random() * (arena.w - 280);
+            y = arena.y + 140 + Math.random() * (arena.h - 280);
+            ok = true;
+            for (const r of rocks) if (Math.hypot(x - r.x, y - r.y) < r.rx + rx + 60) { ok = false; break; }
+            if (ok) break;
+        }
+        if (ok) rocks.push({ x, y, rx, ry, seed: Math.random(), bumps: Math.floor(Math.random() * 3) + 2 });
+    }
+
+    // Fallen logs — long thin obstacles, mix horizontal & vertical, force
+    // you to commit to going around one side.
+    const logCount = Math.round((arena.w * arena.h) / 320000);
+    for (let i = 0; i < logCount; i++) {
+        let x, y, ok;
+        const horizontal = Math.random() < 0.5;
+        const length = 120 + Math.random() * 80;
+        const w = horizontal ? length : 22;
+        const h = horizontal ? 22 : length;
+        for (let tries = 0; tries < 30; tries++) {
+            x = arena.x + 120 + Math.random() * (arena.w - 240);
+            y = arena.y + 120 + Math.random() * (arena.h - 240);
+            ok = true;
+            for (const r of rocks) if (Math.hypot(x - r.x, y - r.y) < r.rx + 80) { ok = false; break; }
+            for (const l of logs) if (Math.hypot(x - l.x, y - l.y) < 200) { ok = false; break; }
+            if (ok) break;
+        }
+        if (ok) logs.push({ x, y, w, h, horizontal, seed: Math.random() });
+    }
 
     // Sparser bushes — runners shouldn't have endless cover.
     const bushCount = Math.round((arena.w * arena.h) / 90000);
@@ -282,8 +321,15 @@ function makeState(mode, difficulty, bots) {
             x = arena.x + 80 + Math.random() * (arena.w - 160);
             y = arena.y + 80 + Math.random() * (arena.h - 160);
             ok = true;
-            // Larger min spacing (180 vs 90) so they don't form clusters
             for (const b of bushes) if (Math.hypot(x - b.x, y - b.y) < 180) { ok = false; break; }
+            if (!ok) continue;
+            for (const r of rocks) if (Math.hypot(x - r.x, y - r.y) < r.rx + 50) { ok = false; break; }
+            if (!ok) continue;
+            for (const l of logs) {
+                const dx = Math.abs(x - l.x) - l.w / 2;
+                const dy = Math.abs(y - l.y) - l.h / 2;
+                if (Math.max(dx, dy) < 40) { ok = false; break; }
+            }
             if (ok) break;
         }
         if (ok) bushes.push({ x, y, r: 14 + Math.random() * 6, sway: Math.random() * Math.PI * 2 });
@@ -351,7 +397,7 @@ function makeState(mode, difficulty, bots) {
         gameEnded: false,
         winner: -1,
         time: 0,
-        bushes, decorations, leaves,
+        bushes, rocks, logs, decorations, leaves,
         players,
         powerups: [],
         powerupSpawnTimer: 5,
@@ -703,7 +749,7 @@ function updatePlayer(p, dt) {
         }
     }
 
-    // Move with collision against bushes
+    // Move with collision against bushes / rocks / logs
     let nx = p.x + p.vx * dt;
     let ny = p.y + p.vy * dt;
     for (const b of state.bushes) {
@@ -713,6 +759,35 @@ function updatePlayer(p, dt) {
             const d = Math.hypot(dx, dy) || 1;
             nx = b.x + (dx / d) * minD;
             ny = b.y + (dy / d) * minD;
+        }
+    }
+    for (const r of state.rocks) {
+        // Treat rock as ellipse; expand by player radius and resolve along axis
+        const ex = r.rx + PLAYER_R - 4;
+        const ey = r.ry + PLAYER_R - 4;
+        const dx = nx - r.x, dy = ny - r.y;
+        // Normalized ellipse distance
+        const v = (dx * dx) / (ex * ex) + (dy * dy) / (ey * ey);
+        if (v < 1) {
+            // Push out along the gradient direction
+            const nrm = 1 / Math.sqrt(v) || 1;
+            nx = r.x + dx * nrm;
+            ny = r.y + dy * nrm;
+        }
+    }
+    for (const l of state.logs) {
+        const halfW = l.w / 2 + PLAYER_R - 4;
+        const halfH = l.h / 2 + PLAYER_R - 4;
+        const dx = nx - l.x, dy = ny - l.y;
+        if (Math.abs(dx) < halfW && Math.abs(dy) < halfH) {
+            // Find smallest push axis
+            const overlapX = halfW - Math.abs(dx);
+            const overlapY = halfH - Math.abs(dy);
+            if (overlapX < overlapY) {
+                nx = l.x + Math.sign(dx) * halfW;
+            } else {
+                ny = l.y + Math.sign(dy) * halfH;
+            }
         }
     }
     p.x = nx; p.y = ny;
@@ -1127,6 +1202,129 @@ function drawFootprints() {
         ctx.fill();
     });
     ctx.globalAlpha = 1;
+}
+
+function drawRock(r) {
+    // Big shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.42)';
+    ctx.beginPath();
+    ctx.ellipse(r.x + 8, r.y + r.ry * 0.55, r.rx * 1.05, r.ry * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Body
+    const grad = ctx.createRadialGradient(r.x - r.rx * 0.3, r.y - r.ry * 0.5, 4, r.x, r.y, r.rx);
+    grad.addColorStop(0, '#a4a4a4');
+    grad.addColorStop(0.55, '#6e6e6e');
+    grad.addColorStop(1, '#3a3a3a');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.ellipse(r.x, r.y, r.rx, r.ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Sub-bumps
+    ctx.fillStyle = '#888';
+    for (let i = 0; i < r.bumps; i++) {
+        const a = r.seed * 13 + i * 1.7;
+        const ox = Math.cos(a) * r.rx * 0.45;
+        const oy = Math.sin(a) * r.ry * 0.35 - r.ry * 0.3;
+        ctx.beginPath();
+        ctx.ellipse(r.x + ox, r.y + oy, r.rx * (0.20 + (a % 1) * 0.1), r.ry * 0.18, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    // Moss patch on top
+    ctx.fillStyle = 'rgba(80,140,55,0.55)';
+    ctx.beginPath();
+    ctx.ellipse(r.x - r.rx * 0.2, r.y - r.ry * 0.55, r.rx * 0.45, r.ry * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(80,140,55,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(r.x + r.rx * 0.25, r.y - r.ry * 0.45, r.rx * 0.25, r.ry * 0.13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Outline / crack lines
+    ctx.strokeStyle = 'rgba(20,20,20,0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(r.x - r.rx * 0.5, r.y); ctx.lineTo(r.x + r.rx * 0.2, r.y - r.ry * 0.2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(r.x + r.rx * 0.1, r.y + r.ry * 0.1);
+    ctx.lineTo(r.x + r.rx * 0.5, r.y + r.ry * 0.4);
+    ctx.stroke();
+    ctx.strokeStyle = '#1f1f1f';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(r.x, r.y, r.rx, r.ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+}
+
+function drawLog(l) {
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.36)';
+    ctx.fillRect(l.x - l.w / 2 + 4, l.y - l.h / 2 + 6, l.w, l.h);
+    // Body — wood gradient
+    const grad = l.horizontal
+        ? ctx.createLinearGradient(0, l.y - l.h / 2, 0, l.y + l.h / 2)
+        : ctx.createLinearGradient(l.x - l.w / 2, 0, l.x + l.w / 2, 0);
+    grad.addColorStop(0, '#7a4f2a');
+    grad.addColorStop(0.5, '#a87045');
+    grad.addColorStop(1, '#5e3818');
+    ctx.fillStyle = grad;
+    ctx.fillRect(l.x - l.w / 2, l.y - l.h / 2, l.w, l.h);
+    // Bark grain stripes
+    ctx.strokeStyle = 'rgba(60,40,20,0.65)';
+    ctx.lineWidth = 1;
+    if (l.horizontal) {
+        for (let i = 0; i < 5; i++) {
+            const y = l.y - l.h / 2 + (i + 1) * l.h / 6;
+            ctx.beginPath();
+            ctx.moveTo(l.x - l.w / 2 + 4, y); ctx.lineTo(l.x + l.w / 2 - 4, y);
+            ctx.stroke();
+        }
+    } else {
+        for (let i = 0; i < 5; i++) {
+            const x = l.x - l.w / 2 + (i + 1) * l.w / 6;
+            ctx.beginPath();
+            ctx.moveTo(x, l.y - l.h / 2 + 4); ctx.lineTo(x, l.y + l.h / 2 - 4);
+            ctx.stroke();
+        }
+    }
+    // End rings (circles on each end)
+    ctx.fillStyle = '#7a4f2a';
+    if (l.horizontal) {
+        ctx.beginPath(); ctx.ellipse(l.x - l.w / 2, l.y, 6, l.h / 2 - 1, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(l.x + l.w / 2, l.y, 6, l.h / 2 - 1, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#a87045';
+        ctx.beginPath(); ctx.ellipse(l.x - l.w / 2, l.y, 4, l.h / 2 - 3, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(l.x + l.w / 2, l.y, 4, l.h / 2 - 3, 0, 0, Math.PI * 2); ctx.fill();
+    } else {
+        ctx.beginPath(); ctx.ellipse(l.x, l.y - l.h / 2, l.w / 2 - 1, 6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(l.x, l.y + l.h / 2, l.w / 2 - 1, 6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#a87045';
+        ctx.beginPath(); ctx.ellipse(l.x, l.y - l.h / 2, l.w / 2 - 3, 4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(l.x, l.y + l.h / 2, l.w / 2 - 3, 4, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    // Outline
+    ctx.strokeStyle = '#3e2616';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(l.x - l.w / 2, l.y - l.h / 2, l.w, l.h);
+}
+
+function drawBushSingle(b) {
+    const sway = Math.sin(state.time * 1.2 + b.sway) * 1.4;
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath();
+    ctx.ellipse(b.x + 4, b.y + b.r * 0.5, b.r * 1.05, b.r * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3d8546';
+    ctx.beginPath();
+    ctx.arc(b.x + sway, b.y, b.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#4ea05a';
+    ctx.beginPath();
+    ctx.arc(b.x + sway - b.r * 0.3, b.y - b.r * 0.4, b.r * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#d32f2f';
+    ctx.beginPath(); ctx.arc(b.x + sway + b.r * 0.3, b.y - b.r * 0.1, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#7b1f1f';
+    ctx.beginPath(); ctx.arc(b.x + sway + b.r * 0.31, b.y - b.r * 0.09, 1, 0, Math.PI * 2); ctx.fill();
 }
 
 function drawBushes() {
@@ -1628,12 +1826,30 @@ function drawMinimap() {
     ctx.fillStyle = 'rgba(118,176,74,0.18)';
     ctx.fillRect(mmX, mmY, mmW, mmH);
 
-    // Bushes as small green dots
+    // Bushes (small green), rocks (gray ellipses), logs (brown rects)
     state.bushes.forEach(b => {
         const px = mmX + ((b.x - a.x) / a.w) * mmW;
         const py = mmY + ((b.y - a.y) / a.h) * mmH;
         ctx.fillStyle = 'rgba(60,120,50,0.65)';
         ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill();
+    });
+    state.rocks.forEach(r => {
+        const px = mmX + ((r.x - a.x) / a.w) * mmW;
+        const py = mmY + ((r.y - a.y) / a.h) * mmH;
+        const erx = (r.rx / a.w) * mmW;
+        const ery = (r.ry / a.h) * mmH;
+        ctx.fillStyle = 'rgba(110,110,110,0.85)';
+        ctx.beginPath();
+        ctx.ellipse(px, py, Math.max(2.5, erx), Math.max(1.5, ery), 0, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    state.logs.forEach(l => {
+        const px = mmX + ((l.x - a.x) / a.w) * mmW;
+        const py = mmY + ((l.y - a.y) / a.h) * mmH;
+        const lw = Math.max(2, (l.w / a.w) * mmW);
+        const lh = Math.max(2, (l.h / a.h) * mmH);
+        ctx.fillStyle = 'rgba(140,90,50,0.85)';
+        ctx.fillRect(px - lw / 2, py - lh / 2, lw, lh);
     });
 
     // Runners — pulsing colored dots (visible to tagger only!)
@@ -1743,9 +1959,15 @@ function loop(ts) {
         drawDecorations();
         drawFootprints();
         drawPowerups();
-        drawBushes();
-        const sortedPlayers = [...state.players].sort((a, b) => a.y - b.y);
-        sortedPlayers.forEach(drawPlayer);
+        // Depth-sort bushes, rocks, logs, and players together so taller
+        // obstacles correctly hide players behind them.
+        const layered = [];
+        for (const b of state.bushes) layered.push({ y: b.y, draw: () => drawBushSingle(b) });
+        for (const r of state.rocks) layered.push({ y: r.y + r.ry, draw: () => drawRock(r) });
+        for (const l of state.logs)  layered.push({ y: l.y + l.h / 2, draw: () => drawLog(l) });
+        for (const p of state.players) layered.push({ y: p.y + PLAYER_R, draw: () => drawPlayer(p) });
+        layered.sort((a, b) => a.y - b.y);
+        layered.forEach(it => it.draw());
         drawParticles();
         ctx.restore();
 
