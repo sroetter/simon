@@ -221,9 +221,9 @@ function winSound() {
 const PLAYER_R = 18;
 const PLAYER_SPEED = 220;
 const IT_SPEED_BOOST = 0.88;       // Taggers start slower — runners can escape with skill
-// Taggers ramp up speed over the course of the game so a stalemate eventually
-// breaks: ~1 cm/sec extra speed per 10 sec of round time. (~38 CSS px/cm.)
-const IT_RAMP_PXPS_PER_SEC = 3.8;
+// Original tagger ramps up by 1% per second of round time so a stalemate
+// eventually breaks. Multiplier applied on top of IT_SPEED_BOOST.
+const IT_RAMP_PER_SEC = 0.01;
 const ROUND_DURATION_BASE = 18;    // first round duration
 const ROUND_MIN = 8;               // shortest round (when few players left)
 const TAGBACK_IMMUNITY = 1.4;      // can't tag the player who just tagged you
@@ -673,9 +673,9 @@ function updatePlayer(p, dt) {
     let speed = PLAYER_SPEED;
     if (p.isIt) {
         speed *= IT_SPEED_BOOST;
-        // Only the original tagger ramps up over time. Newly-infected
-        // players move at the standard tagger speed.
-        if (p.isOriginalIt) speed += state.time * IT_RAMP_PXPS_PER_SEC;
+        // Only the original tagger ramps up — +1% of their tagger speed
+        // per second of round time. Newly-infected players don't ramp.
+        if (p.isOriginalIt) speed *= (1 + state.time * IT_RAMP_PER_SEC);
     }
     if (p.speedTimer > 0) speed *= SPEED_BOOST_MULT;
     if (p.dashTimer > 0) speed *= DASH_SPEED_MULT;
@@ -1540,8 +1540,8 @@ function drawHUD() {
     ctx.font = 'bold 36px Segoe UI';
     ctx.fillStyle = infected >= total - 1 ? '#ff5252' : '#ff7043';
     ctx.fillText(`${infected} / ${total}`, W / 2, 64);
-    // Original-tagger speed ramp
-    const origSpeed = (PLAYER_SPEED * IT_SPEED_BOOST) + state.time * IT_RAMP_PXPS_PER_SEC;
+    // Original-tagger speed ramp (1% per sec of round time)
+    const origSpeed = PLAYER_SPEED * IT_SPEED_BOOST * (1 + state.time * IT_RAMP_PER_SEC);
     const runnerSpeed = PLAYER_SPEED;
     const ramp = ((origSpeed / runnerSpeed) * 100).toFixed(0);
     ctx.font = '13px Segoe UI';
