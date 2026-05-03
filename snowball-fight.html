@@ -1105,23 +1105,54 @@ function aiCommand(p, dt) {
     }
 
     // Movement: if no goal, kite at preferred distance. When hunting a
-    // wounded enemy, push closer (smaller defendDistance). Commit to juke
-    // directions for longer so the bot doesn't oscillate in place.
+    // wounded enemy, push closer. Bots mostly stand still and shoot,
+    // strafing only occasionally — no more dance-like oscillation.
     const effDefend = cfg.defendDistance / aggro;
     if (!goal) {
         if (dist < effDefend * 0.6) {
-            // Strafe / back away
-            if (p.ai.jukeTimer <= 0) { p.ai.jukeDir = (Math.random() < 0.5 ? -1 : 1); p.ai.jukeTimer = 1.4 + Math.random() * 1.0; }
-            // Perpendicular juke
-            out.ix = -aimY * p.ai.jukeDir - aimX * 0.4;
-            out.iy = aimX * p.ai.jukeDir - aimY * 0.4;
+            // Too close — back away or strafe sideways
+            if (p.ai.jukeTimer <= 0) {
+                const r = Math.random();
+                if (r < 0.5) {
+                    // Back up straight (looks intentional, not dancing)
+                    p.ai.jukeMode = 'backup';
+                    p.ai.jukeTimer = 0.6 + Math.random() * 0.5;
+                } else {
+                    p.ai.jukeMode = 'strafe';
+                    p.ai.jukeDir = r < 0.75 ? -1 : 1;
+                    p.ai.jukeTimer = 1.2 + Math.random() * 0.8;
+                }
+            }
+            if (p.ai.jukeMode === 'backup') {
+                out.ix = -aimX; out.iy = -aimY;
+            } else {
+                out.ix = -aimY * p.ai.jukeDir - aimX * 0.4;
+                out.iy = aimX * p.ai.jukeDir - aimY * 0.4;
+            }
         } else if (dist > effThrowRange * 0.95) {
+            // Too far — close the gap
             out.ix = aimX; out.iy = aimY;
         } else {
-            // Strafe in place
-            if (p.ai.jukeTimer <= 0) { p.ai.jukeDir = (Math.random() < 0.5 ? -1 : 1); p.ai.jukeTimer = 1.2 + Math.random() * 0.9; }
-            out.ix = -aimY * p.ai.jukeDir;
-            out.iy = aimX * p.ai.jukeDir;
+            // In throwing range — stand still most of the time and shoot.
+            // Strafe only occasionally to avoid being a sitting duck.
+            if (p.ai.jukeTimer <= 0) {
+                const r = Math.random();
+                if (r < 0.65) {
+                    // Hold position (no movement)
+                    p.ai.jukeMode = 'hold';
+                    p.ai.jukeTimer = 1.0 + Math.random() * 1.4;
+                } else {
+                    p.ai.jukeMode = 'strafe';
+                    p.ai.jukeDir = r < 0.83 ? -1 : 1;
+                    p.ai.jukeTimer = 0.5 + Math.random() * 0.6;
+                }
+            }
+            if (p.ai.jukeMode === 'hold') {
+                out.ix = 0; out.iy = 0;
+            } else {
+                out.ix = -aimY * p.ai.jukeDir;
+                out.iy = aimX * p.ai.jukeDir;
+            }
         }
     } else {
         const gd = Math.hypot(p.x - goal.x, p.y - goal.y) || 1;
