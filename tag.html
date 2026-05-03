@@ -274,18 +274,19 @@ function makeState(mode, difficulty, bots) {
     const bushes = [];
     const decorations = [];
 
-    // Bushes scaled by arena size
-    const bushCount = Math.round((arena.w * arena.h) / 28000);
+    // Sparser bushes — runners shouldn't have endless cover.
+    const bushCount = Math.round((arena.w * arena.h) / 90000);
     for (let i = 0; i < bushCount; i++) {
         let x, y, ok;
         for (let tries = 0; tries < 30; tries++) {
             x = arena.x + 80 + Math.random() * (arena.w - 160);
             y = arena.y + 80 + Math.random() * (arena.h - 160);
             ok = true;
-            for (const b of bushes) if (Math.hypot(x - b.x, y - b.y) < 90) { ok = false; break; }
+            // Larger min spacing (180 vs 90) so they don't form clusters
+            for (const b of bushes) if (Math.hypot(x - b.x, y - b.y) < 180) { ok = false; break; }
             if (ok) break;
         }
-        if (ok) bushes.push({ x, y, r: 18 + Math.random() * 10, sway: Math.random() * Math.PI * 2 });
+        if (ok) bushes.push({ x, y, r: 14 + Math.random() * 6, sway: Math.random() * Math.PI * 2 });
     }
 
     // Decorations scaled by area
@@ -328,9 +329,11 @@ function makeState(mode, difficulty, bots) {
         players.push(makePlayer(i, sx, sy, isBot, paletteOrder[i % paletteOrder.length]));
     }
 
-    // Pick a random initial It
+    // Pick a random initial It — only THIS player gets the speed ramp.
+    // Players infected later by touch move at the standard tagger speed.
     const itIdx = Math.floor(Math.random() * total);
     players[itIdx].isIt = true;
+    players[itIdx].isOriginalIt = true;
 
     // Initial camera: arena center
     const camX0 = arena.x + arena.w / 2;
@@ -385,6 +388,7 @@ function makePlayer(idx, x, y, isBot, palIdx) {
         facingY: 0,
         alive: true,
         isIt: false,
+        isOriginalIt: false,
         moving: false,
         animTime: 0,
         eliminatedTimer: 0,
@@ -654,12 +658,13 @@ function updatePlayer(p, dt) {
     if (len > 0) { ix /= len; iy /= len; }
     p.moving = len > 0;
 
-    // Speed (with It boost + speed-powerup + dash + tagger time ramp)
+    // Speed (with It boost + speed-powerup + dash + original-tagger ramp)
     let speed = PLAYER_SPEED;
     if (p.isIt) {
         speed *= IT_SPEED_BOOST;
-        // Taggers gain ~1 cm/sec extra every 10 sec the game has been running
-        speed += state.time * IT_RAMP_PXPS_PER_SEC;
+        // Only the original tagger ramps up over time. Newly-infected
+        // players move at the standard tagger speed.
+        if (p.isOriginalIt) speed += state.time * IT_RAMP_PXPS_PER_SEC;
     }
     if (p.speedTimer > 0) speed *= SPEED_BOOST_MULT;
     if (p.dashTimer > 0) speed *= DASH_SPEED_MULT;
@@ -1524,13 +1529,13 @@ function drawHUD() {
     ctx.font = 'bold 36px Segoe UI';
     ctx.fillStyle = infected >= total - 1 ? '#ff5252' : '#ff7043';
     ctx.fillText(`${infected} / ${total}`, W / 2, 64);
-    // Tagger speed ramp
-    const taggerSpeed = (PLAYER_SPEED * IT_SPEED_BOOST) + state.time * IT_RAMP_PXPS_PER_SEC;
+    // Original-tagger speed ramp
+    const origSpeed = (PLAYER_SPEED * IT_SPEED_BOOST) + state.time * IT_RAMP_PXPS_PER_SEC;
     const runnerSpeed = PLAYER_SPEED;
-    const ramp = ((taggerSpeed / runnerSpeed) * 100).toFixed(0);
+    const ramp = ((origSpeed / runnerSpeed) * 100).toFixed(0);
     ctx.font = '13px Segoe UI';
-    ctx.fillStyle = taggerSpeed > runnerSpeed ? '#ff8a65' : '#cce0c1';
-    ctx.fillText(`Tagger speed: ${ramp}% of runner`, W / 2, 86);
+    ctx.fillStyle = origSpeed > runnerSpeed ? '#ff8a65' : '#cce0c1';
+    ctx.fillText(`Original tagger speed: ${ramp}% of runner`, W / 2, 86);
 
     const all = state.players;
     const stripW = Math.min(W - 100, all.length * 70);
@@ -1580,6 +1585,97 @@ function drawHUD() {
         ctx.fillStyle = `rgba(255, 220, 80, ${state.roundFlashTimer * 0.3})`;
         ctx.fillRect(0, 0, W, H);
     }
+}
+
+// Tagger-only minimap: only visible when a HUMAN player is currently It.
+// Shows the entire arena with runners as colored dots so the tagger can
+// hunt them down. Runners hide somewhere; the tagger gets a radar.
+function drawMinimap() {
+    const humanIts = state.players.filter(p => !p.isBot && p.isIt);
+    if (humanIts.length === 0) return;
+
+    const a = state.arena;
+    const mmW = 220;
+    const mmH = mmW * (a.h / a.w);
+    const mmX = W - mmW - 24;
+    const mmY = H - mmH - 24;
+
+    // Frame
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(mmX - 6, mmY - 22, mmW + 12, mmH + 32);
+    ctx.strokeStyle = '#ff7043';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(mmX, mmY, mmW, mmH);
+
+    // Title
+    ctx.fillStyle = '#ff7043';
+    ctx.font = 'bold 12px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('🔥 TAGGER RADAR', mmX + mmW / 2, mmY - 7);
+
+    // Map background tint (faint grass)
+    ctx.fillStyle = 'rgba(118,176,74,0.18)';
+    ctx.fillRect(mmX, mmY, mmW, mmH);
+
+    // Bushes as small green dots
+    state.bushes.forEach(b => {
+        const px = mmX + ((b.x - a.x) / a.w) * mmW;
+        const py = mmY + ((b.y - a.y) / a.h) * mmH;
+        ctx.fillStyle = 'rgba(60,120,50,0.65)';
+        ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Runners — pulsing colored dots (visible to tagger only!)
+    state.players.forEach(p => {
+        if (p.isIt) return;
+        const px = mmX + ((p.x - a.x) / a.w) * mmW;
+        const py = mmY + ((p.y - a.y) / a.h) * mmH;
+        const pulse = 1 + Math.sin(state.time * 6 + p.idx) * 0.3;
+        ctx.fillStyle = p.coatColor;
+        ctx.beginPath();
+        ctx.arc(px, py, 4 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+    });
+
+    // Other Its as faint orange rings (allies, less prominent)
+    state.players.forEach(p => {
+        if (!p.isIt || (!p.isBot && humanIts.includes(p))) return;
+        const px = mmX + ((p.x - a.x) / a.w) * mmW;
+        const py = mmY + ((p.y - a.y) / a.h) * mmH;
+        ctx.strokeStyle = 'rgba(255,112,67,0.7)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+        ctx.stroke();
+    });
+
+    // Self (the human tagger) — large bright marker
+    humanIts.forEach(p => {
+        const px = mmX + ((p.x - a.x) / a.w) * mmW;
+        const py = mmY + ((p.y - a.y) / a.h) * mmH;
+        // Pulsing flame outline
+        ctx.strokeStyle = '#ffeb3b';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(px, py, 6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#ff7043';
+        ctx.beginPath();
+        ctx.arc(px, py, 3, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // Camera viewport indicator: a faint rectangle showing what's on screen
+    const vpX = mmX + ((state.camX - W / 2 - a.x) / a.w) * mmW;
+    const vpY = mmY + ((state.camY - H / 2 - a.y) / a.h) * mmH;
+    const vpW = (W / a.w) * mmW;
+    const vpH = (H / a.h) * mmH;
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(vpX, vpY, vpW, vpH);
 }
 
 function drawWinnerOverlay() {
@@ -1642,9 +1738,10 @@ function loop(ts) {
         drawParticles();
         ctx.restore();
 
-        // Screen-space overlays (HUD, leaves, winner)
+        // Screen-space overlays (HUD, leaves, minimap, winner)
         drawLeaves();
         drawHUD();
+        drawMinimap();
         drawWinnerOverlay();
     }
 
