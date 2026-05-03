@@ -523,7 +523,9 @@ function clampToArena(p, r) {
 function tryThrow(p) {
     if (p.throwCooldown > 0 || !p.alive || p.stunTimer > 0) return;
     const rapid = p.rapidFireTimer > 0;
-    if (!rapid && p.ammo <= 0) return;
+    const stun = p.stunGunTimer > 0;
+    // Free throws while rapid-fire OR stun-gun is active
+    if (!rapid && !stun && p.ammo <= 0) return;
     let fx = p.facingX, fy = p.facingY;
     const fl = Math.hypot(fx, fy) || 1;
     fx /= fl; fy /= fl;
@@ -541,7 +543,7 @@ function tryThrow(p) {
         rapid,                                  // glowing visual when from rapid fire
         stuns: p.stunGunTimer > 0,              // freezes target on hit
     });
-    if (!rapid) p.ammo--;
+    if (!rapid && !stun) p.ammo--;
     p.throwCooldown = rapid ? RAPID_FIRE_COOLDOWN : THROW_COOLDOWN;
     throwSound();
     // Throw burst particles
@@ -797,6 +799,10 @@ function updatePlayer(p, dt) {
             }
         }
     });
+
+    // Auto-fire while rapid-fire is active — no need to keep tapping the
+    // throw button. Just keep launching as fast as the cooldown allows.
+    if (p.rapidFireTimer > 0 && p.throwCooldown <= 0) didThrow = true;
 
     if (didThrow) tryThrow(p);
     if (didBuild) tryBuildFort(p);
