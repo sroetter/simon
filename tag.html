@@ -1728,16 +1728,12 @@ function drawLeaves() {
 }
 
 function drawHUD() {
-    // Top center: infection counter
-    const total = state.players.length;
-    const infected = state.players.filter(p => p.isIt).length;
-    ctx.font = 'bold 22px Segoe UI';
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.fillText('🔥 Infected', W / 2, 28);
+    // Top center: runners-left counter
+    const runners = state.players.filter(p => !p.isIt).length;
     ctx.font = 'bold 36px Segoe UI';
-    ctx.fillStyle = infected >= total - 1 ? '#ff5252' : '#ff7043';
-    ctx.fillText(`${infected} / ${total}`, W / 2, 64);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = runners <= 1 ? '#ff5252' : '#ffe082';
+    ctx.fillText(`${runners} runners left`, W / 2, 50);
     // Original-tagger speed ramp (1% per sec of round time)
     const origSpeed = PLAYER_SPEED * IT_SPEED_BOOST * (1 + state.time * IT_RAMP_PER_SEC);
     const runnerSpeed = PLAYER_SPEED;
