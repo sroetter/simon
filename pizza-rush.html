@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pizza Rush - Simon's Game Gallery</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #1a0e08;
+    min-height: 100vh; overflow: hidden;
+    color: white;
+    -webkit-user-select: none; user-select: none;
+}
+canvas { display: block; position: absolute; top: 0; left: 0; cursor: pointer; }
+
+.back-btn {
+    position: fixed; top: 14px; left: 14px;
+    text-decoration: none; color: #ffd54f;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,213,79,0.6);
+    padding: 8px 14px; border-radius: 8px;
+    font-size: 14px; z-index: 100;
+}
+.back-btn:hover { background: rgba(255,213,79,0.18); }
+
+#overlay {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50; background: rgba(0,0,0,0.78);
+}
+#overlay.hidden { display: none; }
+
+.box {
+    background: linear-gradient(135deg, #c8102e, #8b0000);
+    border: 3px solid #ffd54f;
+    border-radius: 20px;
+    padding: 28px 36px; text-align: center;
+    width: 92%; max-width: 620px;
+    box-shadow: 0 18px 60px rgba(0,0,0,0.7), 0 0 50px rgba(255,213,79,0.2);
+}
+h1 {
+    font-size: 56px; margin-bottom: 4px;
+    color: #ffd54f; letter-spacing: 3px;
+    text-shadow: 0 0 18px rgba(255,213,79,0.45), 3px 3px 0 #5b0000;
+}
+h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 12px; }
+
+.controls {
+    background: rgba(0,0,0,0.32); padding: 14px 18px;
+    border-radius: 10px;
+    text-align: left;
+    line-height: 1.6;
+    font-size: 14px;
+    color: #ffe6d6;
+    margin: 12px 0;
+}
+.controls b { color: #ffd54f; }
+
+.row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; }
+.btn {
+    background: linear-gradient(135deg, #ffd54f, #ffb300);
+    color: #4a1c00; border: 2px solid #fff8e1;
+    padding: 12px 28px; font-size: 18px; font-weight: bold;
+    border-radius: 10px; cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: 0 4px 0 #b08600;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #b08600; }
+.btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #b08600; }
+
+.btn.diff { padding: 8px 20px; font-size: 14px; min-width: 100px; background: linear-gradient(135deg, #455a64, #263238); border-color: #b0bec5; box-shadow: 0 4px 0 #1a232a; color: #fff; }
+.btn.diff.active { background: linear-gradient(135deg, #ff7043, #d63300); border-color: #ffd9c2; box-shadow: 0 4px 0 #771c00; color: #fff; }
+.label { font-size: 13px; color: #ffe082; margin: 8px 0 4px; }
+
+.score-line { font-size: 30px; font-weight: bold; margin: 8px 0; color: #ffd54f; }
+
+.footer-link {
+    position: fixed; bottom: 8px; left: 0; right: 0;
+    text-align: center; font-size: 12px;
+    color: rgba(255,255,255,0.4); z-index: 60; pointer-events: none;
+}
+.footer-link a { color: rgba(255,255,255,0.65); text-decoration: underline; pointer-events: auto; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+
+<div id="overlay">
+    <div class="box" id="startScreen">
+        <h1>🍕 PIZZA RUSH 🍕</h1>
+        <h2>Beat the clock — make orders before customers leave!</h2>
+        <div class="controls">
+            <b>How to play:</b><br>
+            • Click an <b>ingredient bin</b> on the right to add it to the pizza on your prep counter<br>
+            • Click <b>"PUT IN OVEN"</b> to cook (3 oven slots — they each have a perfect-cook window)<br>
+            • Click a pizza in the oven once it's <b>golden</b> to grab it<br>
+            • Click a <b>customer</b> to deliver — must match their order!<br>
+            • Click <b>"TRASH"</b> on a wrong/burnt pizza to dump it<br>
+            <br>
+            <b>Tips:</b> Match toppings exactly. Burnt pizza = -$3. Lost customer = -$5. Tip scales with patience left.
+        </div>
+
+        <div class="label">Difficulty:</div>
+        <div class="row">
+            <button class="btn diff" data-diff="easy">Easy (90s, fewer toppings)</button>
+            <button class="btn diff active" data-diff="medium">Medium (75s)</button>
+            <button class="btn diff" data-diff="hard">Hard (60s, picky customers)</button>
+        </div>
+
+        <div class="row">
+            <button class="btn" id="startBtn">Start Shift</button>
+        </div>
+    </div>
+
+    <div class="box" id="gameOverScreen" style="display:none;">
+        <h1>SHIFT OVER</h1>
+        <div class="score-line" id="finalScore"></div>
+        <div id="finalStats" style="font-size:15px;color:#ffe6d6;line-height:1.7;"></div>
+        <div class="row">
+            <button class="btn" id="rematchBtn">Play Again</button>
+            <button class="btn" id="menuBtn" style="background: linear-gradient(135deg, #455a64, #263238); color:#fff; box-shadow: 0 4px 0 #1a232a;">Main Menu</button>
+        </div>
+    </div>
+</div>
+
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<script>
+(() => {
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startScreen = document.getElementById('startScreen');
+const gameOverScreen = document.getElementById('gameOverScreen');
+
+let W = 0, H = 0;
+function resize() {
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W; canvas.height = H;
+    if (state) recomputeLayout();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ===== Audio =====
+let audioCtx = null;
+function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+function tone(freq, dur, type = 'sine', vol = 0.15) {
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+}
+function plopSound() { tone(420, 0.05, 'sine', 0.08); }
+function ovenInSound() { tone(220, 0.1, 'sawtooth', 0.1); tone(160, 0.15, 'sawtooth', 0.06); }
+function dingSound() {
+    tone(880, 0.1, 'sine', 0.18);
+    setTimeout(() => tone(1320, 0.18, 'sine', 0.16), 100);
+}
+function cashSound() {
+    tone(660, 0.08, 'square', 0.12);
+    setTimeout(() => tone(880, 0.1, 'square', 0.12), 70);
+    setTimeout(() => tone(1175, 0.14, 'square', 0.12), 150);
+}
+function badSound() {
+    tone(220, 0.18, 'sawtooth', 0.16);
+    setTimeout(() => tone(140, 0.22, 'sawtooth', 0.14), 100);
+}
+function trashSound() { tone(180, 0.1, 'sawtooth', 0.1); }
+function customerArriveSound() { tone(523, 0.06, 'sine', 0.1); tone(659, 0.1, 'sine', 0.08); }
+
+// ===== Constants & ingredients =====
+const INGREDIENTS = [
+    { id: 'sauce',    name: 'Sauce',     color: '#c62828', icon: '🍅', kind: 'spread' },
+    { id: 'cheese',   name: 'Cheese',    color: '#fff59d', icon: '🧀', kind: 'spread' },
+    { id: 'pepperoni',name: 'Pepperoni', color: '#b71c1c', icon: '🍖', kind: 'topping' },
+    { id: 'mushroom', name: 'Mushroom',  color: '#a1887f', icon: '🍄', kind: 'topping' },
+    { id: 'olive',    name: 'Olive',     color: '#1b1b1b', icon: '🫒', kind: 'topping' },
+    { id: 'pepper',   name: 'Pepper',    color: '#43a047', icon: '🫑', kind: 'topping' },
+    { id: 'pineapple',name: 'Pineapple', color: '#ffd54f', icon: '🍍', kind: 'topping' },
+    { id: 'anchovy',  name: 'Anchovy',   color: '#90a4ae', icon: '🐟', kind: 'topping' },
+];
+const INGREDIENT_BY_ID = Object.fromEntries(INGREDIENTS.map(i => [i.id, i]));
+
+const CUSTOMER_FACES = ['😀', '😎', '🤓', '😋', '🥸', '🤠', '😜', '🤪', '😏', '🥳', '😐', '🙂'];
+
+const OVEN_SLOTS = 3;
+const PERFECT_COOK_TIME = 6.0;     // seconds for perfect
+const COOK_PERFECT_WINDOW = 1.4;   // seconds either side of perfect that's still good
+const BURN_TIME = 9.5;             // pizza burns after this many seconds
+const QUEUE_SIZE = 4;              // max customers visible
+const CUSTOMER_SPAWN_INTERVAL = [3.0, 4.5];
+
+const DIFF = {
+    easy:   { time: 90, patienceMult: 1.5, toppingsMin: 1, toppingsMax: 2, label: 'Easy' },
+    medium: { time: 75, patienceMult: 1.0, toppingsMin: 2, toppingsMax: 3, label: 'Medium' },
+    hard:   { time: 60, patienceMult: 0.8, toppingsMin: 2, toppingsMax: 4, label: 'Hard' },
+};
+
+let currentDifficulty = 'medium';
+let state = null;
+
+// ===== Layout (recomputed on resize) =====
+let layout = null;
+function recomputeLayout() {
+    const padX = 30, padTop = 80, padBottom = 30;
+    const ingredientPanelW = 200;
+    const ovenPanelW = 220;
+    const customerStripH = 130;
+    layout = {
+        // Top: customer strip
+        customerStrip: { x: padX, y: padTop, w: W - padX * 2, h: customerStripH },
+        // Right: ingredient panel
+        ingredients: { x: W - padX - ingredientPanelW, y: padTop + customerStripH + 20,
+                       w: ingredientPanelW, h: H - padTop - customerStripH - padBottom - 20 },
+        // Left: oven panel
+        oven: { x: padX, y: padTop + customerStripH + 20, w: ovenPanelW,
+                h: H - padTop - customerStripH - padBottom - 20 },
+        // Center: prep counter (active pizza)
+        prep: { x: padX + ovenPanelW + 20, y: padTop + customerStripH + 20,
+                w: W - padX * 2 - ovenPanelW - ingredientPanelW - 40,
+                h: H - padTop - customerStripH - padBottom - 20 },
+    };
+}
+
+// ===== Game flow =====
+function startGame() {
+    initAudio();
+    const cfg = DIFF[currentDifficulty];
+    state = {
+        cfg,
+        timeLeft: cfg.time,
+        score: 0,
+        served: 0, lost: 0, burnt: 0, mistakes: 0,
+        customerQueue: [],   // array of customer objects in line
+        customerSpawnTimer: 0.5,
+        nextCustomerId: 1,
+        prepPizza: makeEmptyPizza(),
+        ovens: Array.from({ length: OVEN_SLOTS }, () => ({ pizza: null })),
+        carrying: null,      // pizza currently being held (just pulled from oven or off prep counter)
+        floaters: [],        // floating score texts
+        flashGood: 0, flashBad: 0,
+        gameEnded: false,
+        time: 0,
+    };
+    recomputeLayout();
+    overlay.classList.add('hidden');
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = 'none';
+}
+
+function endGame() {
+    state.gameEnded = true;
+    document.getElementById('finalScore').textContent = `$${state.score}`;
+    document.getElementById('finalStats').innerHTML = `
+        Customers served: <b>${state.served}</b><br>
+        Walked out: ${state.lost}<br>
+        Burnt pizzas: ${state.burnt}<br>
+        Wrong orders: ${state.mistakes}
+    `;
+    overlay.classList.remove('hidden');
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = '';
+}
+
+document.querySelectorAll('.btn.diff').forEach(b => {
+    b.addEventListener('click', () => {
+        document.querySelectorAll('.btn.diff').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        currentDifficulty = b.dataset.diff;
+    });
+});
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('rematchBtn').addEventListener('click', startGame);
+document.getElementById('menuBtn').addEventListener('click', () => {
+    state = null;
+    overlay.classList.remove('hidden');
+    startScreen.style.display = '';
+    gameOverScreen.style.display = 'none';
+});
+
+// ===== Pizza model =====
+function makeEmptyPizza() {
+    return {
+        toppings: [], // ordered array of ingredient ids; toppings can include 'sauce', 'cheese' too
+        cookTime: 0,
+        state: 'raw', // 'raw' | 'perfect' | 'burnt'
+        // Slot positions for toppings (deterministic per topping index)
+    };
+}
+
+function pizzaCookState(p) {
+    if (p.cookTime < PERFECT_COOK_TIME - COOK_PERFECT_WINDOW) return 'raw';
+    if (p.cookTime > BURN_TIME) return 'burnt';
+    if (Math.abs(p.cookTime - PERFECT_COOK_TIME) <= COOK_PERFECT_WINDOW) return 'perfect';
+    if (p.cookTime > PERFECT_COOK_TIME + COOK_PERFECT_WINDOW) return 'overcooked';
+    return 'undercooked';
+}
+
+// ===== Customer generation =====
+function spawnCustomer() {
+    if (state.customerQueue.length >= QUEUE_SIZE) return;
+    const cfg = state.cfg;
+    const tCount = cfg.toppingsMin + Math.floor(Math.random() * (cfg.toppingsMax - cfg.toppingsMin + 1));
+    const order = ['sauce', 'cheese'];
+    // Pick random toppings (excluding sauce/cheese)
+    const pool = INGREDIENTS.filter(i => i.kind === 'topping').map(i => i.id);
+    for (let i = 0; i < tCount; i++) {
+        if (pool.length === 0) break;
+        const idx = Math.floor(Math.random() * pool.length);
+        order.push(pool[idx]);
+        pool.splice(idx, 1);
+    }
+    const basePatience = (24 + tCount * 4) * cfg.patienceMult;
+    state.customerQueue.push({
+        id: state.nextCustomerId++,
+        order,
+        patience: basePatience,
+        maxPatience: basePatience,
+        face: CUSTOMER_FACES[Math.floor(Math.random() * CUSTOMER_FACES.length)],
+        bodyColor: ['#42a5f5', '#ec407a', '#66bb6a', '#ab47bc', '#ff7043', '#26a69a', '#ffa726'][Math.floor(Math.random() * 7)],
+        wobble: Math.random() * Math.PI * 2,
+    });
+    customerArriveSound();
+}
+
+// ===== Pizza ingredient match =====
+function pizzaMatchesOrder(pizza, order) {
+    // Compare topping multisets (order doesn't matter; counts must match)
+    const cnt = {};
+    pizza.toppings.forEach(t => { cnt[t] = (cnt[t] || 0) + 1; });
+    const cnt2 = {};
+    order.forEach(t => { cnt2[t] = (cnt2[t] || 0) + 1; });
+    const keys = new Set([...Object.keys(cnt), ...Object.keys(cnt2)]);
+    for (const k of keys) {
+        if ((cnt[k] || 0) !== (cnt2[k] || 0)) return false;
+    }
+    return true;
+}
+
+// ===== Input =====
+const mouse = { x: 0, y: 0, down: false, justDown: false };
+canvas.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - r.left;
+    mouse.y = e.clientY - r.top;
+});
+canvas.addEventListener('mousedown', e => {
+    initAudio();
+    mouse.down = true;
+    mouse.justDown = true;
+});
+canvas.addEventListener('mouseup', () => { mouse.down = false; });
+canvas.addEventListener('touchstart', e => {
+    initAudio();
+    if (e.touches.length === 0) return;
+    const r = canvas.getBoundingClientRect();
+    mouse.x = e.touches[0].clientX - r.left;
+    mouse.y = e.touches[0].clientY - r.top;
+    mouse.down = true; mouse.justDown = true;
+    e.preventDefault();
+}, { passive: false });
+canvas.addEventListener('touchend', () => { mouse.down = false; });
+canvas.addEventListener('touchmove', e => {
+    if (e.touches.length === 0) return;
+    const r = canvas.getBoundingClientRect();
+    mouse.x = e.touches[0].clientX - r.left;
+    mouse.y = e.touches[0].clientY - r.top;
+    e.preventDefault();
+}, { passive: false });
+
+function consumeClick() { if (mouse.justDown) { mouse.justDown = false; return true; } return false; }
+
+// ===== Hit boxes =====
+function pointInRect(px, py, r) {
+    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+}
+function pointInCircle(px, py, cx, cy, r) {
+    const dx = px - cx, dy = py - cy;
+    return dx * dx + dy * dy <= r * r;
+}
+
+// ===== Update =====
+function update(dt) {
+    state.time += dt;
+    state.timeLeft -= dt;
+    state.flashGood = Math.max(0, state.flashGood - dt);
+    state.flashBad = Math.max(0, state.flashBad - dt);
+
+    if (state.timeLeft <= 0) {
+        endGame();
+        return;
+    }
+
+    // Customer spawn
+    state.customerSpawnTimer -= dt;
+    if (state.customerSpawnTimer <= 0 && state.customerQueue.length < QUEUE_SIZE) {
+        spawnCustomer();
+        state.customerSpawnTimer = CUSTOMER_SPAWN_INTERVAL[0] + Math.random() * (CUSTOMER_SPAWN_INTERVAL[1] - CUSTOMER_SPAWN_INTERVAL[0]);
+    }
+
+    // Customer patience tick
+    state.customerQueue.forEach(c => {
+        c.patience -= dt;
+        c.wobble += dt * 4;
+    });
+    // Walked-out customers
+    const walkedOut = state.customerQueue.filter(c => c.patience <= 0);
+    walkedOut.forEach(c => {
+        state.score -= 5;
+        state.lost++;
+        state.flashBad = 0.5;
+        state.floaters.push({ x: customerSlotPos(state.customerQueue.indexOf(c)).x, y: layout.customerStrip.y + 20, text: '-$5', color: '#ff5252', life: 1.4, maxLife: 1.4 });
+        badSound();
+    });
+    state.customerQueue = state.customerQueue.filter(c => c.patience > 0);
+
+    // Oven cook timers
+    state.ovens.forEach(slot => {
+        if (slot.pizza) slot.pizza.cookTime += dt;
+    });
+
+    // Floaters
+    state.floaters.forEach(f => { f.y -= 30 * dt; f.life -= dt; });
+    state.floaters = state.floaters.filter(f => f.life > 0);
+
+    // Handle clicks
+    if (consumeClick()) handleClick(mouse.x, mouse.y);
+}
+
+function customerSlotPos(idx) {
+    const c = layout.customerStrip;
+    const slotW = c.w / QUEUE_SIZE;
+    return { x: c.x + slotW * idx + slotW / 2, y: c.y + c.h / 2 };
+}
+
+function ingredientSlotRect(idx) {
+    const p = layout.ingredients;
+    const rows = INGREDIENTS.length;
+    const slotH = (p.h - 20) / rows;
+    return { x: p.x + 8, y: p.y + 8 + idx * slotH, w: p.w - 16, h: slotH - 6 };
+}
+
+function ovenSlotRect(idx) {
+    const p = layout.oven;
+    // Header for "OVEN" label, then slots
+    const headerH = 36;
+    const slotH = (p.h - headerH - 20 - 60) / OVEN_SLOTS; // leave room for trash button
+    return { x: p.x + 12, y: p.y + headerH + 8 + idx * slotH, w: p.w - 24, h: slotH - 8 };
+}
+
+function ovenButtonRect() {
+    const p = layout.prep;
+    // Bottom-center action button
+    const w = 220, h = 50;
+    return { x: p.x + (p.w - w) / 2, y: p.y + p.h - h - 10, w, h };
+}
+
+function trashButtonRect() {
+    const p = layout.oven;
+    return { x: p.x + 12, y: p.y + p.h - 50 - 10, w: p.w - 24, h: 50 };
+}
+
+function prepPizzaCenter() {
+    const p = layout.prep;
+    return { x: p.x + p.w / 2, y: p.y + (p.h - 70) / 2 + 20, r: Math.min(p.w, p.h - 70) * 0.35 };
+}
+
+function handleClick(mx, my) {
+    // 1. If holding a pizza, click on customer or trash to deliver/dump
+    if (state.carrying) {
+        // Click trash to dump
+        if (pointInRect(mx, my, trashButtonRect())) {
+            trashSound();
+            state.carrying = null;
+            return;
+        }
+        // Click a customer
+        for (let i = 0; i < state.customerQueue.length; i++) {
+            const pos = customerSlotPos(i);
+            if (pointInCircle(mx, my, pos.x, pos.y + 10, 50)) {
+                deliverPizzaTo(state.customerQueue[i], i);
+                return;
+            }
+        }
+        // Click prep counter to put pizza back? Skip — keep it simple.
+        return;
+    }
+
+    // 2. Click an ingredient bin
+    for (let i = 0; i < INGREDIENTS.length; i++) {
+        if (pointInRect(mx, my, ingredientSlotRect(i))) {
+            addIngredientToPrep(INGREDIENTS[i].id);
+            return;
+        }
+    }
+
+    // 3. Click "PUT IN OVEN" button
+    if (pointInRect(mx, my, ovenButtonRect())) {
+        sendPrepToOven();
+        return;
+    }
+
+    // 4. Click an oven slot to grab pizza
+    for (let i = 0; i < OVEN_SLOTS; i++) {
+        if (pointInRect(mx, my, ovenSlotRect(i))) {
+            const slot = state.ovens[i];
+            if (slot.pizza) {
+                state.carrying = slot.pizza;
+                slot.pizza = null;
+                dingSound();
+            }
+            return;
+        }
+    }
+}
+
+function addIngredientToPrep(id) {
+    if (state.prepPizza.toppings.length >= 8) return;
+    state.prepPizza.toppings.push(id);
+    plopSound();
+}
+
+function sendPrepToOven() {
+    if (state.prepPizza.toppings.length === 0) return;
+    const slot = state.ovens.find(s => !s.pizza);
+    if (!slot) {
+        // Oven full
+        badSound();
+        return;
+    }
+    slot.pizza = state.prepPizza;
+    state.prepPizza = makeEmptyPizza();
+    ovenInSound();
+}
+
+function deliverPizzaTo(customer, idx) {
+    const pizza = state.carrying;
+    state.carrying = null;
+    const cookState = pizzaCookState(pizza);
+    if (cookState === 'burnt') {
+        // Definitely a fail
+        state.score -= 3;
+        state.burnt++;
+        state.flashBad = 0.4;
+        state.floaters.push({ x: customerSlotPos(idx).x, y: layout.customerStrip.y + 20, text: 'BURNT! -$3', color: '#ff5252', life: 1.4, maxLife: 1.4 });
+        badSound();
+        return;
+    }
+    if (!pizzaMatchesOrder(pizza, customer.order)) {
+        state.score -= 2;
+        state.mistakes++;
+        state.flashBad = 0.4;
+        state.floaters.push({ x: customerSlotPos(idx).x, y: layout.customerStrip.y + 20, text: 'WRONG! -$2', color: '#ff5252', life: 1.4, maxLife: 1.4 });
+        badSound();
+        return;
+    }
+    // Success — score scales with cook quality + remaining patience
+    let base = 8;
+    if (cookState === 'perfect') base = 12;
+    else if (cookState === 'overcooked') base = 5;
+    else if (cookState === 'undercooked') base = 6;
+    const patienceBonus = Math.round((customer.patience / customer.maxPatience) * 6);
+    const total = base + patienceBonus;
+    state.score += total;
+    state.served++;
+    state.flashGood = 0.5;
+    state.floaters.push({
+        x: customerSlotPos(idx).x, y: layout.customerStrip.y + 20,
+        text: cookState === 'perfect' ? `PERFECT! +$${total}` : `+$${total}`,
+        color: cookState === 'perfect' ? '#7cff7c' : '#ffd54f',
+        life: 1.6, maxLife: 1.6,
+    });
+    cashSound();
+    state.customerQueue.splice(idx, 1);
+}
+
+// ===== Render =====
+function drawBackground() {
+    // Wood-grain restaurant floor + walls
+    const wall = ctx.createLinearGradient(0, 0, 0, H);
+    wall.addColorStop(0, '#3a1a0a');
+    wall.addColorStop(1, '#5b2d10');
+    ctx.fillStyle = wall;
+    ctx.fillRect(0, 0, W, H);
+    // Wood plank lines
+    ctx.strokeStyle = 'rgba(80,40,20,0.6)';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < H; y += 28) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    // Ambient grease specks
+    ctx.fillStyle = 'rgba(80,50,30,0.35)';
+    for (let i = 0; i < 200; i++) {
+        const x = (i * 73) % W;
+        const y = (i * 131) % H;
+        ctx.fillRect(x, y, 1, 1);
+    }
+
+    // Top banner
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, W, 70);
+    ctx.fillStyle = '#ffd54f';
+    ctx.font = 'bold 26px Segoe UI';
+    ctx.textAlign = 'left';
+    ctx.fillText('🍕 Pizza Rush', 20, 42);
+
+    // Score / time
+    ctx.font = 'bold 24px Segoe UI';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#7cff7c';
+    ctx.fillText(`$${state.score}`, W - 30, 42);
+    ctx.fillStyle = state.timeLeft < 15 ? '#ff5252' : '#ffe082';
+    ctx.font = 'bold 22px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${Math.max(0, state.timeLeft).toFixed(1)}s`, W / 2, 42);
+
+    // Flash overlays
+    if (state.flashGood > 0) {
+        ctx.fillStyle = `rgba(124,255,124,${state.flashGood * 0.25})`;
+        ctx.fillRect(0, 0, W, H);
+    }
+    if (state.flashBad > 0) {
+        ctx.fillStyle = `rgba(255,82,82,${state.flashBad * 0.3})`;
+        ctx.fillRect(0, 0, W, H);
+    }
+}
+
+function drawCustomerStrip() {
+    const strip = layout.customerStrip;
+    // Counter top (where customers stand)
+    ctx.fillStyle = '#a0522d';
+    ctx.fillRect(strip.x - 6, strip.y + strip.h - 8, strip.w + 12, 8);
+    ctx.fillStyle = '#7a3d1f';
+    ctx.fillRect(strip.x - 6, strip.y + strip.h, strip.w + 12, 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(strip.x, strip.y, strip.w, strip.h);
+    ctx.strokeStyle = 'rgba(255,213,79,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(strip.x, strip.y, strip.w, strip.h);
+
+    // Empty-slot hint
+    if (state.customerQueue.length === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.font = '16px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText('Customers will line up here…', strip.x + strip.w / 2, strip.y + strip.h / 2 + 6);
+    }
+
+    state.customerQueue.forEach((c, i) => {
+        const pos = customerSlotPos(i);
+        drawCustomer(c, pos.x, pos.y, i);
+    });
+}
+
+function drawCustomer(c, x, y, idx) {
+    const wob = Math.sin(c.wobble) * 1.5;
+    // Body
+    ctx.fillStyle = c.bodyColor;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 16 + wob * 0.3, 28, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Head
+    ctx.fillStyle = '#f0c6a3';
+    ctx.beginPath();
+    ctx.arc(x + wob, y - 14, 22, 0, Math.PI * 2);
+    ctx.fill();
+    // Face emoji
+    ctx.font = '28px Segoe UI Emoji';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(c.face, x + wob, y - 14);
+
+    // Order bubble (above head)
+    drawOrderBubble(c, x, y - 50);
+
+    // Patience bar (below)
+    const barW = 80, barH = 6;
+    const bx = x - barW / 2, by = y + 42;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+    const ratio = Math.max(0, c.patience / c.maxPatience);
+    let pColor = '#7cff7c';
+    if (ratio < 0.5) pColor = '#ffd54f';
+    if (ratio < 0.25) pColor = '#ff5252';
+    ctx.fillStyle = pColor;
+    ctx.fillRect(bx, by, barW * ratio, barH);
+
+    // Customer label
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '11px Segoe UI';
+    ctx.fillText(`#${c.id}`, x, by + 18);
+    ctx.textBaseline = 'alphabetic';
+}
+
+function drawOrderBubble(c, x, y) {
+    // Show ingredient icons in a horizontal row (excluding sauce/cheese which are implied)
+    const visibleToppings = c.order.filter(t => t !== 'sauce' && t !== 'cheese');
+    const w = Math.max(96, 28 + visibleToppings.length * 22);
+    const h = 32;
+    // Bubble
+    ctx.fillStyle = '#fff8e1';
+    ctx.strokeStyle = '#5b2d10';
+    ctx.lineWidth = 2;
+    roundRect(x - w / 2, y - h / 2, w, h, 8);
+    ctx.fill(); ctx.stroke();
+    // Pointer
+    ctx.beginPath();
+    ctx.moveTo(x - 6, y + h / 2);
+    ctx.lineTo(x, y + h / 2 + 8);
+    ctx.lineTo(x + 6, y + h / 2);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // "Wants:" label
+    ctx.fillStyle = '#5b2d10';
+    ctx.font = 'bold 11px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (visibleToppings.length === 0) {
+        ctx.fillText('Plain (sauce + cheese)', x, y);
+    } else {
+        // Always start with sauce + cheese reminder
+        let cx = x - w / 2 + 12;
+        ctx.font = '14px Segoe UI Emoji';
+        ctx.fillText('🍅🧀', cx + 8, y);
+        cx += 22;
+        visibleToppings.forEach(id => {
+            cx += 18;
+            ctx.fillText(INGREDIENT_BY_ID[id].icon, cx, y);
+        });
+    }
+    ctx.textBaseline = 'alphabetic';
+}
+
+function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+function drawIngredientPanel() {
+    const p = layout.ingredients;
+    // Panel background
+    ctx.fillStyle = 'rgba(60,30,15,0.9)';
+    roundRect(p.x, p.y, p.w, p.h, 12); ctx.fill();
+    ctx.strokeStyle = '#ffd54f';
+    ctx.lineWidth = 2;
+    roundRect(p.x, p.y, p.w, p.h, 12); ctx.stroke();
+
+    // Header
+    ctx.fillStyle = '#ffd54f';
+    ctx.font = 'bold 16px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('TOPPINGS', p.x + p.w / 2, p.y - 6);
+
+    INGREDIENTS.forEach((ing, i) => {
+        const r = ingredientSlotRect(i);
+        const hover = pointInRect(mouse.x, mouse.y, r);
+        // Bin
+        ctx.fillStyle = hover ? '#ffe082' : '#fff8e1';
+        roundRect(r.x, r.y, r.w, r.h, 8); ctx.fill();
+        ctx.strokeStyle = ing.color;
+        ctx.lineWidth = 2;
+        roundRect(r.x, r.y, r.w, r.h, 8); ctx.stroke();
+        // Color stripe on left
+        ctx.fillStyle = ing.color;
+        ctx.fillRect(r.x, r.y, 6, r.h);
+        // Icon + name
+        ctx.font = '20px Segoe UI Emoji';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(ing.icon, r.x + 14, r.y + r.h / 2);
+        ctx.fillStyle = '#5b2d10';
+        ctx.font = 'bold 14px Segoe UI';
+        ctx.fillText(ing.name, r.x + 40, r.y + r.h / 2);
+        ctx.textBaseline = 'alphabetic';
+    });
+}
+
+function drawOvenPanel() {
+    const p = layout.oven;
+    ctx.fillStyle = 'rgba(40,20,10,0.92)';
+    roundRect(p.x, p.y, p.w, p.h, 12); ctx.fill();
+    ctx.strokeStyle = '#ff7043';
+    ctx.lineWidth = 2;
+    roundRect(p.x, p.y, p.w, p.h, 12); ctx.stroke();
+
+    ctx.fillStyle = '#ff7043';
+    ctx.font = 'bold 16px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('🔥 OVEN', p.x + p.w / 2, p.y + 22);
+
+    state.ovens.forEach((slot, i) => {
+        drawOvenSlot(slot, i);
+    });
+
+    // Trash button
+    const tr = trashButtonRect();
+    const hover = pointInRect(mouse.x, mouse.y, tr) && state.carrying;
+    ctx.fillStyle = hover ? '#ff5252' : '#5d4037';
+    roundRect(tr.x, tr.y, tr.w, tr.h, 8); ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    roundRect(tr.x, tr.y, tr.w, tr.h, 8); ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🗑 TRASH', tr.x + tr.w / 2, tr.y + tr.h / 2);
+    ctx.textBaseline = 'alphabetic';
+}
+
+function drawOvenSlot(slot, idx) {
+    const r = ovenSlotRect(idx);
+    const hover = pointInRect(mouse.x, mouse.y, r) && slot.pizza;
+    // Slot background — orange glow when pizza inside
+    if (slot.pizza) {
+        const glow = 0.4 + Math.sin(state.time * 6) * 0.1;
+        const grad = ctx.createRadialGradient(r.x + r.w / 2, r.y + r.h / 2, 4, r.x + r.w / 2, r.y + r.h / 2, r.w * 0.7);
+        grad.addColorStop(0, `rgba(255,150,30,${glow})`);
+        grad.addColorStop(1, 'rgba(255,150,30,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+    }
+    ctx.fillStyle = hover ? '#3a1f10' : '#1f0f08';
+    roundRect(r.x, r.y, r.w, r.h, 8); ctx.fill();
+    ctx.strokeStyle = '#ff7043';
+    ctx.lineWidth = 1.5;
+    roundRect(r.x, r.y, r.w, r.h, 8); ctx.stroke();
+    // Bars / racks
+    ctx.strokeStyle = 'rgba(80,30,10,0.7)';
+    ctx.lineWidth = 1;
+    for (let y = r.y + 12; y < r.y + r.h; y += 6) {
+        ctx.beginPath(); ctx.moveTo(r.x + 4, y); ctx.lineTo(r.x + r.w - 4, y); ctx.stroke();
+    }
+
+    if (slot.pizza) {
+        const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+        const radius = Math.min(r.w, r.h) * 0.4;
+        drawPizza(slot.pizza, cx, cy, radius);
+        // Cook progress ring
+        const cookT = slot.pizza.cookTime;
+        const fillRatio = Math.min(1, cookT / BURN_TIME);
+        const cookState = pizzaCookState(slot.pizza);
+        let ringColor = '#ffd54f';
+        if (cookState === 'perfect') ringColor = '#7cff7c';
+        else if (cookState === 'burnt') ringColor = '#5d4037';
+        else if (cookState === 'overcooked') ringColor = '#ff7043';
+        // Outer ring
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = ringColor;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fillRatio);
+        ctx.stroke();
+        // Status label
+        ctx.fillStyle = ringColor;
+        ctx.font = 'bold 13px Segoe UI';
+        ctx.textAlign = 'center';
+        const lbl = cookState === 'perfect' ? 'GOLDEN!' :
+                    cookState === 'burnt' ? 'BURNT' :
+                    cookState === 'overcooked' ? 'OVERCOOKED' :
+                    cookState === 'undercooked' ? 'COOKING…' : 'RAW';
+        ctx.fillText(lbl, cx, r.y + r.h - 6);
+    } else {
+        ctx.fillStyle = 'rgba(255,180,90,0.4)';
+        ctx.font = 'bold 13px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText('empty', r.x + r.w / 2, r.y + r.h / 2 + 4);
+    }
+}
+
+function drawPrep() {
+    const p = layout.prep;
+    // Prep counter background
+    ctx.fillStyle = '#deb887';
+    roundRect(p.x, p.y, p.w, p.h, 12); ctx.fill();
+    ctx.strokeStyle = '#5b2d10';
+    ctx.lineWidth = 3;
+    roundRect(p.x, p.y, p.w, p.h, 12); ctx.stroke();
+    // Wood grain
+    ctx.strokeStyle = 'rgba(100,60,30,0.45)';
+    ctx.lineWidth = 1;
+    for (let y = p.y + 14; y < p.y + p.h - 14; y += 12) {
+        ctx.beginPath();
+        ctx.moveTo(p.x + 14, y + Math.sin(y * 0.04) * 3);
+        ctx.lineTo(p.x + p.w - 14, y + Math.sin(y * 0.04 + 1) * 3);
+        ctx.stroke();
+    }
+
+    // Header label
+    ctx.fillStyle = '#5b2d10';
+    ctx.font = 'bold 18px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('PREP COUNTER', p.x + p.w / 2, p.y + 26);
+
+    const center = prepPizzaCenter();
+    drawPizza(state.prepPizza, center.x, center.y, center.r);
+
+    // Topping count
+    ctx.fillStyle = '#5b2d10';
+    ctx.font = '13px Segoe UI';
+    ctx.fillText(`${state.prepPizza.toppings.length} ingredient${state.prepPizza.toppings.length === 1 ? '' : 's'} on pizza`,
+                 center.x, center.y + center.r + 20);
+
+    // OVEN button at bottom
+    const ob = ovenButtonRect();
+    const hover = pointInRect(mouse.x, mouse.y, ob) && state.prepPizza.toppings.length > 0;
+    const enabled = state.prepPizza.toppings.length > 0;
+    ctx.fillStyle = enabled ? (hover ? '#ff8a65' : '#ff7043') : '#7d4c3a';
+    roundRect(ob.x, ob.y, ob.w, ob.h, 10); ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    roundRect(ob.x, ob.y, ob.w, ob.h, 10); ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🔥 PUT IN OVEN', ob.x + ob.w / 2, ob.y + ob.h / 2);
+    ctx.textBaseline = 'alphabetic';
+}
+
+function drawPizza(p, cx, cy, r) {
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(cx + 2, cy + r * 0.9, r * 1.05, r * 0.25, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Crust color depends on cook state
+    const cookState = pizzaCookState(p);
+    let crustColor = '#e8b87a'; // raw dough
+    if (p.cookTime > PERFECT_COOK_TIME - COOK_PERFECT_WINDOW) crustColor = '#c8853c';
+    if (cookState === 'perfect') crustColor = '#b06a23';
+    if (cookState === 'overcooked') crustColor = '#7a3a10';
+    if (cookState === 'burnt') crustColor = '#2a1808';
+
+    // Crust
+    ctx.fillStyle = crustColor;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    // Inner crust ring
+    ctx.fillStyle = adjustColor(crustColor, -10);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.95, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sauce
+    if (p.toppings.includes('sauce')) {
+        let sauceColor = '#c62828';
+        if (cookState === 'perfect') sauceColor = '#a01b1b';
+        if (cookState === 'overcooked' || cookState === 'burnt') sauceColor = '#5a0e0e';
+        ctx.fillStyle = sauceColor;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.83, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Cheese
+    if (p.toppings.includes('cheese')) {
+        let cheeseColor = '#fff59d';
+        if (cookState === 'perfect') cheeseColor = '#ffe57f';
+        if (cookState === 'overcooked') cheeseColor = '#c79f3c';
+        if (cookState === 'burnt') cheeseColor = '#5d4720';
+        // Splotchy cheese
+        ctx.fillStyle = cheeseColor;
+        for (let i = 0; i < 14; i++) {
+            const a = (i / 14) * Math.PI * 2 + 0.3;
+            const dist = r * (0.2 + (i % 3) * 0.18);
+            const sx = cx + Math.cos(a) * dist;
+            const sy = cy + Math.sin(a) * dist;
+            ctx.beginPath();
+            ctx.arc(sx, sy, r * 0.18, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // Other toppings
+    p.toppings.forEach((id, idx) => {
+        if (id === 'sauce' || id === 'cheese') return;
+        const ing = INGREDIENT_BY_ID[id];
+        if (!ing) return;
+        // Position based on hash of (id + idx)
+        const seed = (id.charCodeAt(0) * 41 + idx * 73) % 360;
+        const a = (seed / 360) * Math.PI * 2;
+        const distFromCenter = ((seed * 7) % 100) / 100 * r * 0.6;
+        const sx = cx + Math.cos(a) * distFromCenter;
+        const sy = cy + Math.sin(a) * distFromCenter;
+
+        // Place 2-3 instances around the calculated position for "spread" feel
+        const instances = id === 'pepperoni' ? 1 : 2;
+        for (let inst = 0; inst < instances; inst++) {
+            const offA = a + inst * 0.7;
+            const ox = sx + Math.cos(offA) * r * 0.12;
+            const oy = sy + Math.sin(offA) * r * 0.12;
+            drawTopping(ing, ox, oy, r * 0.13, cookState);
+        }
+    });
+}
+
+function drawTopping(ing, x, y, size, cookState) {
+    const burntTint = cookState === 'burnt';
+    const overTint = cookState === 'overcooked' || burntTint;
+    if (ing.id === 'pepperoni') {
+        ctx.fillStyle = burntTint ? '#3e0a0a' : (overTint ? '#7a1a1a' : '#c62828');
+        ctx.beginPath();
+        ctx.arc(x, y, size * 1.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = burntTint ? '#1a0606' : '#7a1a1a';
+        ctx.beginPath();
+        ctx.arc(x - size * 0.3, y - size * 0.3, size * 0.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = burntTint ? '#1a0606' : '#7a1a1a';
+        ctx.beginPath();
+        ctx.arc(x + size * 0.3, y + size * 0.4, size * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+    } else if (ing.id === 'mushroom') {
+        ctx.fillStyle = burntTint ? '#3e2a18' : '#a1887f';
+        ctx.beginPath();
+        ctx.ellipse(x, y - size * 0.2, size, size * 0.7, 0, Math.PI, 0);
+        ctx.fill();
+        ctx.fillStyle = burntTint ? '#1f1408' : '#fff8e1';
+        ctx.fillRect(x - size * 0.25, y - size * 0.2, size * 0.5, size * 0.6);
+    } else if (ing.id === 'olive') {
+        ctx.strokeStyle = burntTint ? '#000' : '#1b1b1b';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, size * 0.85, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = burntTint ? '#000' : '#1b1b1b';
+        ctx.beginPath();
+        ctx.arc(x, y, size * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+    } else if (ing.id === 'pepper') {
+        ctx.strokeStyle = burntTint ? '#0c1f0c' : '#2e7d32';
+        ctx.lineWidth = 2;
+        ctx.fillStyle = burntTint ? '#1a3a1a' : (overTint ? '#256b27' : '#43a047');
+        ctx.beginPath();
+        ctx.moveTo(x - size, y);
+        ctx.lineTo(x + size, y - size * 0.4);
+        ctx.lineTo(x + size, y + size * 0.4);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+    } else if (ing.id === 'pineapple') {
+        ctx.fillStyle = burntTint ? '#5a3d10' : (overTint ? '#c89020' : '#ffd54f');
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = burntTint ? '#3a280a' : '#a07f1c';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x - size, y); ctx.lineTo(x + size, y);
+        ctx.moveTo(x, y - size); ctx.lineTo(x, y + size);
+        ctx.stroke();
+    } else if (ing.id === 'anchovy') {
+        ctx.fillStyle = burntTint ? '#2a3038' : '#90a4ae';
+        ctx.beginPath();
+        ctx.ellipse(x, y, size * 1.2, size * 0.4, Math.PI / 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(x + size * 0.7, y - size * 0.2, size * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function adjustColor(hex, amt) {
+    // Simple darken/lighten
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!m) return hex;
+    const r = Math.max(0, Math.min(255, parseInt(m[1], 16) + amt));
+    const g = Math.max(0, Math.min(255, parseInt(m[2], 16) + amt));
+    const b = Math.max(0, Math.min(255, parseInt(m[3], 16) + amt));
+    return `rgb(${r},${g},${b})`;
+}
+
+function drawCarrying() {
+    if (!state.carrying) return;
+    const radius = 50;
+    const cx = mouse.x, cy = mouse.y;
+    // Slight offset for cursor visibility
+    drawPizza(state.carrying, cx, cy, radius);
+    // Hint: where to drop
+    ctx.font = 'bold 11px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('click customer to deliver', cx, cy + radius + 16);
+}
+
+function drawFloaters() {
+    state.floaters.forEach(f => {
+        const a = Math.max(0, f.life / f.maxLife);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = f.color;
+        ctx.font = 'bold 18px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText(f.text, f.x, f.y);
+    });
+    ctx.globalAlpha = 1;
+}
+
+function drawHelpHints() {
+    if (state.carrying) return;
+    if (state.prepPizza.toppings.length === 0 && state.served === 0) {
+        const center = prepPizzaCenter();
+        ctx.fillStyle = 'rgba(91,45,16,0.7)';
+        ctx.font = 'italic 14px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText('← Click ingredients to add them here', center.x, center.y - center.r - 18);
+    }
+}
+
+// ===== Main loop =====
+let lastTime = 0;
+function loop(ts) {
+    const dt = lastTime ? Math.min((ts - lastTime) / 1000, 0.05) : 0.016;
+    lastTime = ts;
+
+    if (!state) {
+        ctx.fillStyle = '#1a0e08';
+        ctx.fillRect(0, 0, W, H);
+    } else if (!state.gameEnded) {
+        update(dt);
+        drawBackground();
+        drawCustomerStrip();
+        drawIngredientPanel();
+        drawOvenPanel();
+        drawPrep();
+        drawHelpHints();
+        drawFloaters();
+        drawCarrying();
+    } else {
+        // Game ended; freeze last frame visuals
+        drawBackground();
+        drawCustomerStrip();
+        drawIngredientPanel();
+        drawOvenPanel();
+        drawPrep();
+    }
+
+    requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
