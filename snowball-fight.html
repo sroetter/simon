@@ -1886,28 +1886,51 @@ function drawHUD() {
         }
     });
 
-    // Aim reticle for P1 (mouse mode) — black with a faint white halo for contrast
-    if (mouse.inside && state.players[0] && state.players[0].alive && !state.players[0].isBot) {
-        const drawReticle = () => {
-            ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 11, 0, Math.PI * 2); ctx.stroke();
+    // Reticles for both human players — black with a white halo for contrast.
+    // P1 follows the mouse; P2's reticle floats in front of them along their
+    // facing direction (since P2 aims with the arrow keys).
+    function drawReticleAt(rx, ry) {
+        const path = () => {
+            ctx.beginPath(); ctx.arc(rx, ry, 11, 0, Math.PI * 2); ctx.stroke();
             ctx.beginPath();
-            ctx.moveTo(mouse.x - 16, mouse.y); ctx.lineTo(mouse.x - 4, mouse.y);
-            ctx.moveTo(mouse.x + 4, mouse.y); ctx.lineTo(mouse.x + 16, mouse.y);
-            ctx.moveTo(mouse.x, mouse.y - 16); ctx.lineTo(mouse.x, mouse.y - 4);
-            ctx.moveTo(mouse.x, mouse.y + 4); ctx.lineTo(mouse.x, mouse.y + 16);
+            ctx.moveTo(rx - 16, ry); ctx.lineTo(rx - 4, ry);
+            ctx.moveTo(rx + 4, ry); ctx.lineTo(rx + 16, ry);
+            ctx.moveTo(rx, ry - 16); ctx.lineTo(rx, ry - 4);
+            ctx.moveTo(rx, ry + 4); ctx.lineTo(rx, ry + 16);
             ctx.stroke();
         };
-        // White halo (so the black reticle stays visible over dark trees/rocks)
         ctx.strokeStyle = 'rgba(255,255,255,0.7)';
         ctx.lineWidth = 4;
-        drawReticle();
-        // Black foreground
+        path();
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 2;
-        drawReticle();
-        // Tiny center dot
+        path();
         ctx.fillStyle = '#000';
-        ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(rx, ry, 1.6, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // P1: mouse-driven
+    const p1 = state.players[0];
+    if (mouse.inside && p1 && p1.alive && !p1.isBot) {
+        drawReticleAt(mouse.x, mouse.y);
+    }
+    // P2: floats in front of the player along their facing direction
+    const p2 = state.players[1];
+    if (state.mode === 2 && p2 && p2.alive && !p2.isBot) {
+        const fl = Math.hypot(p2.facingX, p2.facingY) || 1;
+        const rx = p2.x + (p2.facingX / fl) * 120;
+        const ry = p2.y + (p2.facingY / fl) * 120;
+        // Connecting tether so P2 can find their reticle in the chaos
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.setLineDash([4, 5]);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(p2.x + (p2.facingX / fl) * (PLAYER_R + 4),
+                   p2.y + (p2.facingY / fl) * (PLAYER_R + 4));
+        ctx.lineTo(rx, ry);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        drawReticleAt(rx, ry);
     }
 }
 
