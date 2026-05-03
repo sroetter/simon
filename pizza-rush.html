@@ -137,6 +137,8 @@ const startScreen = document.getElementById('startScreen');
 const gameOverScreen = document.getElementById('gameOverScreen');
 
 let W = 0, H = 0;
+let state = null; // declared early so resize() can safely read it
+let layout = null;
 function resize() {
     W = window.innerWidth; H = window.innerHeight;
     canvas.width = W; canvas.height = H;
@@ -204,10 +206,8 @@ const DIFF = {
 };
 
 let currentDifficulty = 'medium';
-let state = null;
 
 // ===== Layout (recomputed on resize) =====
-let layout = null;
 function recomputeLayout() {
     const padX = 30, padTop = 80, padBottom = 30;
     const ingredientPanelW = 200;
