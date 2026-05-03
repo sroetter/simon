@@ -430,6 +430,11 @@ canvas.addEventListener('mousemove', e => {
 canvas.addEventListener('mouseleave', () => { mouse.inside = false; });
 canvas.addEventListener('mousedown', initAudio);
 
+function consumeJust(code) {
+    if (justPressed[code]) { justPressed[code] = false; return true; }
+    return false;
+}
+
 // ===== Game flow =====
 function startGame(mode) {
     initAudio();
