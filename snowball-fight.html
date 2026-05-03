@@ -618,8 +618,9 @@ function updatePlayer(p, dt) {
     p.vx = ix * PLAYER_SPEED;
     p.vy = iy * PLAYER_SPEED;
 
-    // Update facing if moving (unless mouse already aimed for P1)
-    if (p.moving && !aimedByMouse) {
+    // Update facing if moving (unless mouse already aimed for P1, or this is a bot
+    // whose aim direction was already set by aiCommand toward its target)
+    if (p.moving && !aimedByMouse && !p.isBot) {
         p.facingX = ix;
         p.facingY = iy;
     }
@@ -904,12 +905,27 @@ function burstParticles(x, y, color, n) {
 // ===== AI =====
 function aiCommand(p, dt) {
     const out = { ix: 0, iy: 0, throw: false, build: false };
-    // Pick nearest living enemy (anyone but self)
+    // Stick with the same target for a while; only re-pick when it dies, gets
+    // out of range, or the timer expires. Prevents target-flip "confusion".
+    p.ai.targetTimer = (p.ai.targetTimer || 0) - dt;
     let opp = null, oppD = Infinity;
-    for (const q of state.players) {
-        if (q === p || !q.alive) continue;
-        const d = Math.hypot(q.x - p.x, q.y - p.y);
-        if (d < oppD) { oppD = d; opp = q; }
+    if (p.ai.targetIdx !== undefined && p.ai.targetIdx >= 0) {
+        const cur = state.players[p.ai.targetIdx];
+        if (cur && cur !== p && cur.alive && p.ai.targetTimer > 0) {
+            opp = cur;
+            oppD = Math.hypot(cur.x - p.x, cur.y - p.y);
+        }
+    }
+    if (!opp) {
+        for (const q of state.players) {
+            if (q === p || !q.alive) continue;
+            const d = Math.hypot(q.x - p.x, q.y - p.y);
+            if (d < oppD) { oppD = d; opp = q; }
+        }
+        if (opp) {
+            p.ai.targetIdx = opp.idx;
+            p.ai.targetTimer = 2.5 + Math.random() * 1.8;
+        }
     }
     if (!opp) return out;
 
@@ -959,11 +975,23 @@ function aiCommand(p, dt) {
         if (best) goal = { x: best.x, y: best.y, kind: 'pile' };
     }
 
-    // Strategic build: when opponent close & has line of fire & we have ammo
-    if (!goal && cfg.smartBuild > 0 && p.ammo >= FORT_COST + 1 && dist < 280 && Math.random() < cfg.smartBuild * dt * 1.5) {
-        // Face opponent and build
-        p.facingX = dx / dist; p.facingY = dy / dist;
-        out.build = true;
+    // Strategic build: build forts both as cover when an enemy is nearby AND
+    // proactively to set up a base. Multiplier (×3) and conditions (range +
+    // proactive trigger) make bots build noticeably more often.
+    if (!goal && cfg.smartBuild > 0 && p.ammo >= FORT_COST + 1 && p.buildCooldown <= 0) {
+        // Count how many forts we already own
+        let myForts = 0;
+        for (const f of state.forts) if (f.alive && f.owner === p.idx) myForts++;
+        // Higher chance when we have few forts (proactive base building) and
+        // when an enemy is in throwing distance (defensive cover)
+        const proactive = myForts < 4 ? 1.0 : 0.3;
+        const defensive = dist < 320 ? 1.5 : 0.7;
+        const chance = cfg.smartBuild * dt * 3 * proactive * defensive;
+        if (Math.random() < chance) {
+            // Face opponent (or just a random outward direction if far away)
+            if (dist < 400) { p.facingX = dx / dist; p.facingY = dy / dist; }
+            out.build = true;
+        }
     }
 
     // Aim & throw
@@ -983,11 +1011,12 @@ function aiCommand(p, dt) {
         }
     }
 
-    // Movement: if no goal, kite at preferred distance
+    // Movement: if no goal, kite at preferred distance. Commit to juke
+    // directions for longer so the bot doesn't oscillate in place.
     if (!goal) {
         if (dist < cfg.defendDistance * 0.6) {
             // Strafe / back away
-            if (p.ai.jukeTimer <= 0) { p.ai.jukeDir = (Math.random() < 0.5 ? -1 : 1); p.ai.jukeTimer = 0.6 + Math.random() * 0.8; }
+            if (p.ai.jukeTimer <= 0) { p.ai.jukeDir = (Math.random() < 0.5 ? -1 : 1); p.ai.jukeTimer = 1.4 + Math.random() * 1.0; }
             // Perpendicular juke
             out.ix = -aimY * p.ai.jukeDir - aimX * 0.4;
             out.iy = aimX * p.ai.jukeDir - aimY * 0.4;
@@ -995,7 +1024,7 @@ function aiCommand(p, dt) {
             out.ix = aimX; out.iy = aimY;
         } else {
             // Strafe in place
-            if (p.ai.jukeTimer <= 0) { p.ai.jukeDir = (Math.random() < 0.5 ? -1 : 1); p.ai.jukeTimer = 0.5 + Math.random() * 0.6; }
+            if (p.ai.jukeTimer <= 0) { p.ai.jukeDir = (Math.random() < 0.5 ? -1 : 1); p.ai.jukeTimer = 1.2 + Math.random() * 0.9; }
             out.ix = -aimY * p.ai.jukeDir;
             out.iy = aimX * p.ai.jukeDir;
         }
