@@ -359,7 +359,8 @@ function makePlayer(idx, x, y, isBot) {
         x, y,
         vx: 0, vy: 0,
         facingX: facing.x, facingY: facing.y,
-        ammo: START_AMMO,
+        // Bots start with fewer snowballs so they have to hunt for piles
+        ammo: isBot ? 3 : START_AMMO,
         hp: PLAYER_HP,
         alive: true,
         throwCooldown: 0,
@@ -963,13 +964,11 @@ function aiCommand(p, dt) {
     }
     let oppD = Math.hypot(opp.x - p.x, opp.y - p.y);
 
-    // Each tier is roughly 40% tougher than before:
-    // - aim turn rate ×1.4, throwRange ×1.4, smartBuild ×1.4, react ×1.4 (capped)
-    // - accuracy moves 40% of its remaining gap toward perfect (1.0)
+    // Tougher tiers — quicker aim, longer reach, tighter accuracy:
     const cfg = {
-        easy:   { aim: 0.70, throwRange: 392, defendDistance: 230, smartBuild: 0.07, accuracy: 0.70,  react: 0.56 },
-        medium: { aim: 1.12, throwRange: 504, defendDistance: 280, smartBuild: 0.35, accuracy: 0.868, react: 0.98 },
-        hard:   { aim: 1.40, throwRange: 588, defendDistance: 320, smartBuild: 0.77, accuracy: 0.964, react: 1.40 },
+        easy:   { aim: 0.95, throwRange: 460, defendDistance: 240, smartBuild: 0.10, accuracy: 0.78, react: 0.70 },
+        medium: { aim: 1.40, throwRange: 580, defendDistance: 300, smartBuild: 0.45, accuracy: 0.92, react: 1.10 },
+        hard:   { aim: 1.75, throwRange: 680, defendDistance: 340, smartBuild: 0.95, accuracy: 0.985, react: 1.50 },
     }[state.difficulty || 'medium'];
 
     p.ai.timer -= dt;
@@ -1046,12 +1045,13 @@ function aiCommand(p, dt) {
         return true;
     }
 
-    // If low ammo and a pile has stock, head to nearest pile
+    // Hunt for snow when running low. Bots head to a pile earlier (≤2 ammo)
+    // so they're not caught dry in a fight.
     let goal = null;
-    if (p.ammo <= 1) {
+    if (p.ammo <= 2) {
         let best = null, bd = Infinity;
         state.piles.forEach(pile => {
-            if (pile.stock < 0.1) return;
+            if (pile.stock < 0.15) return;
             const d = Math.hypot(p.x - pile.x, p.y - pile.y);
             if (d < bd) { bd = d; best = pile; }
         });
@@ -1094,13 +1094,21 @@ function aiCommand(p, dt) {
     const effThrowRange = cfg.throwRange * aggro;
     if (dist < effThrowRange && p.ammo > 0 && p.throwCooldown <= 0) {
         if (clearShot(p.x, p.y, opp.x, opp.y)) {
-            // Add accuracy noise (less when hunting a weak target)
-            const err = (1 - cfg.accuracy) * (Math.random() - 0.5) * 1.4 / aggro;
-            p.facingX += -aimY * err;
-            p.facingY += aimX * err;
-            const fl = Math.hypot(p.facingX, p.facingY) || 1;
-            p.facingX /= fl; p.facingY /= fl;
-            out.throw = true;
+            // Smart ammo conservation: when low on snowballs, only throw on
+            // high-value shots — close range, vulnerable target, or hunting.
+            const lowAmmo = p.ammo <= 2;
+            const closeShot = dist < cfg.throwRange * 0.45;
+            const easyTarget = opp.hp <= 2;
+            const shouldShoot = !lowAmmo || closeShot || easyTarget || huntWeak;
+            if (shouldShoot) {
+                // Add accuracy noise (less when hunting or close)
+                const err = (1 - cfg.accuracy) * (Math.random() - 0.5) * 1.4 / aggro;
+                p.facingX += -aimY * err;
+                p.facingY += aimX * err;
+                const fl = Math.hypot(p.facingX, p.facingY) || 1;
+                p.facingX /= fl; p.facingY /= fl;
+                out.throw = true;
+            }
         }
     }
 
