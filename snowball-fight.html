@@ -655,12 +655,15 @@ function updatePlayer(p, dt) {
         if (ai.build) didBuild = true;
     } else {
         const k = p.keys;
-        if (codes[k.up]) iy -= 1;
-        if (codes[k.down]) iy += 1;
-        if (codes[k.left]) ix -= 1;
-        if (codes[k.right]) ix += 1;
-        if (consumeJust(k.throw)) didThrow = true;
-        if (consumeJust(k.build)) didBuild = true;
+        // In 1-player mode the arrow keys / Enter / RShift aren't used by
+        // anyone, so let P1 also drive with them in addition to WASD.
+        const dual = (p.idx === 0 && state.mode === 1);
+        if (codes[k.up]    || (dual && codes['ArrowUp']))    iy -= 1;
+        if (codes[k.down]  || (dual && codes['ArrowDown']))  iy += 1;
+        if (codes[k.left]  || (dual && codes['ArrowLeft']))  ix -= 1;
+        if (codes[k.right] || (dual && codes['ArrowRight'])) ix += 1;
+        if (consumeJust(k.throw) || (dual && consumeJust('Enter')))      didThrow = true;
+        if (consumeJust(k.build) || (dual && consumeJust('ShiftRight'))) didBuild = true;
 
         // P1 also gets mouse aim + mouse buttons
         if (p.idx === 0) {
