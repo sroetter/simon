@@ -329,9 +329,14 @@ function makeState(mode, difficulty, bots) {
         players.push(makePlayer(i, sx, sy, isBot, paletteOrder[i % paletteOrder.length]));
     }
 
-    // Pick a random initial It — only THIS player gets the speed ramp.
-    // Players infected later by touch move at the standard tagger speed.
-    const itIdx = Math.floor(Math.random() * total);
+    // Pick a random initial It from the bots so the human isn't always
+    // chased from the start. (You can still get infected later by touch.)
+    // If somehow there are no bots, fall back to any player.
+    const botIndices = [];
+    for (let i = 0; i < total; i++) if (players[i].isBot) botIndices.push(i);
+    const itIdx = botIndices.length > 0
+        ? botIndices[Math.floor(Math.random() * botIndices.length)]
+        : Math.floor(Math.random() * total);
     players[itIdx].isIt = true;
     players[itIdx].isOriginalIt = true;
 
@@ -449,7 +454,13 @@ function startGame(mode) {
     overlay.classList.add('hidden');
     startScreen.style.display = 'none';
     gameOverScreen.style.display = 'none';
-    announce("RUN — DON'T GET INFECTED!", 1.8);
+    const orig = state.players.find(p => p.isOriginalIt);
+    if (orig) {
+        const name = orig.isBot ? `BOT ${orig.idx + 1}` : `P${orig.idx + 1}`;
+        announce(`${name} IS IT — RUN!`, 1.8);
+    } else {
+        announce("RUN — DON'T GET INFECTED!", 1.8);
+    }
 }
 
 function announce(text, dur) {
