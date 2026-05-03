@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snowball Fight - Simon's Game Gallery</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #0d1b2a;
+    min-height: 100vh; overflow: hidden;
+    color: white;
+    -webkit-user-select: none; user-select: none;
+}
+canvas { display: block; position: absolute; top: 0; left: 0; cursor: crosshair; }
+
+.back-btn {
+    position: fixed; top: 14px; left: 14px;
+    text-decoration: none; color: #b3d9ff;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(179,217,255,0.45);
+    padding: 8px 14px; border-radius: 8px;
+    font-size: 14px; z-index: 100;
+}
+.back-btn:hover { background: rgba(179,217,255,0.18); }
+
+#overlay {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50; background: linear-gradient(180deg, rgba(10,18,30,0.7) 0%, rgba(10,18,30,0.85) 100%);
+}
+#overlay.hidden { display: none; }
+
+.box {
+    background: linear-gradient(135deg, #1c3a5e, #0f2540);
+    border: 2px solid #b3d9ff;
+    border-radius: 18px;
+    padding: 28px 36px; text-align: center;
+    width: 92%; max-width: 600px;
+    box-shadow: 0 16px 60px rgba(0,0,0,0.7), 0 0 50px rgba(179,217,255,0.15);
+}
+h1 {
+    font-size: 46px; margin-bottom: 4px;
+    color: #fff; letter-spacing: 2px;
+    text-shadow: 0 0 18px rgba(179,217,255,0.5), 2px 2px 0 #1a3a5e;
+}
+h2 { font-size: 18px; color: #b3d9ff; font-weight: normal; margin-bottom: 18px; }
+
+.controls {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    margin: 14px 0 18px; text-align: left;
+}
+.control-section {
+    background: rgba(0,0,0,0.32); padding: 12px;
+    border-radius: 8px;
+}
+.control-section.p1 { border: 1px solid rgba(255,107,107,0.5); }
+.control-section.p2 { border: 1px solid rgba(107,178,255,0.5); }
+.control-section h3 { font-size: 15px; margin-bottom: 6px; }
+.control-section.p1 h3 { color: #ff7f7f; }
+.control-section.p2 h3 { color: #7fbfff; }
+.control-section p { font-size: 13px; line-height: 1.55; color: #d6e6f5; }
+
+.row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 10px; }
+.btn {
+    background: linear-gradient(135deg, #2980b9, #1f4f7c);
+    color: white; border: 2px solid #b3d9ff;
+    padding: 12px 26px; font-size: 17px; font-weight: bold;
+    border-radius: 10px; cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: 0 4px 0 #14365a;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #14365a; }
+.btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #14365a; }
+
+.btn.diff { padding: 8px 18px; font-size: 14px; min-width: 90px; }
+.btn.diff.active { background: linear-gradient(135deg, #ff7f50, #d63300); border-color: #ffd9c2; box-shadow: 0 4px 0 #771c00; }
+.label { font-size: 13px; color: #b3d9ff; margin: 6px 0 4px; }
+
+.score-line { font-size: 22px; margin: 4px 0; }
+.winner { font-size: 30px; font-weight: bold; margin: 12px 0; }
+.winner.p1 { color: #ff5d5d; text-shadow: 0 0 16px rgba(255,93,93,0.55); }
+.winner.p2 { color: #5dadff; text-shadow: 0 0 16px rgba(93,173,255,0.55); }
+
+.footer-link {
+    position: fixed; bottom: 8px; left: 0; right: 0;
+    text-align: center; font-size: 12px;
+    color: rgba(255,255,255,0.4); z-index: 60; pointer-events: none;
+}
+.footer-link a { color: rgba(255,255,255,0.65); text-decoration: underline; pointer-events: auto; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+
+<div id="overlay">
+    <div class="box" id="startScreen">
+        <h1>❄ SNOWBALL FIGHT ❄</h1>
+        <h2>Last one standing wins!</h2>
+        <div class="controls">
+            <div class="control-section p1">
+                <h3>🔴 Player 1</h3>
+                <p>WASD — Move<br>Space — Throw snowball<br>Left-Shift — Build fort<br>(Throw aims where you face)</p>
+            </div>
+            <div class="control-section p2">
+                <h3>🔵 Player 2</h3>
+                <p>Arrow keys — Move<br>Enter — Throw snowball<br>Right-Shift — Build fort<br>(or CPU in 1P mode)</p>
+            </div>
+        </div>
+        <div class="label">CPU Difficulty (1P only):</div>
+        <div class="row">
+            <button class="btn diff" data-diff="easy">Easy</button>
+            <button class="btn diff active" data-diff="medium">Medium</button>
+            <button class="btn diff" data-diff="hard">Hard</button>
+        </div>
+        <div class="row">
+            <button class="btn" id="start1P">1 Player vs CPU</button>
+            <button class="btn" id="start2P">2 Players</button>
+        </div>
+    </div>
+    <div class="box" id="gameOverScreen" style="display:none;">
+        <h1>GAME OVER</h1>
+        <div class="winner" id="winnerText"></div>
+        <div class="row">
+            <button class="btn" id="rematchBtn">Rematch</button>
+            <button class="btn" id="menuBtn">Main Menu</button>
+        </div>
+    </div>
+</div>
+
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<script>
+(() => {
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startScreen = document.getElementById('startScreen');
+const gameOverScreen = document.getElementById('gameOverScreen');
+
+// ===== Setup =====
+let W = 0, H = 0;
+function resize() {
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W; canvas.height = H;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ===== Audio =====
+let audioCtx = null;
+function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+
+function tone(freq, dur, type = 'sine', vol = 0.15) {
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+}
+function noise(dur, vol, hp = 1000) {
+    if (!audioCtx) return;
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) * vol;
+    const src = audioCtx.createBufferSource(); src.buffer = buf;
+    const f = audioCtx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+    src.connect(f); f.connect(audioCtx.destination);
+    src.start(); src.stop(audioCtx.currentTime + dur);
+}
+function throwSound() { tone(440, 0.06, 'square', 0.06); noise(0.1, 0.12, 1500); }
+function hitSound() { noise(0.15, 0.18, 600); tone(180, 0.12, 'triangle', 0.08); }
+function pickupSound() { tone(660, 0.06, 'sine', 0.1); tone(880, 0.08, 'sine', 0.08); }
+function buildSound() { tone(220, 0.05, 'sawtooth', 0.06); noise(0.12, 0.1, 400); }
+function fortBreakSound() { noise(0.25, 0.22, 300); tone(80, 0.18, 'sawtooth', 0.1); }
+function knockoutSound() {
+    tone(110, 0.4, 'sawtooth', 0.18);
+    setTimeout(() => tone(80, 0.5, 'sawtooth', 0.15), 100);
+}
+function winSound() {
+    tone(523, 0.18, 'square', 0.12);
+    setTimeout(() => tone(659, 0.18, 'square', 0.12), 150);
+    setTimeout(() => tone(784, 0.25, 'square', 0.14), 300);
+}
+
+// ===== Constants =====
+const PLAYER_R = 18;
+const SNOWBALL_R = 7;
+const FORT_W = 50, FORT_H = 18;
+const MAX_AMMO = 8;
+const START_AMMO = 5;
+const PLAYER_HP = 3;
+const FORT_HP = 3;
+const SNOW_PILE_R = 22;
+const PLAYER_SPEED = 220;
+const SNOWBALL_SPEED = 520;
+const THROW_COOLDOWN = 0.45;
+const BUILD_COOLDOWN = 0.6;
+const PICKUP_RATE = 1.6; // ammo per second when on a pile
+const PILE_REGEN = 0.15; // pile stock regen per second
+const FORT_COST = 2;
+const SNOWBALL_RANGE = 360;
+
+// ===== State =====
+let state = null;
+
+function makeState(mode, difficulty) {
+    const arena = computeArena();
+    const trees = [];
+    const piles = [];
+    const props = [];
+
+    // Trees scattered (avoid spawn zones and middle path)
+    for (let i = 0; i < 18; i++) {
+        let x, y, ok;
+        for (let tries = 0; tries < 30; tries++) {
+            x = arena.x + 60 + Math.random() * (arena.w - 120);
+            y = arena.y + 60 + Math.random() * (arena.h - 120);
+            ok = true;
+            // Avoid centerline & spawn zones
+            const cx = arena.x + arena.w / 2;
+            if (Math.abs(x - cx) < 80) ok = false;
+            if (Math.hypot(x - (arena.x + 80), y - (arena.y + arena.h / 2)) < 80) ok = false;
+            if (Math.hypot(x - (arena.x + arena.w - 80), y - (arena.y + arena.h / 2)) < 80) ok = false;
+            for (const t of trees) if (Math.hypot(x - t.x, y - t.y) < 60) { ok = false; break; }
+            if (ok) break;
+        }
+        if (ok) trees.push({ x, y, r: 18 + Math.random() * 6, kind: Math.random() < 0.7 ? 'pine' : 'fir', sway: Math.random() * Math.PI * 2 });
+    }
+
+    // Snow piles — 6 placed roughly symmetrically
+    const pilePositions = [
+        { x: arena.x + arena.w * 0.25, y: arena.y + arena.h * 0.2 },
+        { x: arena.x + arena.w * 0.25, y: arena.y + arena.h * 0.8 },
+        { x: arena.x + arena.w * 0.5, y: arena.y + arena.h * 0.18 },
+        { x: arena.x + arena.w * 0.5, y: arena.y + arena.h * 0.82 },
+        { x: arena.x + arena.w * 0.75, y: arena.y + arena.h * 0.2 },
+        { x: arena.x + arena.w * 0.75, y: arena.y + arena.h * 0.8 },
+    ];
+    pilePositions.forEach(p => piles.push({ x: p.x, y: p.y, stock: 1.0, sparkle: Math.random() * Math.PI * 2 }));
+
+    // Decorative props (rocks, drifts)
+    for (let i = 0; i < 14; i++) {
+        props.push({
+            x: arena.x + 40 + Math.random() * (arena.w - 80),
+            y: arena.y + 40 + Math.random() * (arena.h - 80),
+            r: 8 + Math.random() * 14,
+            kind: Math.random() < 0.5 ? 'drift' : 'rock',
+            seed: Math.random(),
+        });
+    }
+
+    // Falling snowflakes
+    const flakes = [];
+    for (let i = 0; i < 80; i++) {
+        flakes.push({
+            x: Math.random() * W,
+            y: Math.random() * H,
+            r: 1 + Math.random() * 2.5,
+            vy: 20 + Math.random() * 50,
+            vx: -10 + Math.random() * 20,
+            wob: Math.random() * Math.PI * 2,
+        });
+    }
+
+    return {
+        mode, difficulty,
+        arena,
+        running: true,
+        winner: 0,
+        time: 0,
+        trees, piles, props, flakes,
+        snowballs: [],
+        forts: [],
+        particles: [],
+        footprints: [],
+        players: [
+            makePlayer(0, arena.x + 70, arena.y + arena.h / 2),
+            makePlayer(1, arena.x + arena.w - 70, arena.y + arena.h / 2),
+        ],
+        endTimer: 0,
+    };
+}
+
+function computeArena() {
+    const margin = 50;
+    const x = margin, y = margin + 30;
+    const w = Math.max(800, W - margin * 2);
+    const h = Math.max(500, H - margin * 2 - 30);
+    return { x, y, w, h };
+}
+
+function makePlayer(idx, x, y) {
+    const isP1 = idx === 0;
+    return {
+        idx,
+        x, y,
+        vx: 0, vy: 0,
+        facingX: isP1 ? 1 : -1,
+        facingY: 0,
+        ammo: START_AMMO,
+        hp: PLAYER_HP,
+        alive: true,
+        throwCooldown: 0,
+        buildCooldown: 0,
+        flashTimer: 0,
+        invulnTimer: 0,
+        animTime: 0,
+        moving: false,
+        coatColor: isP1 ? '#d8463c' : '#3d6fc8',
+        coatDark: isP1 ? '#9a2c25' : '#264a8a',
+        scarfColor: isP1 ? '#f4d35e' : '#ffd54f',
+        hatColor: isP1 ? '#b9352a' : '#2d5dad',
+        pomColor: isP1 ? '#ffd6d4' : '#cfe1ff',
+        skin: '#f0c6a3',
+        keys: isP1
+            ? { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', throw: 'Space', build: 'ShiftLeft' }
+            : { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', throw: 'Enter', build: 'ShiftRight' },
+        // CPU AI fields
+        ai: {
+            timer: 0,
+            target: null,
+            jukeTimer: 0,
+            jukeDir: 0,
+        },
+        footprintTimer: 0,
+        knockoutTimer: 0,
+    };
+}
+
+// ===== Input =====
+const keys = {};
+const codes = {};
+const justPressed = {};
+
+window.addEventListener('keydown', e => {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Enter'].includes(e.key)) e.preventDefault();
+    if (!codes[e.code]) justPressed[e.code] = true;
+    codes[e.code] = true;
+    keys[e.key.toLowerCase()] = true;
+});
+window.addEventListener('keyup', e => {
+    codes[e.code] = false;
+    keys[e.key.toLowerCase()] = false;
+});
+
+function consumeJust(code) {
+    if (justPressed[code]) { justPressed[code] = false; return true; }
+    return false;
+}
+
+// ===== Game flow =====
+function startGame(mode) {
+    initAudio();
+    const diff = currentDifficulty;
+    state = makeState(mode, diff);
+    overlay.classList.add('hidden');
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = 'none';
+}
+
+function endGame(winnerIdx) {
+    if (!state || state.winner) return;
+    state.winner = winnerIdx + 1;
+    state.endTimer = 1.6;
+    winSound();
+}
+
+function showGameOver() {
+    state.running = false;
+    const winnerEl = document.getElementById('winnerText');
+    if (state.winner === 1) {
+        winnerEl.textContent = '🔴 Player 1 Wins!';
+        winnerEl.className = 'winner p1';
+    } else {
+        winnerEl.textContent = state.mode === 1 ? '🔵 CPU Wins!' : '🔵 Player 2 Wins!';
+        winnerEl.className = 'winner p2';
+    }
+    overlay.classList.remove('hidden');
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = '';
+}
+
+let currentDifficulty = 'medium';
+document.querySelectorAll('.btn.diff').forEach(b => {
+    b.addEventListener('click', () => {
+        document.querySelectorAll('.btn.diff').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        currentDifficulty = b.dataset.diff;
+    });
+});
+document.getElementById('start1P').addEventListener('click', () => startGame(1));
+document.getElementById('start2P').addEventListener('click', () => startGame(2));
+document.getElementById('rematchBtn').addEventListener('click', () => startGame(state.mode));
+document.getElementById('menuBtn').addEventListener('click', () => {
+    state = null;
+    overlay.classList.remove('hidden');
+    startScreen.style.display = '';
+    gameOverScreen.style.display = 'none';
+});
+
+// ===== Helpers =====
+function clampToArena(p, r) {
+    const a = state.arena;
+    if (p.x < a.x + r) p.x = a.x + r;
+    if (p.x > a.x + a.w - r) p.x = a.x + a.w - r;
+    if (p.y < a.y + r) p.y = a.y + r;
+    if (p.y > a.y + a.h - r) p.y = a.y + a.h - r;
+}
+
+function tryThrow(p) {
+    if (p.throwCooldown > 0 || p.ammo <= 0 || !p.alive) return;
+    let fx = p.facingX, fy = p.facingY;
+    const fl = Math.hypot(fx, fy) || 1;
+    fx /= fl; fy /= fl;
+    state.snowballs.push({
+        x: p.x + fx * (PLAYER_R + 4),
+        y: p.y + fy * (PLAYER_R + 4),
+        vx: fx * SNOWBALL_SPEED,
+        vy: fy * SNOWBALL_SPEED,
+        owner: p.idx,
+        traveled: 0,
+        alive: true,
+        spin: 0,
+        spinSpeed: (Math.random() - 0.5) * 12,
+        trail: [],
+    });
+    p.ammo--;
+    p.throwCooldown = THROW_COOLDOWN;
+    throwSound();
+    // Throw burst particles
+    for (let i = 0; i < 4; i++) {
+        state.particles.push({
+            x: p.x + fx * 14, y: p.y + fy * 14,
+            vx: fx * 40 + (Math.random() - 0.5) * 80,
+            vy: fy * 40 + (Math.random() - 0.5) * 80,
+            life: 0.25, maxLife: 0.25,
+            size: 2 + Math.random() * 2, color: '#fff',
+        });
+    }
+}
+
+function tryBuildFort(p) {
+    if (p.buildCooldown > 0 || p.ammo < FORT_COST || !p.alive) return;
+    let fx = p.facingX, fy = p.facingY;
+    const fl = Math.hypot(fx, fy) || 1;
+    fx /= fl; fy /= fl;
+    const dist = PLAYER_R + 28;
+    const fortX = p.x + fx * dist;
+    const fortY = p.y + fy * dist;
+    // Snap orientation: horizontal vs vertical wall depending on facing
+    const horizontal = Math.abs(fx) > Math.abs(fy);
+    const w = horizontal ? FORT_H : FORT_W;
+    const h = horizontal ? FORT_W : FORT_H;
+    // Don't build outside arena
+    const a = state.arena;
+    if (fortX - w / 2 < a.x || fortX + w / 2 > a.x + a.w) return;
+    if (fortY - h / 2 < a.y || fortY + h / 2 > a.y + a.h) return;
+    state.forts.push({
+        x: fortX, y: fortY,
+        w, h, hp: FORT_HP, maxHP: FORT_HP,
+        owner: p.idx, alive: true,
+        crackSeed: Math.random(),
+    });
+    p.ammo -= FORT_COST;
+    p.buildCooldown = BUILD_COOLDOWN;
+    buildSound();
+    // Sparkle particles
+    for (let i = 0; i < 8; i++) {
+        state.particles.push({
+            x: fortX + (Math.random() - 0.5) * w,
+            y: fortY + (Math.random() - 0.5) * h,
+            vx: (Math.random() - 0.5) * 60, vy: -20 - Math.random() * 60,
+            life: 0.5, maxLife: 0.5,
+            size: 1 + Math.random() * 2, color: '#cfe5ff',
+        });
+    }
+}
+
+// Rect-circle collision check
+function rectCircle(rx, ry, rw, rh, cx, cy, cr) {
+    const closestX = Math.max(rx - rw / 2, Math.min(cx, rx + rw / 2));
+    const closestY = Math.max(ry - rh / 2, Math.min(cy, ry + rh / 2));
+    const dx = cx - closestX, dy = cy - closestY;
+    return dx * dx + dy * dy < cr * cr;
+}
+
+// ===== Update =====
+function updatePlayer(p, dt) {
+    if (!p.alive) {
+        p.knockoutTimer += dt;
+        return;
+    }
+    p.throwCooldown = Math.max(0, p.throwCooldown - dt);
+    p.buildCooldown = Math.max(0, p.buildCooldown - dt);
+    p.flashTimer = Math.max(0, p.flashTimer - dt);
+    p.invulnTimer = Math.max(0, p.invulnTimer - dt);
+
+    // Input
+    let ix = 0, iy = 0;
+    let didThrow = false, didBuild = false;
+    if (p.idx === 1 && state.mode === 1) {
+        // CPU
+        const ai = aiCommand(p, dt);
+        ix = ai.ix; iy = ai.iy;
+        if (ai.throw) didThrow = true;
+        if (ai.build) didBuild = true;
+    } else {
+        const k = p.keys;
+        if (codes[k.up]) iy -= 1;
+        if (codes[k.down]) iy += 1;
+        if (codes[k.left]) ix -= 1;
+        if (codes[k.right]) ix += 1;
+        if (consumeJust(k.throw)) didThrow = true;
+        if (consumeJust(k.build)) didBuild = true;
+    }
+
+    const len = Math.hypot(ix, iy);
+    if (len > 0) { ix /= len; iy /= len; }
+    p.moving = len > 0;
+    p.vx = ix * PLAYER_SPEED;
+    p.vy = iy * PLAYER_SPEED;
+
+    // Update facing if moving
+    if (p.moving) {
+        p.facingX = ix;
+        p.facingY = iy;
+        p.animTime += dt;
+        // Drop footprints
+        p.footprintTimer -= dt;
+        if (p.footprintTimer <= 0) {
+            const side = (Math.floor(p.animTime / 0.18) % 2) === 0 ? 1 : -1;
+            const perpX = -iy * 5 * side, perpY = ix * 5 * side;
+            state.footprints.push({
+                x: p.x - ix * 6 + perpX,
+                y: p.y - iy * 6 + perpY,
+                life: 4, maxLife: 4,
+                color: p.idx === 0 ? '#a83e36' : '#2d5dad',
+            });
+            p.footprintTimer = 0.18;
+        }
+    }
+
+    // Move with collision against forts (act as walls)
+    let nx = p.x + p.vx * dt;
+    let ny = p.y + p.vy * dt;
+    // Check fort collisions: revert axis if intersecting
+    for (const f of state.forts) {
+        if (!f.alive) continue;
+        if (rectCircle(f.x, f.y, f.w + 4, f.h + 4, nx, ny, PLAYER_R)) {
+            // Try sliding: revert one axis at a time
+            if (!rectCircle(f.x, f.y, f.w + 4, f.h + 4, nx, p.y, PLAYER_R)) {
+                ny = p.y;
+            } else if (!rectCircle(f.x, f.y, f.w + 4, f.h + 4, p.x, ny, PLAYER_R)) {
+                nx = p.x;
+            } else {
+                nx = p.x; ny = p.y;
+            }
+        }
+    }
+    // Trees as obstacles
+    for (const t of state.trees) {
+        const dx = nx - t.x, dy = ny - t.y;
+        const minD = PLAYER_R + t.r * 0.45;
+        if (dx * dx + dy * dy < minD * minD) {
+            // Push out
+            const d = Math.hypot(dx, dy) || 1;
+            nx = t.x + (dx / d) * minD;
+            ny = t.y + (dy / d) * minD;
+        }
+    }
+    p.x = nx; p.y = ny;
+    clampToArena(p, PLAYER_R);
+
+    // Snow pile pickups
+    state.piles.forEach(pile => {
+        const dx = p.x - pile.x, dy = p.y - pile.y;
+        if (dx * dx + dy * dy < (SNOW_PILE_R + PLAYER_R - 4) ** 2) {
+            if (pile.stock > 0.05 && p.ammo < MAX_AMMO) {
+                const amt = Math.min(PICKUP_RATE * dt, pile.stock, MAX_AMMO - p.ammo);
+                pile.stock -= amt;
+                const beforeAmmo = Math.floor(p.ammo);
+                p.ammo += amt;
+                if (Math.floor(p.ammo) > beforeAmmo) pickupSound();
+                // Sparkle particle
+                if (Math.random() < 0.3) {
+                    state.particles.push({
+                        x: pile.x + (Math.random() - 0.5) * SNOW_PILE_R,
+                        y: pile.y + (Math.random() - 0.5) * 8,
+                        vx: (Math.random() - 0.5) * 40,
+                        vy: -30 - Math.random() * 30,
+                        life: 0.4, maxLife: 0.4,
+                        size: 1 + Math.random() * 2, color: '#fff',
+                    });
+                }
+            }
+        }
+    });
+
+    if (didThrow) tryThrow(p);
+    if (didBuild) tryBuildFort(p);
+}
+
+function updateSnowballs(dt) {
+    state.snowballs.forEach(s => {
+        if (!s.alive) return;
+        s.trail.push({ x: s.x, y: s.y });
+        if (s.trail.length > 8) s.trail.shift();
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.spin += s.spinSpeed * dt;
+        s.traveled += Math.hypot(s.vx, s.vy) * dt;
+        if (s.traveled > SNOWBALL_RANGE) {
+            s.alive = false;
+            // Soft splat at landing
+            for (let i = 0; i < 10; i++) {
+                state.particles.push({
+                    x: s.x, y: s.y,
+                    vx: (Math.random() - 0.5) * 80, vy: -20 + Math.random() * -40,
+                    life: 0.5, maxLife: 0.5,
+                    size: 1 + Math.random() * 2, color: '#fff',
+                });
+            }
+            return;
+        }
+        // Out of arena
+        const a = state.arena;
+        if (s.x < a.x || s.x > a.x + a.w || s.y < a.y || s.y > a.y + a.h) {
+            s.alive = false;
+            return;
+        }
+        // Hit forts
+        for (const f of state.forts) {
+            if (!f.alive) continue;
+            if (rectCircle(f.x, f.y, f.w, f.h, s.x, s.y, SNOWBALL_R)) {
+                s.alive = false;
+                f.hp -= 1;
+                burstParticles(s.x, s.y, '#fff', 14);
+                hitSound();
+                if (f.hp <= 0) {
+                    f.alive = false;
+                    fortBreakSound();
+                    burstParticles(f.x, f.y, '#cfe5ff', 28);
+                }
+                return;
+            }
+        }
+        // Hit trees (snowballs absorb)
+        for (const t of state.trees) {
+            const dx = s.x - t.x, dy = s.y - t.y;
+            const minD = t.r * 0.55 + SNOWBALL_R;
+            if (dx * dx + dy * dy < minD * minD) {
+                s.alive = false;
+                burstParticles(s.x, s.y, '#fff', 10);
+                // Snow falls from tree
+                for (let i = 0; i < 6; i++) {
+                    state.particles.push({
+                        x: t.x + (Math.random() - 0.5) * t.r,
+                        y: t.y - t.r,
+                        vx: (Math.random() - 0.5) * 30,
+                        vy: 30 + Math.random() * 50,
+                        life: 0.6, maxLife: 0.6,
+                        size: 1.5 + Math.random() * 2,
+                        color: '#fff',
+                        gravity: 80,
+                    });
+                }
+                hitSound();
+                return;
+            }
+        }
+        // Hit players (not the owner, and only if alive & not invulnerable)
+        for (const p of state.players) {
+            if (!p.alive || p.idx === s.owner) continue;
+            if (p.invulnTimer > 0) continue;
+            const dx = p.x - s.x, dy = p.y - s.y;
+            const minD = PLAYER_R + SNOWBALL_R;
+            if (dx * dx + dy * dy < minD * minD) {
+                s.alive = false;
+                p.hp -= 1;
+                p.flashTimer = 0.18;
+                p.invulnTimer = 0.4;
+                hitSound();
+                burstParticles(p.x, p.y, '#fff', 18);
+                // Knockback
+                const d = Math.hypot(dx, dy) || 1;
+                p.x -= (dx / d) * 8;
+                p.y -= (dy / d) * 8;
+                if (p.hp <= 0) {
+                    p.alive = false;
+                    p.knockoutTimer = 0;
+                    knockoutSound();
+                    // Find living opponent — they win
+                    const winner = state.players.find(pp => pp.alive);
+                    if (winner) endGame(winner.idx);
+                }
+                return;
+            }
+        }
+    });
+    state.snowballs = state.snowballs.filter(s => s.alive);
+    state.forts = state.forts.filter(f => f.alive);
+}
+
+function updateParticles(dt) {
+    state.particles.forEach(p => {
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        if (p.gravity) p.vy += p.gravity * dt;
+        p.life -= dt;
+    });
+    state.particles = state.particles.filter(p => p.life > 0);
+    state.footprints.forEach(f => f.life -= dt);
+    state.footprints = state.footprints.filter(f => f.life > 0);
+}
+
+function updatePiles(dt) {
+    state.piles.forEach(pile => {
+        pile.stock = Math.min(1, pile.stock + PILE_REGEN * dt);
+        pile.sparkle += dt;
+    });
+}
+
+function updateFlakes(dt) {
+    state.flakes.forEach(f => {
+        f.wob += dt * 2;
+        f.x += f.vx * dt + Math.sin(f.wob) * 6 * dt;
+        f.y += f.vy * dt;
+        if (f.y > H + 4) { f.y = -4; f.x = Math.random() * W; }
+        if (f.x < -4) f.x = W + 4;
+        if (f.x > W + 4) f.x = -4;
+    });
+}
+
+function burstParticles(x, y, color, n) {
+    for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 60 + Math.random() * 220;
+        state.particles.push({
+            x, y,
+            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30,
+            life: 0.4 + Math.random() * 0.3, maxLife: 0.7,
+            size: 1.5 + Math.random() * 2.5,
+            color, gravity: 240,
+        });
+    }
+}
+
+// ===== AI =====
+function aiCommand(p, dt) {
+    const out = { ix: 0, iy: 0, throw: false, build: false };
+    const opp = state.players[0];
+    if (!opp.alive) return out;
+
+    const cfg = {
+        easy:   { aim: 0.5, throwRange: 280, defendDistance: 220, smartBuild: 0.05, accuracy: 0.5, react: 0.4 },
+        medium: { aim: 0.8, throwRange: 360, defendDistance: 260, smartBuild: 0.25, accuracy: 0.78, react: 0.7 },
+        hard:   { aim: 1.0, throwRange: 420, defendDistance: 300, smartBuild: 0.55, accuracy: 0.94, react: 1.0 },
+    }[state.difficulty || 'medium'];
+
+    p.ai.timer -= dt;
+    p.ai.jukeTimer -= dt;
+
+    const dx = opp.x - p.x, dy = opp.y - p.y;
+    const dist = Math.hypot(dx, dy);
+
+    // Check line of sight to opponent — if blocked by fort/tree, move
+    function clearShot(fromX, fromY, toX, toY) {
+        const steps = 12;
+        for (let i = 1; i < steps; i++) {
+            const t = i / steps;
+            const x = fromX + (toX - fromX) * t;
+            const y = fromY + (toY - fromY) * t;
+            for (const f of state.forts) {
+                if (!f.alive) continue;
+                // Don't let our own fort count
+                if (rectCircle(f.x, f.y, f.w, f.h, x, y, 4)) return false;
+            }
+            for (const t2 of state.trees) {
+                if (Math.hypot(x - t2.x, y - t2.y) < t2.r * 0.55) return false;
+            }
+        }
+        return true;
+    }
+
+    // If low ammo and a pile has stock, head to nearest pile
+    let goal = null;
+    if (p.ammo <= 1) {
+        let best = null, bd = Infinity;
+        state.piles.forEach(pile => {
+            if (pile.stock < 0.1) return;
+            const d = Math.hypot(p.x - pile.x, p.y - pile.y);
+            if (d < bd) { bd = d; best = pile; }
+        });
+        if (best) goal = { x: best.x, y: best.y, kind: 'pile' };
+    }
+
+    // Strategic build: when opponent close & has line of fire & we have ammo
+    if (!goal && cfg.smartBuild > 0 && p.ammo >= FORT_COST + 1 && dist < 280 && Math.random() < cfg.smartBuild * dt * 1.5) {
+        // Face opponent and build
+        p.facingX = dx / dist; p.facingY = dy / dist;
+        out.build = true;
+    }
+
+    // Aim & throw
+    const aimX = dx / (dist || 1);
+    const aimY = dy / (dist || 1);
+    p.facingX += (aimX - p.facingX) * cfg.aim * dt * 6;
+    p.facingY += (aimY - p.facingY) * cfg.aim * dt * 6;
+    if (dist < cfg.throwRange && p.ammo > 0 && p.throwCooldown <= 0) {
+        if (clearShot(p.x, p.y, opp.x, opp.y)) {
+            // Add accuracy noise
+            const err = (1 - cfg.accuracy) * (Math.random() - 0.5) * 1.4;
+            p.facingX += -aimY * err;
+            p.facingY += aimX * err;
+            const fl = Math.hypot(p.facingX, p.facingY) || 1;
+            p.facingX /= fl; p.facingY /= fl;
+            out.throw = true;
+        }
+    }
+
+    // Movement: if no goal, kite at preferred distance
+    if (!goal) {
+        if (dist < cfg.defendDistance * 0.6) {
+            // Strafe / back away
+            if (p.ai.jukeTimer <= 0) { p.ai.jukeDir = (Math.random() < 0.5 ? -1 : 1); p.ai.jukeTimer = 0.6 + Math.random() * 0.8; }
+            // Perpendicular juke
+            out.ix = -aimY * p.ai.jukeDir - aimX * 0.4;
+            out.iy = aimX * p.ai.jukeDir - aimY * 0.4;
+        } else if (dist > cfg.throwRange * 0.95) {
+            out.ix = aimX; out.iy = aimY;
+        } else {
+            // Strafe in place
+            if (p.ai.jukeTimer <= 0) { p.ai.jukeDir = (Math.random() < 0.5 ? -1 : 1); p.ai.jukeTimer = 0.5 + Math.random() * 0.6; }
+            out.ix = -aimY * p.ai.jukeDir;
+            out.iy = aimX * p.ai.jukeDir;
+        }
+    } else {
+        const gd = Math.hypot(p.x - goal.x, p.y - goal.y) || 1;
+        out.ix = (goal.x - p.x) / gd;
+        out.iy = (goal.y - p.y) / gd;
+    }
+    // Reaction smoothing
+    out.ix *= cfg.react;
+    out.iy *= cfg.react;
+
+    return out;
+}
+
+// ===== Render =====
+function drawBackground() {
+    const a = state.arena;
+    // Sky gradient backdrop (visible above arena)
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#1a3550');
+    sky.addColorStop(0.4, '#2d5a82');
+    sky.addColorStop(1, '#5e88ad');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // Distant mountains silhouette
+    ctx.fillStyle = '#22456a';
+    const mY = a.y - 6;
+    ctx.beginPath();
+    ctx.moveTo(0, mY);
+    let mx = 0;
+    while (mx < W) {
+        const peakH = 30 + Math.sin(mx * 0.011) * 16 + Math.cos(mx * 0.027) * 10;
+        ctx.lineTo(mx, mY - peakH);
+        mx += 30;
+    }
+    ctx.lineTo(W, mY);
+    ctx.closePath(); ctx.fill();
+
+    // Snow-capped distant ridge
+    ctx.fillStyle = '#3b6892';
+    ctx.beginPath();
+    ctx.moveTo(0, mY);
+    let rx = 0;
+    while (rx < W) {
+        const peakH = 16 + Math.sin(rx * 0.018 + 1) * 8;
+        ctx.lineTo(rx, mY - peakH);
+        rx += 22;
+    }
+    ctx.lineTo(W, mY);
+    ctx.closePath(); ctx.fill();
+
+    // Arena snow field with subtle tint and shadow
+    // Outer shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(a.x + 6, a.y + 8, a.w, a.h);
+
+    // Snow base gradient
+    const snowGrad = ctx.createLinearGradient(0, a.y, 0, a.y + a.h);
+    snowGrad.addColorStop(0, '#dbe6f1');
+    snowGrad.addColorStop(0.6, '#e8f0f8');
+    snowGrad.addColorStop(1, '#f4f8fc');
+    ctx.fillStyle = snowGrad;
+    ctx.fillRect(a.x, a.y, a.w, a.h);
+
+    // Snow specks (procedural texture)
+    ctx.fillStyle = 'rgba(170,200,225,0.45)';
+    for (let i = 0; i < 600; i++) {
+        // Deterministic via simple hash so it doesn't shimmer
+        const x = a.x + ((i * 73) % a.w);
+        const y = a.y + ((i * 131) % a.h);
+        ctx.fillRect(x, y, 1, 1);
+    }
+    // Brighter highlights
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    for (let i = 0; i < 200; i++) {
+        const x = a.x + ((i * 197 + 31) % a.w);
+        const y = a.y + ((i * 257 + 13) % a.h);
+        ctx.fillRect(x, y, 1, 1);
+    }
+
+    // Soft outer rim shadow
+    ctx.strokeStyle = 'rgba(50,80,120,0.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(a.x + 1, a.y + 1, a.w - 2, a.h - 2);
+}
+
+function drawProps() {
+    const a = state.arena;
+    state.props.forEach(p => {
+        if (p.kind === 'drift') {
+            // Soft snowdrift
+            const grad = ctx.createRadialGradient(p.x - p.r * 0.3, p.y - p.r * 0.4, 1, p.x, p.y, p.r);
+            grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+            grad.addColorStop(0.7, 'rgba(220,235,250,0.6)');
+            grad.addColorStop(1, 'rgba(180,210,240,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.ellipse(p.x, p.y, p.r * 1.4, p.r * 0.7, 0, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            // Rock with snow cap
+            ctx.fillStyle = 'rgba(60,70,80,0.8)';
+            ctx.beginPath();
+            ctx.ellipse(p.x, p.y + 4, p.r, p.r * 0.6, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#3b424a';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r * 0.95, Math.PI, 0);
+            ctx.fill();
+            // Snow cap
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y - 1, p.r * 0.95, Math.PI + 0.4, -0.4);
+            ctx.fill();
+        }
+    });
+}
+
+function drawFootprints() {
+    state.footprints.forEach(f => {
+        const a = Math.max(0, f.life / f.maxLife);
+        ctx.globalAlpha = a * 0.32;
+        ctx.fillStyle = f.color;
+        ctx.beginPath();
+        ctx.ellipse(f.x, f.y, 4, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+}
+
+function drawSnowPiles() {
+    state.piles.forEach(pile => {
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.18)';
+        ctx.beginPath();
+        ctx.ellipse(pile.x + 3, pile.y + 6, SNOW_PILE_R * 1.05, SNOW_PILE_R * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Mound base
+        const r = SNOW_PILE_R * (0.5 + 0.5 * pile.stock);
+        const grad = ctx.createRadialGradient(pile.x - r * 0.3, pile.y - r * 0.5, 1, pile.x, pile.y, r * 1.4);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.6, '#dde8f3');
+        grad.addColorStop(1, '#a5bfd8');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(pile.x, pile.y, r * 1.3, r * 0.85, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.beginPath();
+        ctx.ellipse(pile.x - r * 0.3, pile.y - r * 0.4, r * 0.5, r * 0.25, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Sparkles when full
+        if (pile.stock > 0.7) {
+            const t = pile.sparkle;
+            for (let i = 0; i < 3; i++) {
+                const sx = pile.x + Math.cos(t + i * 2) * r * 0.6;
+                const sy = pile.y + Math.sin(t * 1.3 + i * 2) * r * 0.4 - 5;
+                const s = (Math.sin(t * 3 + i) + 1) * 1 + 0.6;
+                ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                ctx.beginPath(); ctx.arc(sx, sy, s, 0, Math.PI * 2); ctx.fill();
+                // 4-point sparkle
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.beginPath(); ctx.moveTo(sx - s * 2, sy); ctx.lineTo(sx + s * 2, sy);
+                ctx.moveTo(sx, sy - s * 2); ctx.lineTo(sx, sy + s * 2); ctx.stroke();
+            }
+        }
+    });
+}
+
+function drawTrees() {
+    state.trees.forEach(t => {
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.28)';
+        ctx.beginPath();
+        ctx.ellipse(t.x + 6, t.y + 14, t.r * 1.1, t.r * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const sway = Math.sin(state.time * 1.2 + t.sway) * 1.2;
+
+        if (t.kind === 'pine') {
+            // Trunk
+            ctx.fillStyle = '#5a3a1f';
+            ctx.fillRect(t.x - 4, t.y, 8, 18);
+            ctx.fillStyle = '#3d2614';
+            ctx.fillRect(t.x - 4, t.y, 2, 18);
+
+            // Foliage layers (3 stacked triangles, snow capped)
+            for (let i = 0; i < 3; i++) {
+                const layerY = t.y + 4 - i * (t.r * 0.55);
+                const layerW = t.r * (1.1 - i * 0.18) + sway * (0.2 + i * 0.1);
+                // green
+                ctx.fillStyle = i === 0 ? '#2c6a3c' : i === 1 ? '#34804a' : '#3d8d52';
+                ctx.beginPath();
+                ctx.moveTo(t.x - layerW + sway, layerY);
+                ctx.lineTo(t.x + layerW + sway, layerY);
+                ctx.lineTo(t.x + sway, layerY - t.r * 0.85);
+                ctx.closePath();
+                ctx.fill();
+                // snow on top
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.moveTo(t.x - layerW * 0.55 + sway, layerY - t.r * 0.18);
+                ctx.lineTo(t.x + layerW * 0.55 + sway, layerY - t.r * 0.18);
+                ctx.lineTo(t.x + sway, layerY - t.r * 0.85);
+                ctx.closePath();
+                ctx.fill();
+            }
+        } else {
+            // Fir / round bush
+            ctx.fillStyle = '#4d3622';
+            ctx.fillRect(t.x - 3, t.y, 6, 12);
+            ctx.fillStyle = '#3d8546';
+            ctx.beginPath();
+            ctx.arc(t.x + sway, t.y - 4, t.r * 0.95, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#4ea05a';
+            ctx.beginPath();
+            ctx.arc(t.x + sway - t.r * 0.3, t.y - t.r * 0.4, t.r * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            // Snow cap on top
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(t.x + sway, t.y - 4 - t.r * 0.6, t.r * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+}
+
+function drawForts() {
+    state.forts.forEach(f => {
+        if (!f.alive) return;
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fillRect(f.x - f.w / 2 + 4, f.y - f.h / 2 + 6, f.w, f.h);
+
+        // Build ice block stack (rows of bricks)
+        const horizontal = f.w > f.h;
+        const bricksAcross = horizontal ? 1 : 4;
+        const bricksDown = horizontal ? 4 : 1;
+
+        // Outer block
+        const grad = ctx.createLinearGradient(f.x - f.w / 2, f.y - f.h / 2, f.x + f.w / 2, f.y + f.h / 2);
+        grad.addColorStop(0, '#e8f4fb');
+        grad.addColorStop(0.5, '#b6d4e9');
+        grad.addColorStop(1, '#7baad0');
+        ctx.fillStyle = grad;
+        ctx.fillRect(f.x - f.w / 2, f.y - f.h / 2, f.w, f.h);
+
+        // Brick lines
+        ctx.strokeStyle = 'rgba(60,90,130,0.55)';
+        ctx.lineWidth = 1;
+        for (let i = 1; i < bricksAcross; i++) {
+            const x = f.x - f.w / 2 + (i * f.w / bricksAcross);
+            ctx.beginPath(); ctx.moveTo(x, f.y - f.h / 2); ctx.lineTo(x, f.y + f.h / 2); ctx.stroke();
+        }
+        for (let j = 1; j < bricksDown; j++) {
+            const y = f.y - f.h / 2 + (j * f.h / bricksDown);
+            ctx.beginPath(); ctx.moveTo(f.x - f.w / 2, y); ctx.lineTo(f.x + f.w / 2, y); ctx.stroke();
+        }
+
+        // Highlight along top edge
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillRect(f.x - f.w / 2 + 1, f.y - f.h / 2, f.w - 2, 2);
+
+        // Cracks based on damage
+        const dmg = (f.maxHP - f.hp) / f.maxHP;
+        if (dmg > 0.0001) {
+            ctx.strokeStyle = 'rgba(20,40,70,0.7)';
+            ctx.lineWidth = 1.2;
+            const cs = f.crackSeed;
+            const numCracks = Math.ceil(dmg * 4);
+            for (let i = 0; i < numCracks; i++) {
+                const sx = f.x - f.w / 2 + ((cs * 1031 + i * 73) % 1) * f.w;
+                const sy = f.y - f.h / 2 + ((cs * 743 + i * 31) % 1) * f.h;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                let cx = sx, cy = sy;
+                for (let k = 0; k < 3; k++) {
+                    cx += (Math.cos(cs * 100 + i + k) * 8);
+                    cy += (Math.sin(cs * 200 + i + k) * 8);
+                    ctx.lineTo(cx, cy);
+                }
+                ctx.stroke();
+            }
+        }
+
+        // Frost edge
+        ctx.strokeStyle = 'rgba(40,80,120,0.5)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(f.x - f.w / 2 + 0.5, f.y - f.h / 2 + 0.5, f.w - 1, f.h - 1);
+    });
+}
+
+function drawSnowballs() {
+    state.snowballs.forEach(s => {
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(s.x + 2, s.y + 8, SNOWBALL_R * 0.95, SNOWBALL_R * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Trail
+        for (let i = 0; i < s.trail.length; i++) {
+            const t = s.trail[i];
+            const a = (i / s.trail.length) * 0.55;
+            ctx.globalAlpha = a;
+            ctx.fillStyle = '#fff';
+            const r = SNOWBALL_R * (0.4 + i / s.trail.length * 0.5);
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        // Body
+        const grad = ctx.createRadialGradient(s.x - SNOWBALL_R * 0.4, s.y - SNOWBALL_R * 0.4, 1, s.x, s.y, SNOWBALL_R * 1.2);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.7, '#e3eef9');
+        grad.addColorStop(1, '#9bb6cf');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, SNOWBALL_R, 0, Math.PI * 2);
+        ctx.fill();
+        // Spin highlight
+        ctx.strokeStyle = 'rgba(180,200,220,0.7)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(s.x + Math.cos(s.spin) * 2, s.y + Math.sin(s.spin) * 2, SNOWBALL_R * 0.55, 0, Math.PI * 2);
+        ctx.stroke();
+    });
+}
+
+function drawPlayers() {
+    state.players.forEach(p => {
+        drawPlayer(p);
+    });
+}
+
+function drawPlayer(p) {
+    const x = p.x, y = p.y;
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath();
+    ctx.ellipse(x + 3, y + PLAYER_R - 2, PLAYER_R * 1.05, PLAYER_R * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (!p.alive) {
+        // Defeated: tipped over with X eyes
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(Math.min(p.knockoutTimer, 1) * Math.PI / 2);
+        drawPlayerBody(0, 0, p, true);
+        ctx.restore();
+        return;
+    }
+
+    // Walk bob
+    const bob = p.moving ? Math.sin(p.animTime * 12) * 1.3 : 0;
+    drawPlayerBody(x, y + bob, p, false);
+
+    // Aim indicator (small arrow showing facing)
+    const fx = p.facingX, fy = p.facingY;
+    const fl = Math.hypot(fx, fy) || 1;
+    const ax = x + (fx / fl) * (PLAYER_R + 18);
+    const ay = y + (fy / fl) * (PLAYER_R + 18);
+    ctx.strokeStyle = p.coatColor;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(x + (fx / fl) * (PLAYER_R + 6), y + (fy / fl) * (PLAYER_R + 6));
+    ctx.lineTo(ax, ay);
+    ctx.stroke();
+    // arrowhead
+    const ang = Math.atan2(fy, fx);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - Math.cos(ang - 0.4) * 6, ay - Math.sin(ang - 0.4) * 6);
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - Math.cos(ang + 0.4) * 6, ay - Math.sin(ang + 0.4) * 6);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // HP pips above head
+    drawHP(p);
+}
+
+function drawPlayerBody(x, y, p, defeated) {
+    const flash = p.flashTimer > 0;
+
+    // Legs (subtle - feet)
+    const legSwing = p.moving ? Math.sin(p.animTime * 12) * 4 : 0;
+    ctx.fillStyle = '#3b2a1f';
+    ctx.beginPath(); ctx.ellipse(x - 6, y + PLAYER_R - 1 + legSwing, 4, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 6, y + PLAYER_R - 1 - legSwing, 4, 3, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Coat body
+    ctx.fillStyle = flash ? '#fff' : p.coatColor;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 3, PLAYER_R, PLAYER_R * 1.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Coat shading
+    ctx.fillStyle = flash ? '#ddd' : p.coatDark;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 8, PLAYER_R * 0.85, PLAYER_R * 0.55, 0, 0, Math.PI);
+    ctx.fill();
+
+    // Coat highlight
+    if (!flash) {
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.beginPath();
+        ctx.ellipse(x - PLAYER_R * 0.4, y - 2, PLAYER_R * 0.35, PLAYER_R * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Buttons
+    ctx.fillStyle = '#222';
+    ctx.beginPath(); ctx.arc(x, y - 2, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y + 6, 1.5, 0, Math.PI * 2); ctx.fill();
+
+    // Mittens (arms) - rotate based on facing
+    const facingAngle = Math.atan2(p.facingY, p.facingX);
+    for (let s = -1; s <= 1; s += 2) {
+        const armA = facingAngle + s * 0.55;
+        const ax = x + Math.cos(armA) * PLAYER_R * 0.85;
+        const ay = y + Math.sin(armA) * PLAYER_R * 0.7 + 1;
+        ctx.fillStyle = flash ? '#eee' : p.coatDark;
+        ctx.beginPath(); ctx.arc(ax, ay, 4.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = flash ? '#fff' : p.scarfColor;
+        ctx.beginPath(); ctx.arc(ax, ay, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Scarf
+    ctx.fillStyle = flash ? '#fff' : p.scarfColor;
+    ctx.beginPath();
+    ctx.ellipse(x, y - PLAYER_R * 0.55, PLAYER_R * 0.85, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Scarf trail (fluttering)
+    const flutter = p.moving ? Math.sin(p.animTime * 8) * 3 : 0;
+    ctx.beginPath();
+    ctx.moveTo(x + PLAYER_R * 0.7, y - PLAYER_R * 0.55);
+    ctx.lineTo(x + PLAYER_R * 1.1 + flutter, y - PLAYER_R * 0.2);
+    ctx.lineTo(x + PLAYER_R * 0.5, y);
+    ctx.closePath(); ctx.fill();
+
+    // Head
+    ctx.fillStyle = flash ? '#fff' : p.skin;
+    ctx.beginPath();
+    ctx.arc(x, y - PLAYER_R * 0.95, PLAYER_R * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    // Cheek tint
+    if (!flash) {
+        ctx.fillStyle = 'rgba(220,90,90,0.45)';
+        ctx.beginPath(); ctx.arc(x - 4, y - PLAYER_R * 0.85, 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 4, y - PLAYER_R * 0.85, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Eyes
+    if (defeated) {
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(x - 5, y - PLAYER_R - 2); ctx.lineTo(x - 1, y - PLAYER_R + 2);
+        ctx.moveTo(x - 1, y - PLAYER_R - 2); ctx.lineTo(x - 5, y - PLAYER_R + 2);
+        ctx.moveTo(x + 1, y - PLAYER_R - 2); ctx.lineTo(x + 5, y - PLAYER_R + 2);
+        ctx.moveTo(x + 5, y - PLAYER_R - 2); ctx.lineTo(x + 1, y - PLAYER_R + 2);
+        ctx.stroke();
+    } else {
+        // Eyes look toward facing
+        const eyeOffX = (p.facingX || 0) * 1.2;
+        const eyeOffY = (p.facingY || 0) * 1.2;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(x - 4, y - PLAYER_R, 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 4, y - PLAYER_R, 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#222';
+        ctx.beginPath(); ctx.arc(x - 4 + eyeOffX, y - PLAYER_R + eyeOffY, 1.2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 4 + eyeOffX, y - PLAYER_R + eyeOffY, 1.2, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Hat
+    ctx.fillStyle = flash ? '#fff' : p.hatColor;
+    ctx.beginPath();
+    ctx.ellipse(x, y - PLAYER_R * 1.4, PLAYER_R * 0.55, PLAYER_R * 0.4, 0, Math.PI, 0);
+    ctx.fill();
+    // Hat brim
+    ctx.fillStyle = flash ? '#fff' : '#fff';
+    ctx.beginPath();
+    ctx.ellipse(x, y - PLAYER_R * 1.18, PLAYER_R * 0.65, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Pom-pom
+    ctx.fillStyle = flash ? '#fff' : p.pomColor;
+    ctx.beginPath();
+    ctx.arc(x, y - PLAYER_R * 1.6, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath();
+    ctx.arc(x - 1, y - PLAYER_R * 1.7, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // P# tag
+    ctx.fillStyle = p.idx === 0 ? '#ff5d5d' : '#5dadff';
+    ctx.font = 'bold 11px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('P' + (p.idx + 1), x, y - PLAYER_R * 2.0);
+}
+
+function drawHP(p) {
+    const baseX = p.x - (PLAYER_HP - 1) * 5;
+    const baseY = p.y - PLAYER_R * 2.4;
+    for (let i = 0; i < PLAYER_HP; i++) {
+        const filled = i < p.hp;
+        ctx.fillStyle = filled ? (p.idx === 0 ? '#ff5d5d' : '#5dadff') : 'rgba(255,255,255,0.18)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 1;
+        const cx = baseX + i * 10, cy = baseY;
+        // Heart shape
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + 2);
+        ctx.bezierCurveTo(cx, cy - 2, cx - 4, cy - 4, cx - 4, cy);
+        ctx.bezierCurveTo(cx - 4, cy + 3, cx, cy + 5, cx, cy + 6);
+        ctx.bezierCurveTo(cx, cy + 5, cx + 4, cy + 3, cx + 4, cy);
+        ctx.bezierCurveTo(cx + 4, cy - 4, cx, cy - 2, cx, cy + 2);
+        ctx.fill(); ctx.stroke();
+    }
+}
+
+function drawParticles() {
+    state.particles.forEach(p => {
+        const a = Math.max(0, p.life / p.maxLife);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+}
+
+function drawFlakes() {
+    state.flakes.forEach(f => {
+        ctx.fillStyle = `rgba(255,255,255,${0.4 + f.r * 0.15})`;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        ctx.fill();
+    });
+}
+
+function drawHUD() {
+    // Ammo bars (bottom corners)
+    state.players.forEach((p, i) => {
+        const ix = i === 0 ? 30 : W - 30 - 200;
+        const iy = H - 70;
+        // Backdrop
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(ix - 8, iy - 28, 216, 56);
+        // Label
+        ctx.fillStyle = i === 0 ? '#ff5d5d' : '#5dadff';
+        ctx.font = 'bold 14px Segoe UI';
+        ctx.textAlign = 'left';
+        ctx.fillText(i === 0 ? '🔴 P1' : (state.mode === 1 ? '🔵 CPU' : '🔵 P2'), ix, iy - 10);
+
+        // HP hearts
+        for (let h = 0; h < PLAYER_HP; h++) {
+            ctx.fillStyle = h < p.hp ? (i === 0 ? '#ff5d5d' : '#5dadff') : 'rgba(255,255,255,0.18)';
+            const hx = ix + 60 + h * 16, hy = iy - 14;
+            ctx.beginPath();
+            ctx.moveTo(hx, hy + 3);
+            ctx.bezierCurveTo(hx, hy - 3, hx - 6, hy - 5, hx - 6, hy);
+            ctx.bezierCurveTo(hx - 6, hy + 4, hx, hy + 7, hx, hy + 9);
+            ctx.bezierCurveTo(hx, hy + 7, hx + 6, hy + 4, hx + 6, hy);
+            ctx.bezierCurveTo(hx + 6, hy - 5, hx, hy - 3, hx, hy + 3);
+            ctx.fill();
+        }
+
+        // Ammo (snowball icons)
+        const fillAmmo = Math.floor(p.ammo);
+        for (let s = 0; s < MAX_AMMO; s++) {
+            const sx = ix + s * 22 + 6, sy = iy + 10;
+            if (s < fillAmmo) {
+                ctx.fillStyle = '#fff';
+                ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = 'rgba(60,90,130,0.7)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(180,200,220,0.6)';
+                ctx.beginPath(); ctx.arc(sx + 1, sy + 1, 2, 0, Math.PI * 2); ctx.fill();
+            } else {
+                ctx.fillStyle = 'rgba(255,255,255,0.12)';
+                ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+        // Partial ammo cue
+        const frac = p.ammo - fillAmmo;
+        if (frac > 0 && fillAmmo < MAX_AMMO) {
+            const sx = ix + fillAmmo * 22 + 6, sy = iy + 10;
+            ctx.fillStyle = `rgba(255,255,255,${0.3 + frac * 0.5})`;
+            ctx.beginPath(); ctx.arc(sx, sy, 5 * frac + 1, 0, Math.PI * 2); ctx.fill();
+        }
+    });
+
+    // Center title
+    ctx.font = 'bold 18px Segoe UI';
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.textAlign = 'center';
+    ctx.fillText('Snowball Fight  —  First to KO wins', W / 2, 28);
+}
+
+function drawWinnerOverlay() {
+    if (!state.winner) return;
+    const t = 1 - Math.max(0, state.endTimer) / 1.6;
+    ctx.fillStyle = `rgba(0,0,0,${0.5 * t})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.font = 'bold 56px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = state.winner === 1 ? '#ff5d5d' : '#5dadff';
+    const text = state.winner === 1 ? 'PLAYER 1 WINS!' : (state.mode === 1 ? 'CPU WINS!' : 'PLAYER 2 WINS!');
+    ctx.fillText(text, W / 2, H / 2);
+}
+
+// ===== Main loop =====
+let lastTime = 0;
+function loop(ts) {
+    const dt = lastTime ? Math.min((ts - lastTime) / 1000, 0.033) : 0.016;
+    lastTime = ts;
+
+    // Clear (only matters when no state)
+    if (!state) {
+        ctx.fillStyle = '#0d1b2a';
+        ctx.fillRect(0, 0, W, H);
+    } else {
+        state.time += dt;
+        if (state.running && !state.winner) {
+            state.players.forEach(p => updatePlayer(p, dt));
+            updateSnowballs(dt);
+            updatePiles(dt);
+            updateParticles(dt);
+            updateFlakes(dt);
+        } else if (state.endTimer > 0) {
+            state.endTimer -= dt;
+            updateParticles(dt);
+            updateFlakes(dt);
+            if (state.endTimer <= 0) showGameOver();
+        }
+
+        // Render
+        drawBackground();
+        drawProps();
+        drawFootprints();
+        drawSnowPiles();
+        // Sort fort + tree + player + snowball by y for fake depth
+        const layered = [];
+        state.forts.forEach(f => { if (f.alive) layered.push({ y: f.y, draw: () => drawFortSingle(f) }); });
+        state.trees.forEach(t => layered.push({ y: t.y, draw: () => drawTreeSingle(t) }));
+        state.players.forEach(p => layered.push({ y: p.y + 30, draw: () => drawPlayer(p) }));
+        state.snowballs.forEach(s => layered.push({ y: s.y, draw: () => drawSnowballSingle(s) }));
+        layered.sort((a, b) => a.y - b.y);
+        layered.forEach(it => it.draw());
+
+        drawParticles();
+        drawFlakes();
+        drawHUD();
+        drawWinnerOverlay();
+    }
+
+    requestAnimationFrame(loop);
+}
+
+// Single-item draw helpers (used by depth-sorted pass)
+function drawFortSingle(f) {
+    // Reuse forts loop but for a single item
+    const old = state.forts;
+    state.forts = [f]; drawForts(); state.forts = old;
+}
+function drawTreeSingle(t) {
+    const old = state.trees;
+    state.trees = [t]; drawTrees(); state.trees = old;
+}
+function drawSnowballSingle(s) {
+    const old = state.snowballs;
+    state.snowballs = [s]; drawSnowballs(); state.snowballs = old;
+}
+
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

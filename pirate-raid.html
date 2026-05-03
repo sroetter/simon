@@ -67,6 +67,20 @@ canvas { display: block; }
 .diff-btn.medium { background: linear-gradient(135deg, #3e3a1a, #5e4a2a); color: #ffd700; border: 2px solid #aa8; }
 .diff-btn.hard { background: linear-gradient(135deg, #3e1a1a, #5e2a2a); color: #f66; border: 2px solid #a55; }
 .diff-desc { font-size: 11px; font-weight: normal; opacity: 0.7; margin-top: 4px; }
+.players-row { display: flex; gap: 12px; margin-bottom: 18px; align-items: center; }
+.players-label { color: #ffd700; font-size: 16px; font-weight: bold; letter-spacing: 1px; }
+.players-btn {
+    font-size: 16px; padding: 10px 22px; border-radius: 8px;
+    cursor: pointer; font-weight: bold; transition: all 0.2s;
+    background: linear-gradient(135deg, #1a1a2e, #2a2a3e);
+    color: #ccc; border: 2px solid #555;
+}
+.players-btn.active {
+    color: #ffd700; border-color: #ffd700;
+    background: linear-gradient(135deg, #2a2a4a, #3a3a5a);
+    box-shadow: 0 0 12px rgba(255,215,0,0.4);
+}
+.players-btn:hover { transform: scale(1.05); }
 #diffPicker { display: none; margin-top: 12px; flex-direction: column; align-items: center; }
 #diffPicker .diff-title { font-size: 20px; color: #ffd700; margin-bottom: 8px; }
 .mode-btn.naval {
@@ -199,10 +213,15 @@ canvas { display: block; }
         <div class="title-text">PIRATE RAID</div>
         <div class="title-sub">CHOOSE YOUR SIDE</div>
         <div class="title-info">
-            <b>WASD / Arrow Keys</b> to move &bull; <b>Space / Click</b> to spin-attack all around you<br>
-            <b>Shift</b> to dodge-roll &bull; Kill enemies for gold, collect treasure, upgrade!<br>
-            You start with <b>3 free crew</b>! Hire more in the shop: <b>Swordsmen</b>, <b>Gunsmen</b>, or <b>Cannon</b> crews!<br>
+            <b>P1:</b> WASD move &bull; Space spin-attack &bull; Left-Shift dodge<br>
+            <b>P2:</b> Arrow keys move &bull; Enter spin-attack &bull; Right-Shift dodge<br>
+            Kill enemies for gold, collect treasure, upgrade! Hire crew in the shop: <b>Swordsmen</b>, <b>Gunsmen</b>, or <b>Cannon</b>!<br>
             <b>Capture</b> retreating enemies by walking into them! Shop opens after clearing enemies.
+        </div>
+        <div class="players-row">
+            <span class="players-label">PLAYERS:</span>
+            <button class="players-btn active" id="players1Btn" onclick="setPlayerCount(1)">1 Player</button>
+            <button class="players-btn" id="players2Btn" onclick="setPlayerCount(2)">2 Players</button>
         </div>
         <div id="modeButtons">
             <button class="mode-btn pirate" onclick="pickMode('pirate')">
@@ -295,7 +314,9 @@ let gameState = 'title';
 let currentLevel = 0;
 let gold = 0;
 let totalGoldEarned = 0;
-let player = null;
+let player = null; // backwards-compat alias to players[0]
+let players = [];
+let playerCount = 1; // 1 or 2 (only applies to pirate/defender modes)
 let enemies = [];
 let allies = [];
 let treasures = [];
@@ -491,8 +512,13 @@ function clampToIsland(x, z) {
 }
 
 // ===== ENTITY CONSTRUCTORS =====
-function createPlayer(x, z) {
+function createPlayer(x, z, idx) {
+    idx = idx || 0;
     const maxHP = Math.round((8 + upgradeLevels.health * 2) * getDiff().playerHP);
+    // P1 uses WASD / Space / Left-Shift; P2 uses arrows / Enter / Right-Shift
+    const keyMap = idx === 0
+        ? { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', attack: 'Space', dodge: 'ShiftLeft' }
+        : { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', attack: 'Enter', dodge: 'ShiftRight' };
     return {
         x, z, y: 0, facing: 0,
         hp: maxHP, maxHP,
@@ -506,6 +532,8 @@ function createPlayer(x, z) {
         isPlayer: true, isPirate: gameMode === 'pirate',
         alive: true, deathFade: 0, flashTimer: 0,
         spinAngle: 0, // for spin attack visual
+        playerIdx: idx,
+        keyMap,
     };
 }
 
@@ -766,10 +794,27 @@ function createProjectile(x, z, angle, type, damage) {
 // ===== GAME FLOW =====
 let autoTeamSize = 3;
 
+function alivePlayers() { return players.filter(p => p.alive); }
+function nearestAlivePlayer(x, z) {
+    let best = null, bestD = Infinity;
+    for (const p of players) {
+        if (!p.alive) continue;
+        const d = (p.x - x) ** 2 + (p.z - z) ** 2;
+        if (d < bestD) { bestD = d; best = p; }
+    }
+    return best;
+}
+
 function pickMode(mode) {
     pendingMode = mode;
     document.getElementById('modeButtons').style.display = 'none';
     document.getElementById('diffPicker').style.display = 'flex';
+}
+
+function setPlayerCount(n) {
+    playerCount = n;
+    document.getElementById('players1Btn').classList.toggle('active', n === 1);
+    document.getElementById('players2Btn').classList.toggle('active', n === 2);
 }
 
 function startGame(mode, diff) {
@@ -833,18 +878,30 @@ function startLevel() {
 
     generateIsland(currentLevel);
 
+    const pn = (gameMode === 'naval') ? 1 : playerCount;
+    players = [];
     if (gameMode === 'pirate') {
         const a = Math.PI;
         const d = (islandRadius + 0.5) * TILE_SIZE;
-        player = createPlayer(Math.cos(a) * d, Math.sin(a) * d);
+        const cx = Math.cos(a) * d, cz = Math.sin(a) * d;
+        // Offset perpendicular to landing direction for P2
+        const px = -Math.sin(a), pz = Math.cos(a);
+        for (let i = 0; i < pn; i++) {
+            const off = (i - (pn - 1) / 2) * 30;
+            players.push(createPlayer(cx + px * off, cz + pz * off, i));
+        }
         ships = [{
             x: Math.cos(a) * (islandRadius + 3) * TILE_SIZE,
             z: Math.sin(a) * (islandRadius + 3) * TILE_SIZE,
             angle: a + Math.PI, isPlayerShip: true,
         }];
     } else {
-        player = createPlayer(0, 0);
+        for (let i = 0; i < pn; i++) {
+            const off = (i - (pn - 1) / 2) * 30;
+            players.push(createPlayer(off, 0, i));
+        }
     }
+    player = players[0];
 
     // Extra enemy reinforcements each round: 2 for levels 1-5, 5 for 6-10, 8 for 11-15, etc.
     // (added on top of the base enemy count from the level arrays)
@@ -1085,7 +1142,17 @@ function updateHUD() {
         document.getElementById('capturePrompt').textContent = '';
         return;
     }
-    document.getElementById('levelDisplay').textContent = `${gameMode === 'pirate' ? 'Island' : 'Wave'} ${currentLevel + 1} / ${gameMode === 'pirate' ? PIRATE_LEVELS.length : DEFENDER_WAVES.length} [${getDiff().label}]`;
+    let lvlTxt = `${gameMode === 'pirate' ? 'Island' : 'Wave'} ${currentLevel + 1} / ${gameMode === 'pirate' ? PIRATE_LEVELS.length : DEFENDER_WAVES.length} [${getDiff().label}]`;
+    // Show HP per player
+    if (players.length > 0) {
+        const hpParts = players.map((p, i) => {
+            const tag = `P${i + 1}`;
+            if (!p.alive) return `${tag} ☠`;
+            return `${tag} ❤${Math.ceil(p.hp)}/${p.maxHP}`;
+        });
+        lvlTxt += '  ' + hpParts.join('  ');
+    }
+    document.getElementById('levelDisplay').textContent = lvlTxt;
 
     const living = enemies.filter(e => e.alive && !e.retreating);
     const retreating = enemies.filter(e => e.alive && e.retreating);
@@ -1145,16 +1212,26 @@ function updateHUD() {
 }
 
 // ===== INPUT =====
+const codes = {};
 window.addEventListener('keydown', e => {
     keys[e.key.toLowerCase()] = true;
-    if (e.key === ' ' || e.key === 'Shift') e.preventDefault();
-    if (e.key === ' ' && gameState === 'playing') playerAttack();
-    if (e.key === 'Shift' && gameState === 'playing') playerDodge();
+    codes[e.code] = true;
+    if (e.key === ' ' || e.key === 'Shift' || e.key.startsWith('Arrow') || e.key === 'Enter') e.preventDefault();
+    if (gameState === 'playing') {
+        // Per-player action keys
+        for (const p of players) {
+            if (e.code === p.keyMap.attack) playerAttack(p);
+            if (e.code === p.keyMap.dodge) playerDodge(p);
+        }
+    }
     if (e.key === ' ' && gameState === 'naval_playing') navalFireCannons('both');
     if (e.key.toLowerCase() === 'q' && gameState === 'naval_playing') navalFireCannons('left');
     if (e.key.toLowerCase() === 'e' && gameState === 'naval_playing') navalFireCannons('right');
 });
-window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+window.addEventListener('keyup', e => {
+    keys[e.key.toLowerCase()] = false;
+    codes[e.code] = false;
+});
 canvas.addEventListener('mousemove', e => {
     if (gameState === 'naval_playing' && navalState) {
         // Aim angle based on mouse X position: left side = left broadside, right = right
@@ -1164,7 +1241,7 @@ canvas.addEventListener('mousemove', e => {
 });
 canvas.addEventListener('mousedown', e => {
     initAudio();
-    if (gameState === 'playing') playerAttack();
+    if (gameState === 'playing' && players[0]) playerAttack(players[0]);
     if (gameState === 'naval_playing') {
         // Click left half = left broadside, right half = right, middle = both
         const mx = e.clientX / W;
@@ -1175,26 +1252,27 @@ canvas.addEventListener('mousedown', e => {
 });
 canvas.addEventListener('touchstart', e => {
     initAudio();
-    if (gameState === 'playing') playerAttack();
+    if (gameState === 'playing' && players[0]) playerAttack(players[0]);
     if (gameState === 'naval_playing') navalFireCannons('both');
 });
 
-function playerAttack() {
-    if (!player || !player.alive || player.attackCooldown > 0 || player.dodging) return;
-    player.attacking = true;
-    player.attackTimer = 0.25; // slightly longer for spin
-    player.attackCooldown = 0.3;
-    player.spinAngle = 0;
+function playerAttack(p) {
+    p = p || players[0];
+    if (!p || !p.alive || p.attackCooldown > 0 || p.dodging) return;
+    p.attacking = true;
+    p.attackTimer = 0.25; // slightly longer for spin
+    p.attackCooldown = 0.3;
+    p.spinAngle = 0;
     playSound('swing');
 
     // Hit ALL enemies in range (360 degrees)
     enemies.forEach(e => {
         if (!e.alive) return;
-        const dx = e.x - player.x, dz = e.z - player.z;
+        const dx = e.x - p.x, dz = e.z - p.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist > player.attackRange) return;
+        if (dist > p.attackRange) return;
         // No angle check needed - 360 degree attack!
-        hitEnemy(e, player.attackDamage);
+        hitEnemy(e, p.attackDamage);
     });
 }
 
@@ -1289,55 +1367,62 @@ function captureEnemy(e) {
     }
 }
 
-function playerDodge() {
-    if (!player || !player.alive || player.dodgeCooldown > 0 || player.dodging) return;
-    player.dodging = true;
-    player.dodgeTimer = 0.25;
-    player.dodgeCooldown = 0.6;
-    player.invincible = 0.3;
-    player.dodgeDir = player.facing;
-    const mx = (keys['d'] || keys['arrowright'] ? 1 : 0) - (keys['a'] || keys['arrowleft'] ? 1 : 0);
-    const mz = (keys['s'] || keys['arrowdown'] ? 1 : 0) - (keys['w'] || keys['arrowup'] ? 1 : 0);
-    if (mx !== 0 || mz !== 0) player.dodgeDir = Math.atan2(mz, mx);
+function playerDodge(p) {
+    p = p || players[0];
+    if (!p || !p.alive || p.dodgeCooldown > 0 || p.dodging) return;
+    p.dodging = true;
+    p.dodgeTimer = 0.25;
+    p.dodgeCooldown = 0.6;
+    p.invincible = 0.3;
+    p.dodgeDir = p.facing;
+    const km = p.keyMap;
+    const mx = (codes[km.right] ? 1 : 0) - (codes[km.left] ? 1 : 0);
+    const mz = (codes[km.down] ? 1 : 0) - (codes[km.up] ? 1 : 0);
+    if (mx !== 0 || mz !== 0) p.dodgeDir = Math.atan2(mz, mx);
 }
 
 // ===== UPDATE =====
+function updateOnePlayer(p, dt) {
+    if (!p.alive) return;
+    const km = p.keyMap;
+    let mx = (codes[km.right] ? 1 : 0) - (codes[km.left] ? 1 : 0);
+    let mz = (codes[km.down] ? 1 : 0) - (codes[km.up] ? 1 : 0);
+
+    if (p.dodging) {
+        let nx = p.x + Math.cos(p.dodgeDir) * p.speed * 3 * dt;
+        let nz = p.z + Math.sin(p.dodgeDir) * p.speed * 3 * dt;
+        const c = clampToIsland(nx, nz);
+        p.x = c.x; p.z = c.z;
+        p.dodgeTimer -= dt;
+        if (p.dodgeTimer <= 0) p.dodging = false;
+    } else if (mx !== 0 || mz !== 0) {
+        const len = Math.sqrt(mx * mx + mz * mz);
+        mx /= len; mz /= len;
+        let nx = p.x + mx * p.speed * dt;
+        let nz = p.z + mz * p.speed * dt;
+        const c = clampToIsland(nx, nz);
+        p.x = c.x; p.z = c.z;
+        p.facing = Math.atan2(mz, mx);
+        p.stepTimer -= dt;
+        if (p.stepTimer <= 0) { playSound('step'); p.stepTimer = 0.3; }
+    }
+
+    p.attackTimer = Math.max(0, p.attackTimer - dt);
+    p.attackCooldown = Math.max(0, p.attackCooldown - dt);
+    p.dodgeCooldown = Math.max(0, p.dodgeCooldown - dt);
+    p.invincible = Math.max(0, p.invincible - dt);
+    p.flashTimer = Math.max(0, p.flashTimer - dt);
+    if (p.attackTimer <= 0) p.attacking = false;
+    if (p.attacking) p.spinAngle += dt * Math.PI * 2 / 0.25;
+}
+
 function update(dt) {
     oceanTime += dt;
     if (gameState === 'naval_playing') { updateNaval(dt); return; }
     if (gameState === 'sailing') { updateSailing(dt); return; }
-    if (gameState !== 'playing' || !player || !player.alive) return;
+    if (gameState !== 'playing' || alivePlayers().length === 0) return;
 
-    // Player movement
-    let mx = (keys['d'] || keys['arrowright'] ? 1 : 0) - (keys['a'] || keys['arrowleft'] ? 1 : 0);
-    let mz = (keys['s'] || keys['arrowdown'] ? 1 : 0) - (keys['w'] || keys['arrowup'] ? 1 : 0);
-
-    if (player.dodging) {
-        let nx = player.x + Math.cos(player.dodgeDir) * player.speed * 3 * dt;
-        let nz = player.z + Math.sin(player.dodgeDir) * player.speed * 3 * dt;
-        const c = clampToIsland(nx, nz);
-        player.x = c.x; player.z = c.z;
-        player.dodgeTimer -= dt;
-        if (player.dodgeTimer <= 0) player.dodging = false;
-    } else if (mx !== 0 || mz !== 0) {
-        const len = Math.sqrt(mx * mx + mz * mz);
-        mx /= len; mz /= len;
-        let nx = player.x + mx * player.speed * dt;
-        let nz = player.z + mz * player.speed * dt;
-        const c = clampToIsland(nx, nz);
-        player.x = c.x; player.z = c.z;
-        player.facing = Math.atan2(mz, mx);
-        player.stepTimer -= dt;
-        if (player.stepTimer <= 0) { playSound('step'); player.stepTimer = 0.3; }
-    }
-
-    player.attackTimer = Math.max(0, player.attackTimer - dt);
-    player.attackCooldown = Math.max(0, player.attackCooldown - dt);
-    player.dodgeCooldown = Math.max(0, player.dodgeCooldown - dt);
-    player.invincible = Math.max(0, player.invincible - dt);
-    player.flashTimer = Math.max(0, player.flashTimer - dt);
-    if (player.attackTimer <= 0) player.attacking = false;
-    if (player.attacking) player.spinAngle += dt * Math.PI * 2 / 0.25; // full spin during attack
+    players.forEach(p => updateOnePlayer(p, dt));
 
     // Update enemies
     enemies.forEach(e => {
@@ -1348,14 +1433,15 @@ function update(dt) {
         if (e.attackTimer <= 0) e.attacking = false;
 
         if (e.retreating) {
-            const dx = e.x - player.x, dz = e.z - player.z;
+            const np = nearestAlivePlayer(e.x, e.z) || player;
+            const dx = e.x - np.x, dz = e.z - np.z;
             const dist = Math.sqrt(dx * dx + dz * dz);
             if (dist > 0) {
                 e.x += (dx / dist) * e.speed * dt;
                 e.z += (dz / dist) * e.speed * dt;
                 e.facing = Math.atan2(dz, dx);
             }
-            const pdist = Math.sqrt((player.x - e.x) ** 2 + (player.z - e.z) ** 2);
+            const pdist = Math.sqrt((np.x - e.x) ** 2 + (np.z - e.z) ** 2);
             if (pdist < 25 && e.canCapture) { captureEnemy(e); return; }
             const edgeDist = Math.sqrt(e.x * e.x + e.z * e.z);
             if (edgeDist > (islandRadius + 2) * TILE_SIZE) {
@@ -1402,9 +1488,10 @@ function update(dt) {
 
             // Check if anyone is blocking the path — fight them
             let blocker = null, blockerDist = Infinity;
-            if (player && player.alive) {
-                const pd = Math.sqrt((player.x - e.x) ** 2 + (player.z - e.z) ** 2);
-                if (pd < 60) { blocker = player; blockerDist = pd; }
+            for (const pp of players) {
+                if (!pp.alive) continue;
+                const pd = Math.sqrt((pp.x - e.x) ** 2 + (pp.z - e.z) ** 2);
+                if (pd < 60 && pd < blockerDist) { blocker = pp; blockerDist = pd; }
             }
             allies.forEach(a => {
                 if (!a.alive) return;
@@ -1460,8 +1547,11 @@ function update(dt) {
         let target = null;
         let targetDist = Infinity;
 
-        const pDist = Math.sqrt((player.x - e.x) ** 2 + (player.z - e.z) ** 2);
-        if (pDist < targetDist) { target = player; targetDist = pDist; }
+        for (const pp of players) {
+            if (!pp.alive) continue;
+            const d = Math.sqrt((pp.x - e.x) ** 2 + (pp.z - e.z) ** 2);
+            if (d < targetDist) { target = pp; targetDist = d; }
+        }
 
         allies.forEach(a => {
             if (!a.alive) return;
@@ -1537,14 +1627,14 @@ function update(dt) {
         }
 
         if (target.isPlayer && !e.ranged) {
-            const pd = Math.sqrt((player.x - e.x) ** 2 + (player.z - e.z) ** 2);
-            if (pd < 18 && player.invincible <= 0 && !player.dodging) {
-                damageTarget(player, e.attackDamage);
+            const pd = Math.sqrt((target.x - e.x) ** 2 + (target.z - e.z) ** 2);
+            if (pd < 18 && target.invincible <= 0 && !target.dodging) {
+                damageTarget(target, e.attackDamage);
                 if (pd > 0) {
-                    const pdx = player.x - e.x, pdz = player.z - e.z;
+                    const pdx = target.x - e.x, pdz = target.z - e.z;
                     const pdd = Math.sqrt(pdx * pdx + pdz * pdz);
-                    player.x += (pdx / pdd) * 30;
-                    player.z += (pdz / pdd) * 30;
+                    target.x += (pdx / pdd) * 30;
+                    target.z += (pdz / pdd) * 30;
                 }
             }
         }
@@ -1749,19 +1839,22 @@ function update(dt) {
         if (p.life <= 0) { p.alive = false; return; }
 
         if (p.fromEnemy) {
-            // Enemy projectile: check hits on player and allies
-            if (player && player.alive) {
-                const dx = player.x - p.x, dz = player.z - p.z;
+            // Enemy projectile: check hits on any alive player and allies
+            for (const pp of players) {
+                if (!pp.alive || !p.alive) continue;
+                const dx = pp.x - p.x, dz = pp.z - p.z;
                 const dist = Math.sqrt(dx * dx + dz * dz);
                 if (dist < 20) {
                     if (p.aoe > 0) {
                         p.alive = false; shakeTimer = 0.12; shakeIntensity = 6;
                         for (let i = 0; i < 15; i++) particles.push({ x: p.x, z: p.z, y: 5 + Math.random() * 20, vx: (Math.random() - 0.5) * 120, vz: (Math.random() - 0.5) * 120, vy: 20 + Math.random() * 50, life: 0.3 + Math.random() * 0.4, maxLife: 0.7, color: Math.random() < 0.5 ? '#f80' : '#ff4', size: 3 + Math.random() * 4 });
-                        damageTarget(player, p.damage);
+                        // AoE: damage all nearby players and allies
+                        players.forEach(p2 => { if (!p2.alive) return; const d2 = Math.sqrt((p2.x - p.x) ** 2 + (p2.z - p.z) ** 2); if (d2 < p.aoe) damageTarget(p2, p.damage * (1 - d2 / p.aoe * 0.5)); });
                         allies.forEach(a => { if (!a.alive) return; const d2 = Math.sqrt((a.x - p.x) ** 2 + (a.z - p.z) ** 2); if (d2 < p.aoe) damageTarget(a, p.damage * (1 - d2 / p.aoe * 0.5)); });
                     } else {
-                        p.alive = false; damageTarget(player, p.damage);
+                        p.alive = false; damageTarget(pp, p.damage);
                     }
+                    break;
                 }
             }
             if (p.alive) allies.forEach(a => {
@@ -1807,7 +1900,7 @@ function update(dt) {
 
     // Separation: push overlapping entities apart so they don't stack
     const allUnits = [];
-    if (player && player.alive) allUnits.push(player);
+    players.forEach(p => { if (p.alive) allUnits.push(p); });
     enemies.forEach(e => { if (e.alive) allUnits.push(e); });
     allies.forEach(a => { if (a.alive) allUnits.push(a); });
     const sepDist = 18;
@@ -1833,12 +1926,14 @@ function update(dt) {
         if (living.length === 0 && !islandCleared) {
             islandCleared = true;
             playSound('fanfare');
-            floatingTexts.push({ x: player.x, z: player.z, y: 50, text: 'ISLAND CLEARED!', color: '#ffd700', life: 2, maxLife: 2 });
+            const lp = alivePlayers()[0] || player;
+            floatingTexts.push({ x: lp.x, z: lp.z, y: 50, text: 'ISLAND CLEARED!', color: '#ffd700', life: 2, maxLife: 2 });
         }
         if (islandCleared) {
             treasures.forEach(t => {
                 if (t.collected) return;
-                const dx = t.x - player.x, dz = t.z - player.z;
+                const np = nearestAlivePlayer(t.x, t.z); if (!np) return;
+                const dx = t.x - np.x, dz = t.z - np.z;
                 if (Math.sqrt(dx * dx + dz * dz) < 30) {
                     t.collected = true; gold += t.value; totalGoldEarned += t.value;
                     playSound('treasure');
@@ -1870,9 +1965,16 @@ function update(dt) {
     shakeTimer = Math.max(0, shakeTimer - dt);
     redFlashTimer = Math.max(0, redFlashTimer - dt);
 
-    const ps = isoProject(player.x, 0, player.z);
-    camX += (ps.x - camX) * 3 * dt;
-    camY += (ps.y - camY) * 3 * dt;
+    // Camera follows midpoint of alive players (or last living position)
+    const alive = alivePlayers();
+    if (alive.length > 0) {
+        let cx = 0, cz = 0;
+        for (const p of alive) { cx += p.x; cz += p.z; }
+        cx /= alive.length; cz /= alive.length;
+        const ps = isoProject(cx, 0, cz);
+        camX += (ps.x - camX) * 3 * dt;
+        camY += (ps.y - camY) * 3 * dt;
+    }
 
     updateHUD();
 }
@@ -1883,7 +1985,11 @@ function damageTarget(target, amount) {
         target.hp -= amount; target.flashTimer = 0.15;
         playSound('playerHit'); shakeTimer = 0.15; shakeIntensity = 8; redFlashTimer = 0.2;
         target.invincible = 0.6;
-        if (target.hp <= 0) { target.alive = false; showGameOver(); }
+        if (target.hp <= 0) {
+            target.alive = false;
+            // Only game over when ALL players are dead
+            if (alivePlayers().length === 0) showGameOver();
+        }
     } else if (target.isAlly) {
         target.hp -= amount; target.flashTimer = 0.12;
         if (target.hp <= 0) {
@@ -1955,7 +2061,7 @@ function render() {
     ships.forEach(s => drawList.push({ t: 'ship', d: s, dp: s.x + s.z }));
     enemies.forEach(e => { if (e.alive || e.deathFade > 0) drawList.push({ t: 'enemy', d: e, dp: e.x + e.z }); });
     allies.forEach(a => { if (a.alive || a.deathFade > 0) drawList.push({ t: 'ally', d: a, dp: a.x + a.z }); });
-    if (player && player.alive) drawList.push({ t: 'player', d: player, dp: player.x + player.z });
+    players.forEach(p => { if (p.alive) drawList.push({ t: 'player', d: p, dp: p.x + p.z }); });
     projectiles.forEach(p => { if (p.alive) drawList.push({ t: 'projectile', d: p, dp: p.x + p.z }); });
     particles.forEach(p => drawList.push({ t: 'particle', d: p, dp: p.x + p.z }));
     floatingTexts.forEach(t => drawList.push({ t: 'text', d: t, dp: t.x + t.z + 1000 }));
@@ -2200,8 +2306,14 @@ function drawCharacter(entity, isP, isA) {
     let bc, hc, pc;
     // Pirates = black uniforms, Military/Defenders = blue uniforms
     if (isP) {
-        if (entity.isPirate) { bc = '#1a1a1a'; hc = '#e8c090'; pc = '#222'; }         // player pirate: black
-        else { bc = '#2244aa'; hc = '#e8c090'; pc = '#1a3a8a'; }                       // player defender: blue
+        const isP2 = entity.playerIdx === 1;
+        if (entity.isPirate) {
+            if (isP2) { bc = '#3a1a1a'; hc = '#e8c090'; pc = '#220a0a'; }              // P2 pirate: dark red
+            else { bc = '#1a1a1a'; hc = '#e8c090'; pc = '#222'; }                      // P1 pirate: black
+        } else {
+            if (isP2) { bc = '#3a8a3a'; hc = '#e8c090'; pc = '#1a5a1a'; }              // P2 defender: green
+            else { bc = '#2244aa'; hc = '#e8c090'; pc = '#1a3a8a'; }                   // P1 defender: blue
+        }
     } else if (isA) {
         // Ally colors based on faction + crew type tint
         const ct = entity.crewType;
@@ -2328,10 +2440,15 @@ function drawCharacter(entity, isP, isA) {
         }
     }
 
-    // Player crown
+    // Player crown — gold for P1, silver for P2
     if (isP) {
-        ctx.fillStyle = '#ffd700'; ctx.beginPath();
+        const crownColor = entity.playerIdx === 1 ? '#c0d8ff' : '#ffd700';
+        ctx.fillStyle = crownColor; ctx.beginPath();
         ctx.moveTo(0, -42); ctx.lineTo(-4, -37); ctx.lineTo(4, -37); ctx.closePath(); ctx.fill();
+        // P-label above the crown
+        ctx.fillStyle = crownColor;
+        ctx.font = 'bold 9px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('P' + ((entity.playerIdx || 0) + 1), 0, -47);
     }
     // Ally diamond marker
     if (isA && entity.alive) {

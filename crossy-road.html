@@ -295,17 +295,19 @@
                 }
             } else if (type === 'road') {
                 lane.dir = dir;
-                lane.speed = (0.072 + Math.random() * 0.162) * (1 + difficulty * 0.02);
-                const isTruck = Math.random() < 0.3;
-                const vehicleLen = isTruck ? 2 : 1;
-                const color = isTruck
-                    ? COLORS.truck[Math.floor(Math.random() * COLORS.truck.length)]
-                    : COLORS.car[Math.floor(Math.random() * COLORS.car.length)];
-                const gap = isTruck ? 4 + Math.floor(Math.random() * 3) : 3 + Math.floor(Math.random() * 3);
+                lane.speed = (0.05 + Math.random() * 0.25) * (1 + difficulty * 0.02);
                 const gapReduction = Math.min(Math.floor(difficulty / 5), 2);
-                const finalGap = Math.max(gap - gapReduction, vehicleLen + 1);
-                for (let x = 0; x < COLS + 10; x += vehicleLen + finalGap) {
+                let x = Math.random() * 3;
+                while (x < COLS + 10) {
+                    const isTruck = Math.random() < 0.3;
+                    const vehicleLen = isTruck ? 2 : 1;
+                    const color = isTruck
+                        ? COLORS.truck[Math.floor(Math.random() * COLORS.truck.length)]
+                        : COLORS.car[Math.floor(Math.random() * COLORS.car.length)];
                     lane.items.push({ x: x * TILE, len: vehicleLen, color, isTruck });
+                    const baseGap = isTruck ? 3 + Math.random() * 4 : 2 + Math.random() * 4;
+                    const finalGap = Math.max(baseGap - gapReduction, vehicleLen + 1);
+                    x += vehicleLen + finalGap;
                 }
             } else if (type === 'river') {
                 lane.dir = dir;
@@ -572,14 +574,20 @@
             player.deathTimer = 0;
             player.hopProgress = 1;
             player.onLog = null;
-            // Find a safe grass spot at or before the last safe row
-            const safe = findSafeGrassSpot(player.lastSafeRow);
-            player.col = safe.col;
-            player.row = safe.row;
-            player.targetCol = safe.col;
-            player.targetRow = safe.row;
-            player.lastSafeRow = safe.row;
-            player.lastSafeCol = safe.col;
+            // Respawn on the exact last green tile touched, unless somehow blocked
+            let row = player.lastSafeRow;
+            let col = player.lastSafeCol;
+            if (isBlocked(col, row) || !lanes[row] || lanes[row].type !== 'grass') {
+                const safe = findSafeGrassSpot(player.lastSafeRow);
+                row = safe.row;
+                col = safe.col;
+            }
+            player.col = col;
+            player.row = row;
+            player.targetCol = col;
+            player.targetRow = row;
+            player.lastSafeRow = row;
+            player.lastSafeCol = col;
             player.eyeDir = 0;
             hopSound();
         }
