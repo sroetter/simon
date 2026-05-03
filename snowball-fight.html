@@ -905,31 +905,41 @@ function burstParticles(x, y, color, n) {
 // ===== AI =====
 function aiCommand(p, dt) {
     const out = { ix: 0, iy: 0, throw: false, build: false };
-    // Stick with the same target for a while; only re-pick when it dies, gets
-    // out of range, or the timer expires. Prevents target-flip "confusion".
+
+    // Survey the field: find the nearest enemy AND the weakest enemy
+    let nearest = null, nearestD = Infinity;
+    let weakest = null;
+    for (const q of state.players) {
+        if (q === p || !q.alive) continue;
+        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        if (d < nearestD) { nearestD = d; nearest = q; }
+        if (!weakest || q.hp < weakest.hp) weakest = q;
+    }
+    if (!nearest) return out;
+
+    const lowHP = p.hp <= 2;          // retreat threshold
+    const highHP = p.hp >= 4;         // healthy enough to push
+    // Hunt-the-wounded: when we're healthy and any enemy is hurt, focus them.
+    const huntWeak = highHP && weakest && weakest.hp <= 2;
+
+    // Target selection
     p.ai.targetTimer = (p.ai.targetTimer || 0) - dt;
-    let opp = null, oppD = Infinity;
-    if (p.ai.targetIdx !== undefined && p.ai.targetIdx >= 0) {
+    let opp = null;
+    if (huntWeak) {
+        // Override: chase the weakest enemy until they die or recover
+        opp = weakest;
+        p.ai.targetIdx = weakest.idx;
+        p.ai.targetTimer = 5;
+    } else if (p.ai.targetIdx !== undefined && p.ai.targetIdx >= 0) {
         const cur = state.players[p.ai.targetIdx];
-        if (cur && cur !== p && cur.alive && p.ai.targetTimer > 0) {
-            opp = cur;
-            oppD = Math.hypot(cur.x - p.x, cur.y - p.y);
-        }
+        if (cur && cur !== p && cur.alive && p.ai.targetTimer > 0) opp = cur;
     }
     if (!opp) {
-        for (const q of state.players) {
-            if (q === p || !q.alive) continue;
-            const d = Math.hypot(q.x - p.x, q.y - p.y);
-            if (d < oppD) { oppD = d; opp = q; }
-        }
-        if (opp) {
-            p.ai.targetIdx = opp.idx;
-            // Commit to a target for ~10 seconds (range 8-12s) so bots
-            // really stop flip-flopping between equidistant enemies.
-            p.ai.targetTimer = 8 + Math.random() * 4;
-        }
+        opp = nearest;
+        p.ai.targetIdx = nearest.idx;
+        p.ai.targetTimer = 8 + Math.random() * 4;
     }
-    if (!opp) return out;
+    let oppD = Math.hypot(opp.x - p.x, opp.y - p.y);
 
     // Each tier is roughly 40% tougher than before:
     // - aim turn rate ×1.4, throwRange ×1.4, smartBuild ×1.4, react ×1.4 (capped)
@@ -945,6 +955,55 @@ function aiCommand(p, dt) {
 
     const dx = opp.x - p.x, dy = opp.y - p.y;
     const dist = Math.hypot(dx, dy);
+
+    // ===== Retreat mode: low HP =====
+    // Head to nearest own fort (safest), else flee from the nearest enemy.
+    // Throw only if forced to (close range), build defensive walls when ammo
+    // allows. Skip the rest of the combat AI.
+    if (lowHP) {
+        // Nearest own fort
+        let myFort = null, myFortD = Infinity;
+        for (const f of state.forts) {
+            if (!f.alive || f.owner !== p.idx) continue;
+            const d = Math.hypot(f.x - p.x, f.y - p.y);
+            if (d < myFortD) { myFortD = d; myFort = f; }
+        }
+        let goalX, goalY;
+        if (myFort) {
+            // Run to your fort (your base heals you)
+            goalX = myFort.x; goalY = myFort.y;
+        } else {
+            // No fort — flee directly away from nearest enemy, also drift
+            // toward the arena center to avoid getting cornered.
+            const fleeX = p.x - (nearest.x - p.x);
+            const fleeY = p.y - (nearest.y - p.y);
+            const ax = state.arena.x + state.arena.w / 2;
+            const ay = state.arena.y + state.arena.h / 2;
+            goalX = fleeX * 0.7 + ax * 0.3;
+            goalY = fleeY * 0.7 + ay * 0.3;
+        }
+        const gd = Math.hypot(goalX - p.x, goalY - p.y) || 1;
+        out.ix = (goalX - p.x) / gd;
+        out.iy = (goalY - p.y) / gd;
+        // Always face the threat while retreating, so an emergency throw goes
+        // toward the enemy (and we don't auto-overwrite facing because bots
+        // skip that branch in updatePlayer).
+        const nl = Math.hypot(nearest.x - p.x, nearest.y - p.y) || 1;
+        p.facingX = (nearest.x - p.x) / nl;
+        p.facingY = (nearest.y - p.y) / nl;
+        // Build defensive cover
+        if (p.ammo >= FORT_COST + 1 && p.buildCooldown <= 0 && Math.random() < 0.6 * dt * 6) {
+            out.build = true;
+        }
+        // Emergency throw if a foe is right on top of us
+        if (nearestD < 170 && p.ammo > 0 && p.throwCooldown <= 0) {
+            out.throw = true;
+        }
+        return out;
+    }
+
+    // Aggression boost when hunting a weakened enemy
+    const aggro = huntWeak ? 1.4 : 1.0;
 
     // Check line of sight to opponent — if blocked by fort/tree, move
     function clearShot(fromX, fromY, toX, toY) {
@@ -1001,10 +1060,11 @@ function aiCommand(p, dt) {
     const aimY = dy / (dist || 1);
     p.facingX += (aimX - p.facingX) * cfg.aim * dt * 6;
     p.facingY += (aimY - p.facingY) * cfg.aim * dt * 6;
-    if (dist < cfg.throwRange && p.ammo > 0 && p.throwCooldown <= 0) {
+    const effThrowRange = cfg.throwRange * aggro;
+    if (dist < effThrowRange && p.ammo > 0 && p.throwCooldown <= 0) {
         if (clearShot(p.x, p.y, opp.x, opp.y)) {
-            // Add accuracy noise
-            const err = (1 - cfg.accuracy) * (Math.random() - 0.5) * 1.4;
+            // Add accuracy noise (less when hunting a weak target)
+            const err = (1 - cfg.accuracy) * (Math.random() - 0.5) * 1.4 / aggro;
             p.facingX += -aimY * err;
             p.facingY += aimX * err;
             const fl = Math.hypot(p.facingX, p.facingY) || 1;
@@ -1013,16 +1073,18 @@ function aiCommand(p, dt) {
         }
     }
 
-    // Movement: if no goal, kite at preferred distance. Commit to juke
+    // Movement: if no goal, kite at preferred distance. When hunting a
+    // wounded enemy, push closer (smaller defendDistance). Commit to juke
     // directions for longer so the bot doesn't oscillate in place.
+    const effDefend = cfg.defendDistance / aggro;
     if (!goal) {
-        if (dist < cfg.defendDistance * 0.6) {
+        if (dist < effDefend * 0.6) {
             // Strafe / back away
             if (p.ai.jukeTimer <= 0) { p.ai.jukeDir = (Math.random() < 0.5 ? -1 : 1); p.ai.jukeTimer = 1.4 + Math.random() * 1.0; }
             // Perpendicular juke
             out.ix = -aimY * p.ai.jukeDir - aimX * 0.4;
             out.iy = aimX * p.ai.jukeDir - aimY * 0.4;
-        } else if (dist > cfg.throwRange * 0.95) {
+        } else if (dist > effThrowRange * 0.95) {
             out.ix = aimX; out.iy = aimY;
         } else {
             // Strafe in place
