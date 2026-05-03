@@ -101,7 +101,10 @@ h2 { font-size: 18px; color: #b3d9ff; font-weight: normal; margin-bottom: 18px; 
         <h1>❄ SNOWBALL FIGHT ❄</h1>
         <h2>Free-for-all — last one standing wins!</h2>
         <p style="font-size:13px;color:#cce;line-height:1.5;margin-bottom:6px;">
-            Stand near <b>your own fort</b> to refill ammo and slowly regen HP — build a few in a row to make a base.
+            Stand near <b>your own fort</b> to refill ammo and slowly regen HP — build a few in a row to make a base.<br>
+            Grab powerups: <span style="color:#ffb27a;"><b>⚡ Rapid Fire</b></span> (free fast throws),
+            <span style="color:#ff8a8a;"><b>+ Insta-Heal</b></span> (full HP),
+            <span style="color:#ffe066;"><b>⚡ Stun Gun</b></span> (your throws freeze targets).
         </p>
         <div class="controls">
             <div class="control-section p1">
@@ -222,6 +225,24 @@ const BASE_REACH = 70;          // distance from a friendly fort that counts as 
 const BASE_AMMO_RATE = 0.35;    // ammo per second while inside your own base (~1 ammo / 3s)
 const BASE_HEAL_INTERVAL = 12.0; // seconds to regen 1 HP while in base
 
+// ===== Powerups =====
+const POWERUP_R = 18;
+const POWERUP_LIFETIME = 26;     // seconds a pickup stays on the field before fading
+const POWERUP_PICKUP_R = PLAYER_R + POWERUP_R - 6;
+const MAX_POWERUPS = 3;
+const POWERUP_SPAWN_MIN = 9;     // seconds between spawns (random in [min, max])
+const POWERUP_SPAWN_MAX = 16;
+const RAPID_FIRE_DURATION = 8.0; // seconds
+const RAPID_FIRE_COOLDOWN = 0.12;
+const STUN_GUN_DURATION = 7.0;   // seconds
+const STUN_HIT_DURATION = 1.6;   // how long a hit target stays frozen
+const POWERUP_KINDS = ['rapidfire', 'instaheal', 'stungun'];
+const POWERUP_COLORS = {
+    rapidfire: { core: '#ff7043', edge: '#ffd180', glow: 'rgba(255,160,80,0.55)' },
+    instaheal: { core: '#ef5350', edge: '#ffcdd2', glow: 'rgba(255,90,90,0.55)' },
+    stungun:   { core: '#fdd835', edge: '#fff59d', glow: 'rgba(255,235,90,0.55)' },
+};
+
 // ===== State =====
 let state = null;
 let botCount = 3;
@@ -330,6 +351,8 @@ function makeState(mode, difficulty, bots) {
         particles: [],
         footprints: [],
         players,
+        powerups: [],
+        powerupSpawnTimer: 5, // first powerup arrives a few seconds in
         endTimer: 0,
     };
 }
@@ -381,6 +404,10 @@ function makePlayer(idx, x, y, isBot) {
         footprintTimer: 0,
         knockoutTimer: 0,
         kills: 0,
+        // Powerup buff timers (seconds remaining)
+        rapidFireTimer: 0,
+        stunGunTimer: 0,
+        stunTimer: 0,
     };
 }
 
@@ -494,7 +521,9 @@ function clampToArena(p, r) {
 }
 
 function tryThrow(p) {
-    if (p.throwCooldown > 0 || p.ammo <= 0 || !p.alive) return;
+    if (p.throwCooldown > 0 || !p.alive || p.stunTimer > 0) return;
+    const rapid = p.rapidFireTimer > 0;
+    if (!rapid && p.ammo <= 0) return;
     let fx = p.facingX, fy = p.facingY;
     const fl = Math.hypot(fx, fy) || 1;
     fx /= fl; fy /= fl;
@@ -509,9 +538,11 @@ function tryThrow(p) {
         spin: 0,
         spinSpeed: (Math.random() - 0.5) * 12,
         trail: [],
+        rapid,                                  // glowing visual when from rapid fire
+        stuns: p.stunGunTimer > 0,              // freezes target on hit
     });
-    p.ammo--;
-    p.throwCooldown = THROW_COOLDOWN;
+    if (!rapid) p.ammo--;
+    p.throwCooldown = rapid ? RAPID_FIRE_COOLDOWN : THROW_COOLDOWN;
     throwSound();
     // Throw burst particles
     for (let i = 0; i < 4; i++) {
@@ -587,6 +618,28 @@ function updatePlayer(p, dt) {
     p.buildCooldown = Math.max(0, p.buildCooldown - dt);
     p.flashTimer = Math.max(0, p.flashTimer - dt);
     p.invulnTimer = Math.max(0, p.invulnTimer - dt);
+    p.rapidFireTimer = Math.max(0, p.rapidFireTimer - dt);
+    p.stunGunTimer = Math.max(0, p.stunGunTimer - dt);
+    p.stunTimer = Math.max(0, p.stunTimer - dt);
+
+    // Stunned: drop all input, just stand frozen
+    if (p.stunTimer > 0) {
+        p.moving = false;
+        p.vx = 0; p.vy = 0;
+        // Occasional spark particle
+        if (Math.random() < dt * 12) {
+            state.particles.push({
+                x: p.x + (Math.random() - 0.5) * 24,
+                y: p.y - 18 + (Math.random() - 0.5) * 28,
+                vx: (Math.random() - 0.5) * 80,
+                vy: -20 - Math.random() * 60,
+                life: 0.3, maxLife: 0.3,
+                size: 1.5 + Math.random() * 1.5,
+                color: '#fff59d',
+            });
+        }
+        return;
+    }
 
     // Input
     let ix = 0, iy = 0;
@@ -830,6 +883,22 @@ function updateSnowballs(dt) {
                 p.invulnTimer = 0.4;
                 hitSound();
                 burstParticles(p.x, p.y, '#fff', 18);
+                // Stun gun snowballs freeze the target
+                if (s.stuns) {
+                    p.stunTimer = STUN_HIT_DURATION;
+                    // Yellow electric burst
+                    for (let i = 0; i < 18; i++) {
+                        const a = Math.random() * Math.PI * 2;
+                        const sp = 80 + Math.random() * 180;
+                        state.particles.push({
+                            x: p.x, y: p.y - 6,
+                            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30,
+                            life: 0.45, maxLife: 0.45,
+                            size: 1.5 + Math.random() * 2,
+                            color: '#fff59d',
+                        });
+                    }
+                }
                 // Knockback
                 const d = Math.hypot(dx, dy) || 1;
                 p.x -= (dx / d) * 8;
@@ -886,6 +955,105 @@ function updatePiles(dt) {
         pile.stock = Math.min(1, pile.stock + PILE_REGEN * dt);
         pile.sparkle += dt;
     });
+}
+
+function spawnPowerup() {
+    const a = state.arena;
+    let x, y, ok;
+    for (let tries = 0; tries < 30; tries++) {
+        x = a.x + 60 + Math.random() * (a.w - 120);
+        y = a.y + 60 + Math.random() * (a.h - 120);
+        ok = true;
+        // Avoid spawning right on top of trees, forts, piles, players
+        for (const t of state.trees) if (Math.hypot(x - t.x, y - t.y) < t.r + POWERUP_R) { ok = false; break; }
+        if (!ok) continue;
+        for (const f of state.forts) if (rectCircle(f.x, f.y, f.w + 24, f.h + 24, x, y, POWERUP_R)) { ok = false; break; }
+        if (!ok) continue;
+        for (const pile of state.piles) if (Math.hypot(x - pile.x, y - pile.y) < SNOW_PILE_R + POWERUP_R + 6) { ok = false; break; }
+        if (!ok) continue;
+        for (const p of state.players) if (Math.hypot(x - p.x, y - p.y) < PLAYER_R + POWERUP_R + 20) { ok = false; break; }
+        if (ok) break;
+    }
+    if (!ok) return;
+    const kind = POWERUP_KINDS[Math.floor(Math.random() * POWERUP_KINDS.length)];
+    state.powerups.push({
+        x, y, kind,
+        life: POWERUP_LIFETIME,
+        maxLife: POWERUP_LIFETIME,
+        bob: Math.random() * Math.PI * 2,
+        spin: 0,
+    });
+}
+
+function applyPowerup(p, pu) {
+    if (pu.kind === 'rapidfire') {
+        p.rapidFireTimer = Math.max(p.rapidFireTimer, RAPID_FIRE_DURATION);
+    } else if (pu.kind === 'instaheal') {
+        const restored = PLAYER_HP - p.hp;
+        p.hp = PLAYER_HP;
+        p.flashTimer = 0.25;
+        for (let i = 0; i < 24; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const sp = 60 + Math.random() * 140;
+            state.particles.push({
+                x: p.x, y: p.y - 8,
+                vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40,
+                life: 0.7 + Math.random() * 0.3, maxLife: 1.0,
+                size: 1.5 + Math.random() * 2,
+                color: '#7cffa3',
+            });
+        }
+        // Floating heal text
+        if (restored > 0) state.particles.push({
+            x: p.x, y: p.y - 32, vx: 0, vy: -30,
+            life: 1.2, maxLife: 1.2, size: 0,
+            color: '#7cffa3', isText: true, text: '+FULL HP',
+        });
+    } else if (pu.kind === 'stungun') {
+        p.stunGunTimer = Math.max(p.stunGunTimer, STUN_GUN_DURATION);
+    }
+    // Pickup sparkle
+    const c = POWERUP_COLORS[pu.kind].core;
+    for (let i = 0; i < 20; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 60 + Math.random() * 160;
+        state.particles.push({
+            x: pu.x, y: pu.y,
+            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40,
+            life: 0.6, maxLife: 0.6,
+            size: 1.5 + Math.random() * 2,
+            color: c,
+        });
+    }
+    pickupSound();
+    pu.alive = false;
+}
+
+function updatePowerups(dt) {
+    // Spawn timer
+    state.powerupSpawnTimer -= dt;
+    if (state.powerupSpawnTimer <= 0 && state.powerups.length < MAX_POWERUPS) {
+        spawnPowerup();
+        state.powerupSpawnTimer = POWERUP_SPAWN_MIN + Math.random() * (POWERUP_SPAWN_MAX - POWERUP_SPAWN_MIN);
+    }
+    // Update existing
+    state.powerups.forEach(pu => {
+        if (pu.alive === false) return;
+        pu.life -= dt;
+        pu.bob += dt * 2;
+        pu.spin += dt * 1.4;
+        if (pu.life <= 0) pu.alive = false;
+        // Pickup check
+        for (const p of state.players) {
+            if (!p.alive) continue;
+            const d = Math.hypot(p.x - pu.x, p.y - pu.y);
+            if (d < POWERUP_PICKUP_R) {
+                applyPowerup(p, pu);
+                break;
+            }
+        }
+    });
+    state.powerups = state.powerups.filter(pu => pu.alive !== false);
 }
 
 function updateFlakes(dt) {
@@ -1056,6 +1224,29 @@ function aiCommand(p, dt) {
             if (d < bd) { bd = d; best = pile; }
         });
         if (best) goal = { x: best.x, y: best.y, kind: 'pile' };
+    }
+
+    // Powerup pickup: divert when a useful powerup is nearby.
+    // Insta-heal is high priority when wounded; rapid fire / stun gun
+    // when within ~250px and not actively low on ammo.
+    {
+        let pickUp = null, pickD = Infinity;
+        for (const pu of state.powerups) {
+            if (pu.alive === false) continue;
+            const d = Math.hypot(p.x - pu.x, p.y - pu.y);
+            // Decide if THIS powerup is worth chasing
+            let worthRange = 0;
+            if (pu.kind === 'instaheal') {
+                // The lower our HP, the further we'll travel for it
+                worthRange = (PLAYER_HP - p.hp) * 90;     // 0 at full, 540 at 0HP
+            } else if (pu.kind === 'rapidfire') {
+                worthRange = 280;                          // generally useful
+            } else if (pu.kind === 'stungun') {
+                worthRange = 240;
+            }
+            if (d < worthRange && d < pickD) { pickD = d; pickUp = pu; }
+        }
+        if (pickUp) goal = { x: pickUp.x, y: pickUp.y, kind: 'powerup' };
     }
 
     // Strategic build: build forts both as cover when an enemy is nearby AND
@@ -1291,6 +1482,93 @@ function drawFootprints() {
     ctx.globalAlpha = 1;
 }
 
+function drawPowerups() {
+    state.powerups.forEach(pu => {
+        if (pu.alive === false) return;
+        const fade = pu.life < 4 ? Math.max(0, pu.life / 4) : 1;
+        // Blink near despawn
+        const blink = pu.life < 4 && (Math.floor(state.time * 8) % 2 === 0) ? 0.4 : 1.0;
+        ctx.globalAlpha = fade * blink;
+
+        const bobY = Math.sin(pu.bob) * 4;
+        const cx = pu.x, cy = pu.y - 4 + bobY;
+        const c = POWERUP_COLORS[pu.kind];
+
+        // Ground shadow
+        ctx.globalAlpha = fade * 0.3 * blink;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(pu.x + 2, pu.y + 8, POWERUP_R * 0.9, POWERUP_R * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = fade * blink;
+
+        // Glow halo
+        const haloR = POWERUP_R + 8 + Math.sin(state.time * 3 + pu.bob) * 3;
+        const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, haloR);
+        grad.addColorStop(0, c.glow);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Disc body
+        const discGrad = ctx.createRadialGradient(cx - 4, cy - 4, 1, cx, cy, POWERUP_R);
+        discGrad.addColorStop(0, '#ffffff');
+        discGrad.addColorStop(0.4, c.edge);
+        discGrad.addColorStop(1, c.core);
+        ctx.fillStyle = discGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, POWERUP_R, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Icon
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(Math.sin(pu.spin) * 0.15);
+        if (pu.kind === 'rapidfire') {
+            // Lightning bolt
+            ctx.fillStyle = '#fff';
+            ctx.strokeStyle = '#7a2400';
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(-3, -10);
+            ctx.lineTo(3, -2);
+            ctx.lineTo(-1, -1);
+            ctx.lineTo(4, 10);
+            ctx.lineTo(-2, 2);
+            ctx.lineTo(2, 1);
+            ctx.closePath();
+            ctx.fill(); ctx.stroke();
+        } else if (pu.kind === 'instaheal') {
+            // Plus sign (red cross)
+            ctx.fillStyle = '#fff';
+            ctx.strokeStyle = '#7a0000';
+            ctx.lineWidth = 1.4;
+            ctx.fillRect(-3, -10, 6, 20);
+            ctx.fillRect(-10, -3, 20, 6);
+            ctx.strokeRect(-3, -10, 6, 20);
+            ctx.strokeRect(-10, -3, 20, 6);
+        } else if (pu.kind === 'stungun') {
+            // Triple zigzag
+            ctx.strokeStyle = '#7a5a00';
+            ctx.lineWidth = 2.2;
+            ctx.beginPath();
+            ctx.moveTo(-7, -8); ctx.lineTo(-1, -2); ctx.lineTo(-4, 0); ctx.lineTo(3, 8);
+            ctx.stroke();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        ctx.globalAlpha = 1;
+    });
+}
+
 function drawSnowPiles() {
     state.piles.forEach(pile => {
         // Shadow
@@ -1496,11 +1774,20 @@ function drawSnowballs() {
         }
         ctx.globalAlpha = 1;
 
-        // Body
+        // Body — tinted glow if rapid-fire or stun-charged
+        if (s.rapid || s.stuns) {
+            const tint = s.stuns ? 'rgba(255,235,90,0.5)' : 'rgba(255,140,80,0.5)';
+            const haloR = SNOWBALL_R + 5 + Math.sin(state.time * 14 + s.x) * 1.5;
+            const halo = ctx.createRadialGradient(s.x, s.y, 1, s.x, s.y, haloR);
+            halo.addColorStop(0, tint);
+            halo.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = halo;
+            ctx.beginPath(); ctx.arc(s.x, s.y, haloR, 0, Math.PI * 2); ctx.fill();
+        }
         const grad = ctx.createRadialGradient(s.x - SNOWBALL_R * 0.4, s.y - SNOWBALL_R * 0.4, 1, s.x, s.y, SNOWBALL_R * 1.2);
         grad.addColorStop(0, '#ffffff');
-        grad.addColorStop(0.7, '#e3eef9');
-        grad.addColorStop(1, '#9bb6cf');
+        grad.addColorStop(0.7, s.stuns ? '#fff59d' : (s.rapid ? '#ffd180' : '#e3eef9'));
+        grad.addColorStop(1, s.stuns ? '#fdd835' : (s.rapid ? '#ff7043' : '#9bb6cf'));
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(s.x, s.y, SNOWBALL_R, 0, Math.PI * 2);
@@ -1561,6 +1848,70 @@ function drawPlayer(p) {
 
     // HP pips above head
     drawHP(p);
+
+    // Stun electric arcs over body
+    if (p.stunTimer > 0) {
+        ctx.strokeStyle = '#fff59d';
+        ctx.lineWidth = 2;
+        const t = state.time * 18;
+        for (let i = 0; i < 3; i++) {
+            const a1 = t + i * 2.1;
+            const a2 = a1 + Math.PI;
+            const r1 = PLAYER_R * 1.05;
+            ctx.beginPath();
+            ctx.moveTo(p.x + Math.cos(a1) * r1, p.y - 8 + Math.sin(a1) * r1 * 0.8);
+            ctx.lineTo(p.x + Math.cos(a1 + 0.5) * (r1 * 0.4), p.y - 8 + Math.sin(a1 + 0.5) * r1 * 0.3);
+            ctx.lineTo(p.x + Math.cos(a2) * r1, p.y - 8 + Math.sin(a2) * r1 * 0.8);
+            ctx.stroke();
+        }
+        // Tiny stars/sparks above the head
+        ctx.fillStyle = '#fdd835';
+        for (let s = 0; s < 3; s++) {
+            const sx = p.x + Math.cos(t + s * 2) * 8;
+            const sy = p.y - PLAYER_R * 2.6 + Math.sin(t * 1.5 + s * 2) * 4;
+            ctx.beginPath(); ctx.arc(sx, sy, 1.8, 0, Math.PI * 2); ctx.fill();
+        }
+    }
+
+    // Active buff icons floating above head
+    drawBuffIcons(p);
+}
+
+function drawBuffIcons(p) {
+    const buffs = [];
+    if (p.rapidFireTimer > 0) buffs.push({ kind: 'rapidfire', t: p.rapidFireTimer, max: RAPID_FIRE_DURATION });
+    if (p.stunGunTimer > 0)   buffs.push({ kind: 'stungun',   t: p.stunGunTimer,   max: STUN_GUN_DURATION });
+    if (buffs.length === 0) return;
+    const baseY = p.y - PLAYER_R * 2.6;
+    buffs.forEach((b, i) => {
+        const bx = p.x - (buffs.length - 1) * 11 + i * 22;
+        const by = baseY;
+        const c = POWERUP_COLORS[b.kind];
+        // Round badge
+        const grad = ctx.createRadialGradient(bx - 2, by - 2, 1, bx, by, 9);
+        grad.addColorStop(0, '#fff');
+        grad.addColorStop(0.5, c.edge);
+        grad.addColorStop(1, c.core);
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(bx, by, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        // Tiny icon glyph
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const glyph = b.kind === 'rapidfire' ? '⚡' : b.kind === 'stungun' ? '⚡' : '+';
+        ctx.fillText(glyph, bx, by + 1);
+        ctx.textBaseline = 'alphabetic';
+        // Time-remaining ring
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(bx, by, 10.5, -Math.PI / 2, -Math.PI / 2 + (b.t / b.max) * Math.PI * 2);
+        ctx.stroke();
+    });
 }
 
 function drawDeadPlayer(p) {
@@ -1908,10 +2259,17 @@ function drawParticles() {
     state.particles.forEach(p => {
         const a = Math.max(0, p.life / p.maxLife);
         ctx.globalAlpha = a;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
+        if (p.isText) {
+            ctx.fillStyle = p.color;
+            ctx.font = 'bold 14px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText(p.text, p.x, p.y);
+        } else {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
     });
     ctx.globalAlpha = 1;
 }
@@ -2097,6 +2455,7 @@ function loop(ts) {
             state.players.forEach(p => updatePlayer(p, dt));
             updateSnowballs(dt);
             updatePiles(dt);
+            updatePowerups(dt);
             updateParticles(dt);
             updateFlakes(dt);
         } else if (state.endTimer > 0) {
@@ -2111,6 +2470,7 @@ function loop(ts) {
         drawProps();
         drawFootprints();
         drawSnowPiles();
+        drawPowerups();
         // Sort fort + tree + player + snowball by y for fake depth
         const layered = [];
         state.forts.forEach(f => { if (f.alive) layered.push({ y: f.y, draw: () => drawFortSingle(f) }); });
