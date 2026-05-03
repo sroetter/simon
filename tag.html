@@ -276,9 +276,9 @@ function makeState(mode, difficulty, bots) {
     const logs = [];
     const decorations = [];
 
-    // Big rocks — large landmark obstacles you can dodge around. Pretty
-    // sparse so they read as distinct landmarks rather than walls.
-    const rockCount = Math.round((arena.w * arena.h) / 240000);
+    // Big rocks — large landmark obstacles you can dodge around. Sparse
+    // by design so they read as distinct landmarks rather than walls.
+    const rockCount = Math.round((arena.w * arena.h) / 1500000);
     for (let i = 0; i < rockCount; i++) {
         let x, y, ok;
         const rx = 40 + Math.random() * 28;
@@ -295,7 +295,7 @@ function makeState(mode, difficulty, bots) {
 
     // Fallen logs — long thin obstacles, mix horizontal & vertical, force
     // you to commit to going around one side.
-    const logCount = Math.round((arena.w * arena.h) / 320000);
+    const logCount = Math.round((arena.w * arena.h) / 2000000);
     for (let i = 0; i < logCount; i++) {
         let x, y, ok;
         const horizontal = Math.random() < 0.5;
