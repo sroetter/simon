@@ -1268,20 +1268,21 @@ function aiCommand(p, dt) {
         }
     }
 
-    // Aim & throw — with target leading. Predict where the target will be
-    // when the snowball arrives, based on their current velocity. Hard bots
-    // lead almost perfectly, easy bots only slightly.
-    const leadFactor = { easy: 0.25, medium: 0.6, hard: 0.95 }[state.difficulty || 'medium'];
-    const tt = dist / SNOWBALL_SPEED;
-    const ovx = opp.vx || 0, ovy = opp.vy || 0;
-    const leadX = opp.x + ovx * tt * leadFactor;
-    const leadY = opp.y + ovy * tt * leadFactor;
-    const ldx = leadX - p.x, ldy = leadY - p.y;
-    const ll = Math.hypot(ldx, ldy) || 1;
-    const aimX = ldx / ll;
-    const aimY = ldy / ll;
+    // Smooth the target's velocity over time so a strafing/stopping target
+    // doesn't make our aim point swing wildly each frame.
+    const targetEMA = 0.10;
+    p.ai.targetVx = (p.ai.targetVx || 0) * (1 - targetEMA) + (opp.vx || 0) * targetEMA;
+    p.ai.targetVy = (p.ai.targetVy || 0) * (1 - targetEMA) + (opp.vy || 0) * targetEMA;
+
+    // Visual facing tracks the target's *actual* position smoothly — the
+    // arrow above the head no longer flickers from frame-to-frame lead jumps.
+    const aimX = dx / (dist || 1);
+    const aimY = dy / (dist || 1);
     p.facingX += (aimX - p.facingX) * cfg.aim * dt * 6;
     p.facingY += (aimY - p.facingY) * cfg.aim * dt * 6;
+
+    // Lead — applied only at the moment of throwing (below).
+    const leadFactor = { easy: 0.25, medium: 0.5, hard: 0.75 }[state.difficulty || 'medium'];
     const effThrowRange = cfg.throwRange * aggro;
     if (dist < effThrowRange && p.ammo > 0 && p.throwCooldown <= 0) {
         if (clearShot(p.x, p.y, opp.x, opp.y)) {
@@ -1292,12 +1293,24 @@ function aiCommand(p, dt) {
             const easyTarget = opp.hp <= 2;
             const shouldShoot = !lowAmmo || closeShot || easyTarget || huntWeak;
             if (shouldShoot) {
-                // Add accuracy noise (less when hunting or close)
+                // Compute lead direction once at throw time (using smoothed
+                // target velocity so it doesn't snap around).
+                const tt = dist / SNOWBALL_SPEED;
+                const ovx = p.ai.targetVx || 0, ovy = p.ai.targetVy || 0;
+                const leadX = opp.x + ovx * tt * leadFactor;
+                const leadY = opp.y + ovy * tt * leadFactor;
+                const ldx = leadX - p.x, ldy = leadY - p.y;
+                const ll = Math.hypot(ldx, ldy) || 1;
+                let throwX = ldx / ll;
+                let throwY = ldy / ll;
+                // Accuracy noise (less when hunting or close)
+                const perpX = -throwY, perpY = throwX;
                 const err = (1 - cfg.accuracy) * (Math.random() - 0.5) * 1.4 / aggro;
-                p.facingX += -aimY * err;
-                p.facingY += aimX * err;
-                const fl = Math.hypot(p.facingX, p.facingY) || 1;
-                p.facingX /= fl; p.facingY /= fl;
+                throwX += perpX * err;
+                throwY += perpY * err;
+                const tl = Math.hypot(throwX, throwY) || 1;
+                p.facingX = throwX / tl;
+                p.facingY = throwY / tl;
                 out.throw = true;
             }
         }
@@ -1332,18 +1345,17 @@ function aiCommand(p, dt) {
             // Too far — close the gap
             out.ix = aimX; out.iy = aimY;
         } else {
-            // In throwing range — stand still most of the time and shoot.
-            // Strafe only occasionally to avoid being a sitting duck.
+            // In throwing range — mostly hold position and shoot. Occasional
+            // brief strafe so they're not a stationary target.
             if (p.ai.jukeTimer <= 0) {
                 const r = Math.random();
-                if (r < 0.65) {
-                    // Hold position (no movement)
+                if (r < 0.85) {
                     p.ai.jukeMode = 'hold';
-                    p.ai.jukeTimer = 1.0 + Math.random() * 1.4;
+                    p.ai.jukeTimer = 1.8 + Math.random() * 2.0;
                 } else {
                     p.ai.jukeMode = 'strafe';
-                    p.ai.jukeDir = r < 0.83 ? -1 : 1;
-                    p.ai.jukeTimer = 0.5 + Math.random() * 0.6;
+                    p.ai.jukeDir = Math.random() < 0.5 ? -1 : 1;
+                    p.ai.jukeTimer = 0.4 + Math.random() * 0.4;
                 }
             }
             if (p.ai.jukeMode === 'hold') {
