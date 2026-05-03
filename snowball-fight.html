@@ -75,6 +75,7 @@ h2 { font-size: 18px; color: #b3d9ff; font-weight: normal; margin-bottom: 18px; 
 .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #14365a; }
 
 .btn.diff { padding: 8px 18px; font-size: 14px; min-width: 90px; }
+.btn.diff.bots { padding: 6px 12px; min-width: 0; }
 .btn.diff.active { background: linear-gradient(135deg, #ff7f50, #d63300); border-color: #ffd9c2; box-shadow: 0 4px 0 #771c00; }
 .label { font-size: 13px; color: #b3d9ff; margin: 6px 0 4px; }
 
@@ -114,10 +115,13 @@ h2 { font-size: 18px; color: #b3d9ff; font-weight: normal; margin-bottom: 18px; 
         </div>
         <div class="label">Number of bots:</div>
         <div class="row">
-            <button class="btn diff bots" data-bots="1">1 Bot</button>
-            <button class="btn diff bots active" data-bots="3">3 Bots</button>
-            <button class="btn diff bots" data-bots="5">5 Bots</button>
-            <button class="btn diff bots" data-bots="7">7 Bots</button>
+            <button class="btn diff bots" data-bots="1">1</button>
+            <button class="btn diff bots active" data-bots="3">3</button>
+            <button class="btn diff bots" data-bots="5">5</button>
+            <button class="btn diff bots" data-bots="7">7</button>
+            <button class="btn diff bots" data-bots="9">9</button>
+            <button class="btn diff bots" data-bots="11">11</button>
+            <button class="btn diff bots" data-bots="13">13</button>
         </div>
         <div class="label">Bot difficulty:</div>
         <div class="row">
@@ -233,6 +237,12 @@ const PLAYER_PALETTE = [
     { coat: '#ec407a', dark: '#880e4f', hat: '#ad1457', pom: '#ffe0eb', scarf: '#fff9c4', label: '#f48fb1' }, // pink
     { coat: '#6d4c41', dark: '#3e2723', hat: '#4e342e', pom: '#d7ccc8', scarf: '#ffd54f', label: '#a1887f' }, // brown
     { coat: '#fdd835', dark: '#a37501', hat: '#f9a825', pom: '#fff8e1', scarf: '#0d47a1', label: '#fff176' }, // yellow
+    { coat: '#9ccc65', dark: '#558b2f', hat: '#7cb342', pom: '#dcedc8', scarf: '#5d4037', label: '#aed581' }, // lime
+    { coat: '#26a69a', dark: '#00695c', hat: '#00897b', pom: '#b2dfdb', scarf: '#ffd54f', label: '#4db6ac' }, // dark teal
+    { coat: '#ff7043', dark: '#bf360c', hat: '#e64a19', pom: '#ffccbc', scarf: '#0d47a1', label: '#ffab91' }, // coral
+    { coat: '#5c6bc0', dark: '#283593', hat: '#3949ab', pom: '#c5cae9', scarf: '#ffd54f', label: '#7986cb' }, // indigo
+    { coat: '#bdbdbd', dark: '#616161', hat: '#757575', pom: '#f5f5f5', scarf: '#d32f2f', label: '#e0e0e0' }, // grey
+    { coat: '#8d6e63', dark: '#3e2723', hat: '#5d4037', pom: '#d7ccc8', scarf: '#1976d2', label: '#a1887f' }, // tan
 ];
 
 function makeState(mode, difficulty, bots) {
@@ -906,7 +916,15 @@ function burstParticles(x, y, color, n) {
 function aiCommand(p, dt) {
     const out = { ix: 0, iy: 0, throw: false, build: false };
 
-    // Survey the field: find the nearest enemy AND the weakest enemy
+    // Score every enemy on a "how easy is the kill" axis: low HP is a huge
+    // bonus, distance is a soft penalty. Bots always prefer the wounded.
+    function targetScore(q) {
+        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        const hpBonus = (PLAYER_HP - q.hp) * 90;  // each missing HP ~ 90 "score points"
+        return hpBonus - d;
+    }
+
+    let bestTarget = null, bestScore = -Infinity;
     let nearest = null, nearestD = Infinity;
     let weakest = null;
     for (const q of state.players) {
@@ -914,29 +932,33 @@ function aiCommand(p, dt) {
         const d = Math.hypot(q.x - p.x, q.y - p.y);
         if (d < nearestD) { nearestD = d; nearest = q; }
         if (!weakest || q.hp < weakest.hp) weakest = q;
+        const s = targetScore(q);
+        if (s > bestScore) { bestScore = s; bestTarget = q; }
     }
     if (!nearest) return out;
 
     const lowHP = p.hp <= 2;          // retreat threshold
     const highHP = p.hp >= 4;         // healthy enough to push
-    // Hunt-the-wounded: when we're healthy and any enemy is hurt, focus them.
-    const huntWeak = highHP && weakest && weakest.hp <= 2;
+    // Hunt-the-wounded: now triggered any time a notably weaker enemy exists
+    // (not just when our own HP is full). Adds aggression scaling.
+    const huntWeak = bestTarget && bestTarget.hp + 1 < p.hp;
 
-    // Target selection
+    // Target persistence with smart-switch override: stick with current target
+    // unless a *much* easier kill appears, then switch.
     p.ai.targetTimer = (p.ai.targetTimer || 0) - dt;
     let opp = null;
-    if (huntWeak) {
-        // Override: chase the weakest enemy until they die or recover
-        opp = weakest;
-        p.ai.targetIdx = weakest.idx;
-        p.ai.targetTimer = 5;
-    } else if (p.ai.targetIdx !== undefined && p.ai.targetIdx >= 0) {
+    if (p.ai.targetIdx !== undefined && p.ai.targetIdx >= 0) {
         const cur = state.players[p.ai.targetIdx];
-        if (cur && cur !== p && cur.alive && p.ai.targetTimer > 0) opp = cur;
+        if (cur && cur !== p && cur.alive && p.ai.targetTimer > 0) {
+            const curScore = targetScore(cur);
+            // Switch only when the best target outranks us by a clear margin
+            if (bestScore > curScore + 220) opp = bestTarget;
+            else opp = cur;
+        }
     }
     if (!opp) {
-        opp = nearest;
-        p.ai.targetIdx = nearest.idx;
+        opp = bestTarget || nearest;
+        p.ai.targetIdx = opp.idx;
         p.ai.targetTimer = 8 + Math.random() * 4;
     }
     let oppD = Math.hypot(opp.x - p.x, opp.y - p.y);
@@ -1055,9 +1077,18 @@ function aiCommand(p, dt) {
         }
     }
 
-    // Aim & throw
-    const aimX = dx / (dist || 1);
-    const aimY = dy / (dist || 1);
+    // Aim & throw — with target leading. Predict where the target will be
+    // when the snowball arrives, based on their current velocity. Hard bots
+    // lead almost perfectly, easy bots only slightly.
+    const leadFactor = { easy: 0.25, medium: 0.6, hard: 0.95 }[state.difficulty || 'medium'];
+    const tt = dist / SNOWBALL_SPEED;
+    const ovx = opp.vx || 0, ovy = opp.vy || 0;
+    const leadX = opp.x + ovx * tt * leadFactor;
+    const leadY = opp.y + ovy * tt * leadFactor;
+    const ldx = leadX - p.x, ldy = leadY - p.y;
+    const ll = Math.hypot(ldx, ldy) || 1;
+    const aimX = ldx / ll;
+    const aimY = ldy / ll;
     p.facingX += (aimX - p.facingX) * cfg.aim * dt * 6;
     p.facingY += (aimY - p.facingY) * cfg.aim * dt * 6;
     const effThrowRange = cfg.throwRange * aggro;
