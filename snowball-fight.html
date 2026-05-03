@@ -913,10 +913,13 @@ function aiCommand(p, dt) {
     }
     if (!opp) return out;
 
+    // Each tier is roughly 40% tougher than before:
+    // - aim turn rate ×1.4, throwRange ×1.4, smartBuild ×1.4, react ×1.4 (capped)
+    // - accuracy moves 40% of its remaining gap toward perfect (1.0)
     const cfg = {
-        easy:   { aim: 0.5, throwRange: 280, defendDistance: 220, smartBuild: 0.05, accuracy: 0.5, react: 0.4 },
-        medium: { aim: 0.8, throwRange: 360, defendDistance: 260, smartBuild: 0.25, accuracy: 0.78, react: 0.7 },
-        hard:   { aim: 1.0, throwRange: 420, defendDistance: 300, smartBuild: 0.55, accuracy: 0.94, react: 1.0 },
+        easy:   { aim: 0.70, throwRange: 392, defendDistance: 230, smartBuild: 0.07, accuracy: 0.70,  react: 0.56 },
+        medium: { aim: 1.12, throwRange: 504, defendDistance: 280, smartBuild: 0.35, accuracy: 0.868, react: 0.98 },
+        hard:   { aim: 1.40, throwRange: 588, defendDistance: 320, smartBuild: 0.77, accuracy: 0.964, react: 1.40 },
     }[state.difficulty || 'medium'];
 
     p.ai.timer -= dt;
