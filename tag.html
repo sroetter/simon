@@ -220,7 +220,10 @@ function winSound() {
 // ===== Constants =====
 const PLAYER_R = 18;
 const PLAYER_SPEED = 220;
-const IT_SPEED_BOOST = 0.88;       // Taggers are slower — runners can escape with skill
+const IT_SPEED_BOOST = 0.88;       // Taggers start slower — runners can escape with skill
+// Taggers ramp up speed over the course of the game so a stalemate eventually
+// breaks: ~1 cm/sec extra speed per 10 sec of round time. (~38 CSS px/cm.)
+const IT_RAMP_PXPS_PER_SEC = 3.8;
 const ROUND_DURATION_BASE = 18;    // first round duration
 const ROUND_MIN = 8;               // shortest round (when few players left)
 const TAGBACK_IMMUNITY = 1.4;      // can't tag the player who just tagged you
@@ -651,9 +654,13 @@ function updatePlayer(p, dt) {
     if (len > 0) { ix /= len; iy /= len; }
     p.moving = len > 0;
 
-    // Speed (with It boost + speed-powerup + dash)
+    // Speed (with It boost + speed-powerup + dash + tagger time ramp)
     let speed = PLAYER_SPEED;
-    if (p.isIt) speed *= IT_SPEED_BOOST;
+    if (p.isIt) {
+        speed *= IT_SPEED_BOOST;
+        // Taggers gain ~1 cm/sec extra every 10 sec the game has been running
+        speed += state.time * IT_RAMP_PXPS_PER_SEC;
+    }
     if (p.speedTimer > 0) speed *= SPEED_BOOST_MULT;
     if (p.dashTimer > 0) speed *= DASH_SPEED_MULT;
 
@@ -1517,11 +1524,18 @@ function drawHUD() {
     ctx.font = 'bold 36px Segoe UI';
     ctx.fillStyle = infected >= total - 1 ? '#ff5252' : '#ff7043';
     ctx.fillText(`${infected} / ${total}`, W / 2, 64);
+    // Tagger speed ramp
+    const taggerSpeed = (PLAYER_SPEED * IT_SPEED_BOOST) + state.time * IT_RAMP_PXPS_PER_SEC;
+    const runnerSpeed = PLAYER_SPEED;
+    const ramp = ((taggerSpeed / runnerSpeed) * 100).toFixed(0);
+    ctx.font = '13px Segoe UI';
+    ctx.fillStyle = taggerSpeed > runnerSpeed ? '#ff8a65' : '#cce0c1';
+    ctx.fillText(`Tagger speed: ${ramp}% of runner`, W / 2, 86);
 
     const all = state.players;
     const stripW = Math.min(W - 100, all.length * 70);
     const stripX = (W - stripW) / 2;
-    const stripY = 80;
+    const stripY = 100;
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     ctx.fillRect(stripX, stripY, stripW, 32);
     const slotW = stripW / all.length;
