@@ -13,7 +13,7 @@ body {
     color: white;
     -webkit-user-select: none; user-select: none;
 }
-canvas { display: block; position: absolute; top: 0; left: 0; cursor: crosshair; }
+canvas { display: block; position: absolute; top: 0; left: 0; cursor: none; }
 
 .back-btn {
     position: fixed; top: 14px; left: 14px;
@@ -98,26 +98,33 @@ h2 { font-size: 18px; color: #b3d9ff; font-weight: normal; margin-bottom: 18px; 
 <div id="overlay">
     <div class="box" id="startScreen">
         <h1>❄ SNOWBALL FIGHT ❄</h1>
-        <h2>Last one standing wins!</h2>
+        <h2>Free-for-all — last one standing wins!</h2>
         <div class="controls">
             <div class="control-section p1">
                 <h3>🔴 Player 1</h3>
-                <p>WASD — Move<br>Space — Throw snowball<br>Left-Shift — Build fort<br>(Throw aims where you face)</p>
+                <p>WASD — Move<br>Mouse — Aim<br>Click or Space — Throw<br>Left-Shift or Right-Click — Build fort</p>
             </div>
             <div class="control-section p2">
-                <h3>🔵 Player 2</h3>
-                <p>Arrow keys — Move<br>Enter — Throw snowball<br>Right-Shift — Build fort<br>(or CPU in 1P mode)</p>
+                <h3>🔵 Player 2 (2P only)</h3>
+                <p>Arrow keys — Move &amp; aim<br>Enter — Throw<br>Right-Shift — Build fort</p>
             </div>
         </div>
-        <div class="label">CPU Difficulty (1P only):</div>
+        <div class="label">Number of bots:</div>
+        <div class="row">
+            <button class="btn diff bots" data-bots="1">1 Bot</button>
+            <button class="btn diff bots active" data-bots="3">3 Bots</button>
+            <button class="btn diff bots" data-bots="5">5 Bots</button>
+            <button class="btn diff bots" data-bots="7">7 Bots</button>
+        </div>
+        <div class="label">Bot difficulty:</div>
         <div class="row">
             <button class="btn diff" data-diff="easy">Easy</button>
             <button class="btn diff active" data-diff="medium">Medium</button>
             <button class="btn diff" data-diff="hard">Hard</button>
         </div>
         <div class="row">
-            <button class="btn" id="start1P">1 Player vs CPU</button>
-            <button class="btn" id="start2P">2 Players</button>
+            <button class="btn" id="start1P">1 Human + Bots</button>
+            <button class="btn" id="start2P">2 Humans + Bots</button>
         </div>
     </div>
     <div class="box" id="gameOverScreen" style="display:none;">
@@ -207,8 +214,22 @@ const SNOWBALL_RANGE = 360;
 
 // ===== State =====
 let state = null;
+let botCount = 3;
 
-function makeState(mode, difficulty) {
+// Color palette for bots (P1=red, P2=blue, then a varied palette)
+const PLAYER_PALETTE = [
+    { coat: '#d8463c', dark: '#9a2c25', hat: '#b9352a', pom: '#ffd6d4', scarf: '#f4d35e', label: '#ff5d5d' },
+    { coat: '#3d6fc8', dark: '#264a8a', hat: '#2d5dad', pom: '#cfe1ff', scarf: '#ffd54f', label: '#5dadff' },
+    { coat: '#7e57c2', dark: '#4d2c91', hat: '#5e35b1', pom: '#e9dcff', scarf: '#ffd54f', label: '#b39ddb' }, // purple
+    { coat: '#43a047', dark: '#1b5e20', hat: '#2e7d32', pom: '#c8e6c9', scarf: '#ffd54f', label: '#81c784' }, // green
+    { coat: '#fb8c00', dark: '#bf360c', hat: '#e65100', pom: '#ffe0b2', scarf: '#0d47a1', label: '#ffb74d' }, // orange
+    { coat: '#00acc1', dark: '#006064', hat: '#00838f', pom: '#b2ebf2', scarf: '#f4d35e', label: '#4dd0e1' }, // teal
+    { coat: '#ec407a', dark: '#880e4f', hat: '#ad1457', pom: '#ffe0eb', scarf: '#fff9c4', label: '#f48fb1' }, // pink
+    { coat: '#6d4c41', dark: '#3e2723', hat: '#4e342e', pom: '#d7ccc8', scarf: '#ffd54f', label: '#a1887f' }, // brown
+    { coat: '#fdd835', dark: '#a37501', hat: '#f9a825', pom: '#fff8e1', scarf: '#0d47a1', label: '#fff176' }, // yellow
+];
+
+function makeState(mode, difficulty, bots) {
     const arena = computeArena();
     const trees = [];
     const piles = [];
@@ -267,21 +288,32 @@ function makeState(mode, difficulty) {
         });
     }
 
+    // Build the roster: humans first, then bots. Spawn around the arena perimeter.
+    const humans = mode; // 1 or 2
+    const total = humans + bots;
+    const players = [];
+    for (let i = 0; i < total; i++) {
+        const ang = (i / total) * Math.PI * 2 - Math.PI / 2;
+        const sx = arena.x + arena.w / 2 + Math.cos(ang) * (arena.w * 0.42);
+        const sy = arena.y + arena.h / 2 + Math.sin(ang) * (arena.h * 0.42);
+        const isBot = i >= humans;
+        players.push(makePlayer(i, sx, sy, isBot));
+    }
+
     return {
         mode, difficulty,
+        bots,
         arena,
         running: true,
-        winner: 0,
+        gameEnded: false,
+        winner: -1,
         time: 0,
         trees, piles, props, flakes,
         snowballs: [],
         forts: [],
         particles: [],
         footprints: [],
-        players: [
-            makePlayer(0, arena.x + 70, arena.y + arena.h / 2),
-            makePlayer(1, arena.x + arena.w - 70, arena.y + arena.h / 2),
-        ],
+        players,
         endTimer: 0,
     };
 }
@@ -294,14 +326,23 @@ function computeArena() {
     return { x, y, w, h };
 }
 
-function makePlayer(idx, x, y) {
-    const isP1 = idx === 0;
+function makePlayer(idx, x, y, isBot) {
+    const palette = PLAYER_PALETTE[idx % PLAYER_PALETTE.length];
+    // P1 keys (idx 0), P2 keys (idx 1 only if human). Bots have no keys.
+    let keys = null;
+    if (idx === 0 && !isBot) {
+        keys = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', throw: 'Space', build: 'ShiftLeft' };
+    } else if (idx === 1 && !isBot) {
+        keys = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', throw: 'Enter', build: 'ShiftRight' };
+    }
+    // Aim a bot at the arena center initially so the first throw goes somewhere reasonable
+    const facing = idx === 0 ? { x: 1, y: 0 } : { x: -1, y: 0 };
     return {
         idx,
+        isBot: !!isBot,
         x, y,
         vx: 0, vy: 0,
-        facingX: isP1 ? 1 : -1,
-        facingY: 0,
+        facingX: facing.x, facingY: facing.y,
         ammo: START_AMMO,
         hp: PLAYER_HP,
         alive: true,
@@ -311,24 +352,18 @@ function makePlayer(idx, x, y) {
         invulnTimer: 0,
         animTime: 0,
         moving: false,
-        coatColor: isP1 ? '#d8463c' : '#3d6fc8',
-        coatDark: isP1 ? '#9a2c25' : '#264a8a',
-        scarfColor: isP1 ? '#f4d35e' : '#ffd54f',
-        hatColor: isP1 ? '#b9352a' : '#2d5dad',
-        pomColor: isP1 ? '#ffd6d4' : '#cfe1ff',
+        coatColor: palette.coat,
+        coatDark: palette.dark,
+        scarfColor: palette.scarf,
+        hatColor: palette.hat,
+        pomColor: palette.pom,
+        labelColor: palette.label,
         skin: '#f0c6a3',
-        keys: isP1
-            ? { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', throw: 'Space', build: 'ShiftLeft' }
-            : { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', throw: 'Enter', build: 'ShiftRight' },
-        // CPU AI fields
-        ai: {
-            timer: 0,
-            target: null,
-            jukeTimer: 0,
-            jukeDir: 0,
-        },
+        keys,
+        ai: { timer: 0, target: null, jukeTimer: 0, jukeDir: 0 },
         footprintTimer: 0,
         knockoutTimer: 0,
+        kills: 0,
     };
 }
 
@@ -336,6 +371,7 @@ function makePlayer(idx, x, y) {
 const keys = {};
 const codes = {};
 const justPressed = {};
+const mouse = { x: 0, y: 0, inside: false, leftJust: false, rightJust: false, leftDown: false };
 
 window.addEventListener('keydown', e => {
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Enter'].includes(e.key)) e.preventDefault();
@@ -348,37 +384,61 @@ window.addEventListener('keyup', e => {
     keys[e.key.toLowerCase()] = false;
 });
 
+canvas.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - r.left;
+    mouse.y = e.clientY - r.top;
+    mouse.inside = true;
+});
+canvas.addEventListener('mouseleave', () => { mouse.inside = false; });
+canvas.addEventListener('mousedown', e => {
+    initAudio();
+    if (e.button === 0) { mouse.leftJust = true; mouse.leftDown = true; }
+    else if (e.button === 2) { mouse.rightJust = true; }
+});
+canvas.addEventListener('mouseup', e => {
+    if (e.button === 0) mouse.leftDown = false;
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
 function consumeJust(code) {
     if (justPressed[code]) { justPressed[code] = false; return true; }
     return false;
 }
+function consumeMouseLeft() { if (mouse.leftJust) { mouse.leftJust = false; return true; } return false; }
+function consumeMouseRight() { if (mouse.rightJust) { mouse.rightJust = false; return true; } return false; }
 
 // ===== Game flow =====
 function startGame(mode) {
     initAudio();
     const diff = currentDifficulty;
-    state = makeState(mode, diff);
+    state = makeState(mode, diff, botCount);
     overlay.classList.add('hidden');
     startScreen.style.display = 'none';
     gameOverScreen.style.display = 'none';
 }
 
 function endGame(winnerIdx) {
-    if (!state || state.winner) return;
-    state.winner = winnerIdx + 1;
-    state.endTimer = 1.6;
+    if (!state || state.gameEnded) return;
+    state.gameEnded = true;
+    state.winner = winnerIdx;
+    state.endTimer = 1.8;
     winSound();
 }
 
 function showGameOver() {
     state.running = false;
     const winnerEl = document.getElementById('winnerText');
-    if (state.winner === 1) {
-        winnerEl.textContent = '🔴 Player 1 Wins!';
-        winnerEl.className = 'winner p1';
+    const w = state.winner >= 0 ? state.players[state.winner] : null;
+    if (w) {
+        const isHuman = !w.isBot;
+        const label = isHuman ? `Player ${w.idx + 1}` : `Bot ${w.idx + 1}`;
+        winnerEl.textContent = `${label} Wins!`;
+        winnerEl.style.color = w.labelColor;
+        winnerEl.className = 'winner';
     } else {
-        winnerEl.textContent = state.mode === 1 ? '🔵 CPU Wins!' : '🔵 Player 2 Wins!';
-        winnerEl.className = 'winner p2';
+        winnerEl.textContent = 'Nobody Wins!';
+        winnerEl.className = 'winner';
     }
     overlay.classList.remove('hidden');
     startScreen.style.display = 'none';
@@ -388,9 +448,13 @@ function showGameOver() {
 let currentDifficulty = 'medium';
 document.querySelectorAll('.btn.diff').forEach(b => {
     b.addEventListener('click', () => {
-        document.querySelectorAll('.btn.diff').forEach(x => x.classList.remove('active'));
+        // Difficulty buttons and bot-count buttons are mutually exclusive groups
+        const isBots = b.classList.contains('bots');
+        const selector = isBots ? '.btn.diff.bots' : '.btn.diff:not(.bots)';
+        document.querySelectorAll(selector).forEach(x => x.classList.remove('active'));
         b.classList.add('active');
-        currentDifficulty = b.dataset.diff;
+        if (isBots) botCount = parseInt(b.dataset.bots, 10);
+        else currentDifficulty = b.dataset.diff;
     });
 });
 document.getElementById('start1P').addEventListener('click', () => startGame(1));
@@ -503,7 +567,8 @@ function updatePlayer(p, dt) {
     // Input
     let ix = 0, iy = 0;
     let didThrow = false, didBuild = false;
-    if (p.idx === 1 && state.mode === 1) {
+    let aimedByMouse = false;
+    if (p.isBot) {
         // CPU
         const ai = aiCommand(p, dt);
         ix = ai.ix; iy = ai.iy;
@@ -517,6 +582,21 @@ function updatePlayer(p, dt) {
         if (codes[k.right]) ix += 1;
         if (consumeJust(k.throw)) didThrow = true;
         if (consumeJust(k.build)) didBuild = true;
+
+        // P1 also gets mouse aim + mouse buttons
+        if (p.idx === 0) {
+            if (mouse.inside) {
+                const dx = mouse.x - p.x, dy = mouse.y - p.y;
+                const d = Math.hypot(dx, dy);
+                if (d > 4) {
+                    p.facingX = dx / d;
+                    p.facingY = dy / d;
+                    aimedByMouse = true;
+                }
+            }
+            if (consumeMouseLeft()) didThrow = true;
+            if (consumeMouseRight()) didBuild = true;
+        }
     }
 
     const len = Math.hypot(ix, iy);
@@ -525,11 +605,13 @@ function updatePlayer(p, dt) {
     p.vx = ix * PLAYER_SPEED;
     p.vy = iy * PLAYER_SPEED;
 
-    // Update facing if moving
-    if (p.moving) {
+    // Update facing if moving (unless mouse already aimed for P1)
+    if (p.moving && !aimedByMouse) {
         p.facingX = ix;
         p.facingY = iy;
-        p.animTime += dt;
+    }
+    if (p.moving) p.animTime += dt;
+    if (p.moving) {
         // Drop footprints
         p.footprintTimer -= dt;
         if (p.footprintTimer <= 0) {
@@ -694,9 +776,16 @@ function updateSnowballs(dt) {
                     p.alive = false;
                     p.knockoutTimer = 0;
                     knockoutSound();
-                    // Find living opponent — they win
-                    const winner = state.players.find(pp => pp.alive);
-                    if (winner) endGame(winner.idx);
+                    // Award kill credit to the shooter
+                    const shooter = state.players[s.owner];
+                    if (shooter && shooter !== p) shooter.kills = (shooter.kills || 0) + 1;
+                    // Game ends when only one combatant remains
+                    const alive = state.players.filter(pp => pp.alive);
+                    if (alive.length <= 1) {
+                        const winner = alive[0];
+                        if (winner) endGame(winner.idx);
+                        else endGame(-1); // tie / nobody (everyone died simultaneously)
+                    }
                 }
                 return;
             }
@@ -752,8 +841,14 @@ function burstParticles(x, y, color, n) {
 // ===== AI =====
 function aiCommand(p, dt) {
     const out = { ix: 0, iy: 0, throw: false, build: false };
-    const opp = state.players[0];
-    if (!opp.alive) return out;
+    // Pick nearest living enemy (anyone but self)
+    let opp = null, oppD = Infinity;
+    for (const q of state.players) {
+        if (q === p || !q.alive) continue;
+        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        if (d < oppD) { oppD = d; opp = q; }
+    }
+    if (!opp) return out;
 
     const cfg = {
         easy:   { aim: 0.5, throwRange: 280, defendDistance: 220, smartBuild: 0.05, accuracy: 0.5, react: 0.4 },
@@ -1388,23 +1483,21 @@ function drawFlakes() {
 }
 
 function drawHUD() {
-    // Ammo bars (bottom corners)
-    state.players.forEach((p, i) => {
-        const ix = i === 0 ? 30 : W - 30 - 200;
+    // Detailed bottom panels for the human players (shows ammo too)
+    const humans = state.players.filter(p => !p.isBot);
+    humans.forEach((p, i) => {
+        const ix = i === 0 ? 30 : W - 30 - 220;
         const iy = H - 70;
-        // Backdrop
-        ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        ctx.fillRect(ix - 8, iy - 28, 216, 56);
-        // Label
-        ctx.fillStyle = i === 0 ? '#ff5d5d' : '#5dadff';
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(ix - 8, iy - 28, 230, 60);
+        ctx.fillStyle = p.labelColor;
         ctx.font = 'bold 14px Segoe UI';
         ctx.textAlign = 'left';
-        ctx.fillText(i === 0 ? '🔴 P1' : (state.mode === 1 ? '🔵 CPU' : '🔵 P2'), ix, iy - 10);
-
+        ctx.fillText(`P${p.idx + 1}`, ix, iy - 10);
         // HP hearts
         for (let h = 0; h < PLAYER_HP; h++) {
-            ctx.fillStyle = h < p.hp ? (i === 0 ? '#ff5d5d' : '#5dadff') : 'rgba(255,255,255,0.18)';
-            const hx = ix + 60 + h * 16, hy = iy - 14;
+            ctx.fillStyle = h < p.hp ? p.labelColor : 'rgba(255,255,255,0.18)';
+            const hx = ix + 30 + h * 16, hy = iy - 14;
             ctx.beginPath();
             ctx.moveTo(hx, hy + 3);
             ctx.bezierCurveTo(hx, hy - 3, hx - 6, hy - 5, hx - 6, hy);
@@ -1413,52 +1506,101 @@ function drawHUD() {
             ctx.bezierCurveTo(hx + 6, hy - 5, hx, hy - 3, hx, hy + 3);
             ctx.fill();
         }
+        // Kill counter
+        ctx.fillStyle = '#ffd54f';
+        ctx.font = 'bold 12px Segoe UI';
+        ctx.fillText(`KOs ${p.kills || 0}`, ix + 150, iy - 10);
 
-        // Ammo (snowball icons)
+        // Ammo
         const fillAmmo = Math.floor(p.ammo);
         for (let s = 0; s < MAX_AMMO; s++) {
-            const sx = ix + s * 22 + 6, sy = iy + 10;
+            const sx = ix + s * 22 + 6, sy = iy + 12;
             if (s < fillAmmo) {
                 ctx.fillStyle = '#fff';
                 ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fill();
                 ctx.strokeStyle = 'rgba(60,90,130,0.7)';
-                ctx.lineWidth = 1;
-                ctx.stroke();
+                ctx.lineWidth = 1; ctx.stroke();
                 ctx.fillStyle = 'rgba(180,200,220,0.6)';
                 ctx.beginPath(); ctx.arc(sx + 1, sy + 1, 2, 0, Math.PI * 2); ctx.fill();
             } else {
                 ctx.fillStyle = 'rgba(255,255,255,0.12)';
                 ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fill();
                 ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-                ctx.lineWidth = 1;
-                ctx.stroke();
+                ctx.lineWidth = 1; ctx.stroke();
             }
         }
-        // Partial ammo cue
         const frac = p.ammo - fillAmmo;
         if (frac > 0 && fillAmmo < MAX_AMMO) {
-            const sx = ix + fillAmmo * 22 + 6, sy = iy + 10;
+            const sx = ix + fillAmmo * 22 + 6, sy = iy + 12;
             ctx.fillStyle = `rgba(255,255,255,${0.3 + frac * 0.5})`;
             ctx.beginPath(); ctx.arc(sx, sy, 5 * frac + 1, 0, Math.PI * 2); ctx.fill();
         }
     });
 
-    // Center title
-    ctx.font = 'bold 18px Segoe UI';
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.textAlign = 'center';
-    ctx.fillText('Snowball Fight  —  First to KO wins', W / 2, 28);
+    // Compact roster strip at the top — shows everyone's HP
+    const all = state.players;
+    const stripW = Math.min(W - 80, all.length * 90);
+    const stripX = (W - stripW) / 2;
+    const stripY = 8;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(stripX, stripY, stripW, 38);
+    const slotW = stripW / all.length;
+    all.forEach((p, i) => {
+        const cx = stripX + i * slotW + slotW / 2;
+        const cy = stripY + 18;
+        // Color chip
+        ctx.fillStyle = p.alive ? p.coatColor : '#3a3a3a';
+        ctx.beginPath(); ctx.arc(cx - 28, cy + 1, 6, 0, Math.PI * 2); ctx.fill();
+        // Label
+        ctx.fillStyle = p.alive ? '#fff' : 'rgba(255,255,255,0.4)';
+        ctx.font = 'bold 12px Segoe UI';
+        ctx.textAlign = 'left';
+        const label = p.isBot ? `Bot ${p.idx + 1}` : `P${p.idx + 1}`;
+        ctx.fillText(label, cx - 18, cy - 2);
+        // HP pips
+        for (let h = 0; h < PLAYER_HP; h++) {
+            const filled = p.alive && h < p.hp;
+            ctx.fillStyle = filled ? p.labelColor : 'rgba(255,255,255,0.18)';
+            ctx.beginPath();
+            ctx.arc(cx - 18 + h * 7, cy + 9, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // Cross-out for dead
+        if (!p.alive) {
+            ctx.strokeStyle = 'rgba(255,80,80,0.7)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(cx - 36, cy + 12); ctx.lineTo(cx + 30, cy - 8);
+            ctx.stroke();
+        }
+    });
+
+    // Aim reticle for P1 (mouse mode)
+    if (mouse.inside && state.players[0] && state.players[0].alive && !state.players[0].isBot) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 10, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(mouse.x - 14, mouse.y); ctx.lineTo(mouse.x - 4, mouse.y);
+        ctx.moveTo(mouse.x + 4, mouse.y); ctx.lineTo(mouse.x + 14, mouse.y);
+        ctx.moveTo(mouse.x, mouse.y - 14); ctx.lineTo(mouse.x, mouse.y - 4);
+        ctx.moveTo(mouse.x, mouse.y + 4); ctx.lineTo(mouse.x, mouse.y + 14);
+        ctx.stroke();
+    }
 }
 
 function drawWinnerOverlay() {
-    if (!state.winner) return;
-    const t = 1 - Math.max(0, state.endTimer) / 1.6;
+    if (!state.gameEnded) return;
+    const w = state.winner >= 0 ? state.players[state.winner] : null;
+    const t = 1 - Math.max(0, state.endTimer) / 1.8;
     ctx.fillStyle = `rgba(0,0,0,${0.5 * t})`;
     ctx.fillRect(0, 0, W, H);
     ctx.font = 'bold 56px Segoe UI';
     ctx.textAlign = 'center';
-    ctx.fillStyle = state.winner === 1 ? '#ff5d5d' : '#5dadff';
-    const text = state.winner === 1 ? 'PLAYER 1 WINS!' : (state.mode === 1 ? 'CPU WINS!' : 'PLAYER 2 WINS!');
+    ctx.fillStyle = w ? w.labelColor : '#fff';
+    const text = w
+        ? (w.isBot ? `BOT ${w.idx + 1} WINS!` : `PLAYER ${w.idx + 1} WINS!`)
+        : 'NOBODY WINS!';
     ctx.fillText(text, W / 2, H / 2);
 }
 
@@ -1474,7 +1616,7 @@ function loop(ts) {
         ctx.fillRect(0, 0, W, H);
     } else {
         state.time += dt;
-        if (state.running && !state.winner) {
+        if (state.running && !state.gameEnded) {
             state.players.forEach(p => updatePlayer(p, dt));
             updateSnowballs(dt);
             updatePiles(dt);
