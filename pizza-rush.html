@@ -197,7 +197,7 @@ const PERFECT_COOK_TIME_BASE = 6.0;
 const COOK_PERFECT_WINDOW_BASE = 1.4;
 const BURN_TIME = 9.5;
 const QUEUE_SIZE = 4;
-const CUSTOMER_SPAWN_INTERVAL = [5.5, 9.0];   // calmer pace
+const CUSTOMER_SPAWN_INTERVAL = [3.0, 5.5];   // calmer than original, but they actually show up
 const DAY_DURATION = 60;                      // seconds per day before shop
 
 const DIFF = {
@@ -238,7 +238,21 @@ const UPGRADES = {
         baseCost: 35, costMult: 2.0,
         desc: '+15% tip earnings per level',
     },
+    toppings: {
+        name: 'New Topping', icon: '🍕',
+        max: 5,
+        baseCost: 25, costMult: 1.7,
+        desc: 'Unlock the next topping (mushroom → olive → pepper → pineapple → anchovy)',
+    },
 };
+// Order in which extra toppings unlock as the 'toppings' upgrade levels up.
+const TOPPING_UNLOCK_ORDER = ['mushroom', 'olive', 'pepper', 'pineapple', 'anchovy'];
+// Always-available toppings (start of game)
+const BASE_INGREDIENTS = ['sauce', 'cheese', 'pepperoni'];
+function availableIngredientIds() {
+    const lvl = state ? state.upgrades.toppings : 0;
+    return [...BASE_INGREDIENTS, ...TOPPING_UNLOCK_ORDER.slice(0, lvl)];
+}
 function upgradeCost(key, level) {
     const u = UPGRADES[key];
     return Math.round(u.baseCost * Math.pow(u.costMult, level));
@@ -286,9 +300,9 @@ function startGame() {
         totalEarned: 0,                      // for end-screen stats
         servedTotal: 0, lostTotal: 0, burntTotal: 0, mistakesTotal: 0,
         servedDay: 0, lostDay: 0,            // resets each day
-        upgrades: { ovens: 0, cookSpeed: 0, cookWindow: 0, patience: 0, tips: 0 },
+        upgrades: { ovens: 0, cookSpeed: 0, cookWindow: 0, patience: 0, tips: 0, toppings: 0 },
         customerQueue: [],
-        customerSpawnTimer: 1.5,
+        customerSpawnTimer: 0.5,
         nextCustomerId: 1,
         prepPizza: makeEmptyPizza(),
         ovens: Array.from({ length: STARTING_OVENS }, () => ({ pizza: null })),
@@ -360,10 +374,14 @@ function pizzaCookState(p) {
 function spawnCustomer() {
     if (state.customerQueue.length >= QUEUE_SIZE) return;
     const cfg = state.cfg;
-    const tCount = cfg.toppingsMin + Math.floor(Math.random() * (cfg.toppingsMax - cfg.toppingsMin + 1));
+    // Cap requested topping count by what's actually unlocked, so a brand-new
+    // shop with only pepperoni can still get orders.
+    const unlocked = availableIngredientIds().filter(id => INGREDIENT_BY_ID[id].kind === 'topping');
+    const maxToppings = Math.min(cfg.toppingsMax, unlocked.length);
+    const minToppings = Math.min(cfg.toppingsMin, maxToppings);
+    const tCount = minToppings + Math.floor(Math.random() * (maxToppings - minToppings + 1));
     const order = ['sauce', 'cheese'];
-    // Pick random toppings (excluding sauce/cheese)
-    const pool = INGREDIENTS.filter(i => i.kind === 'topping').map(i => i.id);
+    const pool = [...unlocked];
     for (let i = 0; i < tCount; i++) {
         if (pool.length === 0) break;
         const idx = Math.floor(Math.random() * pool.length);
@@ -561,10 +579,15 @@ function customerSlotPos(idx) {
     return { x: c.x + slotW * idx + slotW / 2, y: c.y + c.h / 2 };
 }
 
+function visibleIngredients() {
+    const ids = new Set(availableIngredientIds());
+    return INGREDIENTS.filter(i => ids.has(i.id));
+}
+
 function ingredientSlotRect(idx) {
     const p = layout.ingredients;
-    const rows = INGREDIENTS.length;
-    const slotH = (p.h - 20) / rows;
+    const rows = visibleIngredients().length;
+    const slotH = (p.h - 20) / Math.max(1, rows);
     return { x: p.x + 8, y: p.y + 8 + idx * slotH, w: p.w - 16, h: slotH - 6 };
 }
 
@@ -614,10 +637,11 @@ function handleClick(mx, my) {
         return;
     }
 
-    // 2. Click an ingredient bin
-    for (let i = 0; i < INGREDIENTS.length; i++) {
+    // 2. Click an ingredient bin (only visible / unlocked ones)
+    const vis = visibleIngredients();
+    for (let i = 0; i < vis.length; i++) {
         if (pointInRect(mx, my, ingredientSlotRect(i))) {
-            addIngredientToPrep(INGREDIENTS[i].id);
+            addIngredientToPrep(vis[i].id);
             return;
         }
     }
@@ -1027,7 +1051,7 @@ function drawIngredientPanel() {
     ctx.textAlign = 'center';
     ctx.fillText('TOPPINGS', p.x + p.w / 2, p.y - 6);
 
-    INGREDIENTS.forEach((ing, i) => {
+    visibleIngredients().forEach((ing, i) => {
         const r = ingredientSlotRect(i);
         const hover = pointInRect(mouse.x, mouse.y, r);
         // Bin
