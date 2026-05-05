@@ -197,7 +197,7 @@ const PERFECT_COOK_TIME_BASE = 6.0;
 const COOK_PERFECT_WINDOW_BASE = 1.4;
 const BURN_TIME = 9.5;
 const QUEUE_SIZE = 4;
-const CUSTOMER_SPAWN_INTERVAL = [3.0, 5.5];   // calmer than original, but they actually show up
+const CUSTOMER_SPAWN_INTERVAL = [2.0, 4.0];   // steady flow
 const DAY_DURATION = 60;                      // seconds per day before shop
 
 const DIFF = {
@@ -313,6 +313,8 @@ function startGame() {
         time: 0,
     };
     recomputeLayout();
+    // Drop the first customer in immediately so the kitchen isn't empty.
+    spawnCustomer();
     overlay.classList.add('hidden');
     startScreen.style.display = 'none';
     gameOverScreen.style.display = 'none';
@@ -547,8 +549,10 @@ function handleShopClick(mx, my) {
         state.dayTimeLeft = state.dayDuration;
         state.servedDay = 0;
         state.lostDay = 0;
-        state.customerSpawnTimer = 1.5;
+        state.customerSpawnTimer = 0.4;
         state.phase = 'playing';
+        // First customer of the new day shows up immediately
+        spawnCustomer();
         cashSound();
     }
 }
