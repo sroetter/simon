@@ -91,27 +91,26 @@ h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 12px; 
 <div id="overlay">
     <div class="box" id="startScreen">
         <h1>🍕 PIZZA RUSH 🍕</h1>
-        <h2>Beat the clock — make orders before customers leave!</h2>
+        <h2>Run a pizzeria — earn cash, buy upgrades, grow your shop!</h2>
         <div class="controls">
             <b>How to play:</b><br>
-            • Click an <b>ingredient bin</b> on the right to add it to the pizza on your prep counter<br>
-            • Click <b>"PUT IN OVEN"</b> to cook (3 oven slots — they each have a perfect-cook window)<br>
-            • Click a pizza in the oven once it's <b>golden</b> to grab it<br>
-            • Click a <b>customer</b> to deliver — must match their order!<br>
-            • Click <b>"TRASH"</b> on a wrong/burnt pizza to dump it<br>
+            • Click <b>ingredient bins</b> to add toppings, then click <b>"PUT IN OVEN"</b> to bake<br>
+            • Click a pizza in the oven (it glows golden when ready) to pick it up<br>
+            • Click the matching <b>customer</b> to deliver — toppings must match exactly!<br>
+            • At the end of each <b>day</b>, the shop opens — buy more ovens, faster cooking, etc.<br>
             <br>
-            <b>Tips:</b> Match toppings exactly. Burnt pizza = -$3. Lost customer = -$5. Tip scales with patience left.
+            <b>You start with 1 oven.</b> Earn cash to grow your kitchen across many days.
         </div>
 
         <div class="label">Difficulty:</div>
         <div class="row">
-            <button class="btn diff" data-diff="easy">Easy (90s, fewer toppings)</button>
-            <button class="btn diff active" data-diff="medium">Medium (75s)</button>
-            <button class="btn diff" data-diff="hard">Hard (60s, picky customers)</button>
+            <button class="btn diff" data-diff="easy">Easy (75s days, $30 starting)</button>
+            <button class="btn diff active" data-diff="medium">Medium (60s days)</button>
+            <button class="btn diff" data-diff="hard">Hard (50s days, picky)</button>
         </div>
 
         <div class="row">
-            <button class="btn" id="startBtn">Start Shift</button>
+            <button class="btn" id="startBtn">Open Shop</button>
         </div>
     </div>
 
@@ -192,18 +191,62 @@ const INGREDIENT_BY_ID = Object.fromEntries(INGREDIENTS.map(i => [i.id, i]));
 
 const CUSTOMER_FACES = ['😀', '😎', '🤓', '😋', '🥸', '🤠', '😜', '🤪', '😏', '🥳', '😐', '🙂'];
 
-const OVEN_SLOTS = 3;
-const PERFECT_COOK_TIME = 6.0;     // seconds for perfect
-const COOK_PERFECT_WINDOW = 1.4;   // seconds either side of perfect that's still good
-const BURN_TIME = 9.5;             // pizza burns after this many seconds
-const QUEUE_SIZE = 4;              // max customers visible
-const CUSTOMER_SPAWN_INTERVAL = [3.0, 4.5];
+const STARTING_OVENS = 1;
+const MAX_OVENS = 4;
+const PERFECT_COOK_TIME_BASE = 6.0;
+const COOK_PERFECT_WINDOW_BASE = 1.4;
+const BURN_TIME = 9.5;
+const QUEUE_SIZE = 4;
+const CUSTOMER_SPAWN_INTERVAL = [5.5, 9.0];   // calmer pace
+const DAY_DURATION = 60;                      // seconds per day before shop
 
 const DIFF = {
-    easy:   { time: 90, patienceMult: 1.5, toppingsMin: 1, toppingsMax: 2, label: 'Easy' },
-    medium: { time: 75, patienceMult: 1.0, toppingsMin: 2, toppingsMax: 3, label: 'Medium' },
-    hard:   { time: 60, patienceMult: 0.8, toppingsMin: 2, toppingsMax: 4, label: 'Hard' },
+    easy:   { dayDuration: 75, patienceMult: 1.5, toppingsMin: 1, toppingsMax: 2, startCash: 30, label: 'Easy' },
+    medium: { dayDuration: 60, patienceMult: 1.0, toppingsMin: 2, toppingsMax: 3, startCash: 0,  label: 'Medium' },
+    hard:   { dayDuration: 50, patienceMult: 0.8, toppingsMin: 2, toppingsMax: 4, startCash: 0,  label: 'Hard' },
 };
+
+// Upgrades you can buy in the between-day shop (Beekeeper-style)
+const UPGRADES = {
+    ovens: {
+        name: 'Add Oven', icon: '🔥',
+        max: MAX_OVENS - STARTING_OVENS,
+        baseCost: 35, costMult: 2.6,
+        desc: 'Cook another pizza at the same time',
+    },
+    cookSpeed: {
+        name: 'Faster Oven', icon: '⚡',
+        max: 4,
+        baseCost: 40, costMult: 2.0,
+        desc: '-0.8s perfect cook time per level',
+    },
+    cookWindow: {
+        name: 'Wider Cook Window', icon: '🎯',
+        max: 4,
+        baseCost: 38, costMult: 1.9,
+        desc: '+0.4s perfect-cook window per level',
+    },
+    patience: {
+        name: 'Patient Customers', icon: '😌',
+        max: 5,
+        baseCost: 28, costMult: 1.8,
+        desc: '+18% customer patience per level',
+    },
+    tips: {
+        name: 'Better Tips', icon: '💰',
+        max: 5,
+        baseCost: 35, costMult: 2.0,
+        desc: '+15% tip earnings per level',
+    },
+};
+function upgradeCost(key, level) {
+    const u = UPGRADES[key];
+    return Math.round(u.baseCost * Math.pow(u.costMult, level));
+}
+function effectivePerfect() { return Math.max(2.5, PERFECT_COOK_TIME_BASE - state.upgrades.cookSpeed * 0.8); }
+function effectiveWindow() { return COOK_PERFECT_WINDOW_BASE + state.upgrades.cookWindow * 0.4; }
+function effectivePatienceMult() { return state.cfg.patienceMult * (1 + 0.18 * state.upgrades.patience); }
+function effectiveTipMult() { return 1 + 0.15 * state.upgrades.tips; }
 
 let currentDifficulty = 'medium';
 
@@ -235,16 +278,22 @@ function startGame() {
     const cfg = DIFF[currentDifficulty];
     state = {
         cfg,
-        timeLeft: cfg.time,
-        score: 0,
-        served: 0, lost: 0, burnt: 0, mistakes: 0,
-        customerQueue: [],   // array of customer objects in line
-        customerSpawnTimer: 0.5,
+        phase: 'playing',                    // 'playing' | 'shop' | 'gameover'
+        day: 1,
+        dayDuration: cfg.dayDuration,
+        dayTimeLeft: cfg.dayDuration,
+        score: cfg.startCash,                // cash on hand
+        totalEarned: 0,                      // for end-screen stats
+        servedTotal: 0, lostTotal: 0, burntTotal: 0, mistakesTotal: 0,
+        servedDay: 0, lostDay: 0,            // resets each day
+        upgrades: { ovens: 0, cookSpeed: 0, cookWindow: 0, patience: 0, tips: 0 },
+        customerQueue: [],
+        customerSpawnTimer: 1.5,
         nextCustomerId: 1,
         prepPizza: makeEmptyPizza(),
-        ovens: Array.from({ length: OVEN_SLOTS }, () => ({ pizza: null })),
-        carrying: null,      // pizza currently being held (just pulled from oven or off prep counter)
-        floaters: [],        // floating score texts
+        ovens: Array.from({ length: STARTING_OVENS }, () => ({ pizza: null })),
+        carrying: null,
+        floaters: [],
         flashGood: 0, flashBad: 0,
         gameEnded: false,
         time: 0,
@@ -255,14 +304,16 @@ function startGame() {
     gameOverScreen.style.display = 'none';
 }
 
+function ovenCount() { return STARTING_OVENS + (state ? state.upgrades.ovens : 0); }
+
 function endGame() {
     state.gameEnded = true;
     document.getElementById('finalScore').textContent = `$${state.score}`;
     document.getElementById('finalStats').innerHTML = `
-        Customers served: <b>${state.served}</b><br>
-        Walked out: ${state.lost}<br>
-        Burnt pizzas: ${state.burnt}<br>
-        Wrong orders: ${state.mistakes}
+        Customers served: <b>${state.servedTotal}</b><br>
+        Walked out: ${state.lostTotal}<br>
+        Burnt pizzas: ${state.burntTotal}<br>
+        Wrong orders: ${state.mistakesTotal}
     `;
     overlay.classList.remove('hidden');
     startScreen.style.display = 'none';
@@ -296,10 +347,12 @@ function makeEmptyPizza() {
 }
 
 function pizzaCookState(p) {
-    if (p.cookTime < PERFECT_COOK_TIME - COOK_PERFECT_WINDOW) return 'raw';
+    const perfect = effectivePerfect();
+    const window = effectiveWindow();
+    if (p.cookTime < perfect - window) return 'raw';
     if (p.cookTime > BURN_TIME) return 'burnt';
-    if (Math.abs(p.cookTime - PERFECT_COOK_TIME) <= COOK_PERFECT_WINDOW) return 'perfect';
-    if (p.cookTime > PERFECT_COOK_TIME + COOK_PERFECT_WINDOW) return 'overcooked';
+    if (Math.abs(p.cookTime - perfect) <= window) return 'perfect';
+    if (p.cookTime > perfect + window) return 'overcooked';
     return 'undercooked';
 }
 
@@ -317,7 +370,7 @@ function spawnCustomer() {
         order.push(pool[idx]);
         pool.splice(idx, 1);
     }
-    const basePatience = (24 + tCount * 4) * cfg.patienceMult;
+    const basePatience = (24 + tCount * 4) * effectivePatienceMult();
     state.customerQueue.push({
         id: state.nextCustomerId++,
         order,
@@ -389,12 +442,22 @@ function pointInCircle(px, py, cx, cy, r) {
 // ===== Update =====
 function update(dt) {
     state.time += dt;
-    state.timeLeft -= dt;
     state.flashGood = Math.max(0, state.flashGood - dt);
     state.flashBad = Math.max(0, state.flashBad - dt);
 
-    if (state.timeLeft <= 0) {
-        endGame();
+    if (state.phase !== 'playing') return;
+
+    state.dayTimeLeft -= dt;
+    if (state.dayTimeLeft <= 0) {
+        // End of day — open shop
+        state.phase = 'shop';
+        // Make all queued customers leave (they go home for the night)
+        state.customerQueue = [];
+        // Pull any pizza from oven, drop it (clean shutdown)
+        state.ovens.forEach(s => s.pizza = null);
+        state.carrying = null;
+        state.prepPizza = makeEmptyPizza();
+        dingSound();
         return;
     }
 
@@ -413,8 +476,9 @@ function update(dt) {
     // Walked-out customers
     const walkedOut = state.customerQueue.filter(c => c.patience <= 0);
     walkedOut.forEach(c => {
-        state.score -= 5;
-        state.lost++;
+        state.score = Math.max(0, state.score - 5);
+        state.lostTotal++;
+        state.lostDay++;
         state.flashBad = 0.5;
         state.floaters.push({ x: customerSlotPos(state.customerQueue.indexOf(c)).x, y: layout.customerStrip.y + 20, text: '-$5', color: '#ff5252', life: 1.4, maxLife: 1.4 });
         badSound();
@@ -430,8 +494,65 @@ function update(dt) {
     state.floaters.forEach(f => { f.y -= 30 * dt; f.life -= dt; });
     state.floaters = state.floaters.filter(f => f.life > 0);
 
-    // Handle clicks
     if (consumeClick()) handleClick(mouse.x, mouse.y);
+}
+
+function updateShop(dt) {
+    state.time += dt;
+    state.flashGood = Math.max(0, state.flashGood - dt);
+    state.flashBad = Math.max(0, state.flashBad - dt);
+    if (consumeClick()) handleShopClick(mouse.x, mouse.y);
+}
+
+function handleShopClick(mx, my) {
+    // Upgrade buttons
+    Object.keys(UPGRADES).forEach((key, i) => {
+        const r = upgradeButtonRect(i);
+        if (pointInRect(mx, my, r)) {
+            const u = UPGRADES[key];
+            const lvl = state.upgrades[key];
+            if (lvl >= u.max) return;
+            const cost = upgradeCost(key, lvl);
+            if (state.score < cost) { badSound(); return; }
+            state.score -= cost;
+            state.upgrades[key] = lvl + 1;
+            cashSound();
+            // If buying an oven, push a new slot
+            if (key === 'ovens') {
+                state.ovens.push({ pizza: null });
+            }
+        }
+    });
+    // Next-day button
+    if (pointInRect(mx, my, nextDayButtonRect())) {
+        state.day++;
+        state.dayTimeLeft = state.dayDuration;
+        state.servedDay = 0;
+        state.lostDay = 0;
+        state.customerSpawnTimer = 1.5;
+        state.phase = 'playing';
+        cashSound();
+    }
+}
+
+function upgradeButtonRect(i) {
+    const cols = 2;
+    const w = Math.min(W - 80, 720);
+    const x0 = (W - w) / 2;
+    const y0 = 200;
+    const cellW = (w - 16) / cols - 8;
+    const cellH = 90;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    return {
+        x: x0 + col * (cellW + 16),
+        y: y0 + row * (cellH + 14),
+        w: cellW,
+        h: cellH,
+    };
+}
+function nextDayButtonRect() {
+    return { x: W / 2 - 130, y: H - 90, w: 260, h: 56 };
 }
 
 function customerSlotPos(idx) {
@@ -451,7 +572,7 @@ function ovenSlotRect(idx) {
     const p = layout.oven;
     // Header for "OVEN" label, then slots
     const headerH = 36;
-    const slotH = (p.h - headerH - 20 - 60) / OVEN_SLOTS; // leave room for trash button
+    const slotH = (p.h - headerH - 20 - 60) / ovenCount(); // leave room for trash button
     return { x: p.x + 12, y: p.y + headerH + 8 + idx * slotH, w: p.w - 24, h: slotH - 8 };
 }
 
@@ -508,7 +629,7 @@ function handleClick(mx, my) {
     }
 
     // 4. Click an oven slot to grab pizza
-    for (let i = 0; i < OVEN_SLOTS; i++) {
+    for (let i = 0; i < ovenCount(); i++) {
         if (pointInRect(mx, my, ovenSlotRect(i))) {
             const slot = state.ovens[i];
             if (slot.pizza) {
@@ -545,31 +666,31 @@ function deliverPizzaTo(customer, idx) {
     state.carrying = null;
     const cookState = pizzaCookState(pizza);
     if (cookState === 'burnt') {
-        // Definitely a fail
-        state.score -= 3;
-        state.burnt++;
+        state.score = Math.max(0, state.score - 3);
+        state.burntTotal++;
         state.flashBad = 0.4;
         state.floaters.push({ x: customerSlotPos(idx).x, y: layout.customerStrip.y + 20, text: 'BURNT! -$3', color: '#ff5252', life: 1.4, maxLife: 1.4 });
         badSound();
         return;
     }
     if (!pizzaMatchesOrder(pizza, customer.order)) {
-        state.score -= 2;
-        state.mistakes++;
+        state.score = Math.max(0, state.score - 2);
+        state.mistakesTotal++;
         state.flashBad = 0.4;
         state.floaters.push({ x: customerSlotPos(idx).x, y: layout.customerStrip.y + 20, text: 'WRONG! -$2', color: '#ff5252', life: 1.4, maxLife: 1.4 });
         badSound();
         return;
     }
-    // Success — score scales with cook quality + remaining patience
     let base = 8;
     if (cookState === 'perfect') base = 12;
     else if (cookState === 'overcooked') base = 5;
     else if (cookState === 'undercooked') base = 6;
     const patienceBonus = Math.round((customer.patience / customer.maxPatience) * 6);
-    const total = base + patienceBonus;
+    const total = Math.round((base + patienceBonus) * effectiveTipMult());
     state.score += total;
-    state.served++;
+    state.totalEarned += total;
+    state.servedTotal++;
+    state.servedDay++;
     state.flashGood = 0.5;
     state.floaters.push({
         x: customerSlotPos(idx).x, y: layout.customerStrip.y + 20,
@@ -583,23 +704,161 @@ function deliverPizzaTo(customer, idx) {
 
 // ===== Render =====
 function drawBackground() {
-    // Wood-grain restaurant floor + walls
-    const wall = ctx.createLinearGradient(0, 0, 0, H);
-    wall.addColorStop(0, '#3a1a0a');
-    wall.addColorStop(1, '#5b2d10');
-    ctx.fillStyle = wall;
-    ctx.fillRect(0, 0, W, H);
-    // Wood plank lines
-    ctx.strokeStyle = 'rgba(80,40,20,0.6)';
+    // ===== Brick wall (upper half) + wood floor (lower half) =====
+    // Top: brick wall
+    const wallEnd = Math.floor(H * 0.42);
+    const brickGrad = ctx.createLinearGradient(0, 0, 0, wallEnd);
+    brickGrad.addColorStop(0, '#5a201a');
+    brickGrad.addColorStop(1, '#7e2c20');
+    ctx.fillStyle = brickGrad;
+    ctx.fillRect(0, 0, W, wallEnd);
+    // Brick pattern
+    const bw = 70, bh = 22;
+    ctx.strokeStyle = 'rgba(20,10,8,0.55)';
     ctx.lineWidth = 1;
-    for (let y = 0; y < H; y += 28) {
+    for (let row = 0; row * bh < wallEnd; row++) {
+        const offset = (row % 2 === 0) ? 0 : bw / 2;
+        const y = row * bh;
+        ctx.beginPath();
+        ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+        for (let x = -bw + offset; x < W; x += bw) {
+            ctx.beginPath();
+            ctx.moveTo(x, y); ctx.lineTo(x, y + bh); ctx.stroke();
+        }
+    }
+    // Brick highlights
+    ctx.fillStyle = 'rgba(255,200,160,0.06)';
+    for (let row = 0; row * bh < wallEnd; row++) {
+        const offset = (row % 2 === 0) ? 0 : bw / 2;
+        const y = row * bh;
+        for (let x = -bw + offset; x < W; x += bw) {
+            ctx.fillRect(x + 4, y + 2, bw - 8, 1);
+        }
+    }
+
+    // Wood floor (rest)
+    const floorGrad = ctx.createLinearGradient(0, wallEnd, 0, H);
+    floorGrad.addColorStop(0, '#5b2d10');
+    floorGrad.addColorStop(1, '#3a1a0a');
+    ctx.fillStyle = floorGrad;
+    ctx.fillRect(0, wallEnd, W, H - wallEnd);
+    // Wood plank lines
+    ctx.strokeStyle = 'rgba(40,20,10,0.55)';
+    ctx.lineWidth = 1;
+    for (let y = wallEnd; y < H; y += 32) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     }
+    // Plank seams (vertical staggered)
+    ctx.strokeStyle = 'rgba(20,10,5,0.5)';
+    for (let row = 0; row * 32 < H - wallEnd; row++) {
+        const yTop = wallEnd + row * 32;
+        const yBot = yTop + 32;
+        const seamX = ((row % 3) * 200 + 60) % W;
+        ctx.beginPath();
+        ctx.moveTo(seamX, yTop); ctx.lineTo(seamX, yBot);
+        ctx.moveTo(seamX + 320, yTop); ctx.lineTo(seamX + 320, yBot);
+        ctx.stroke();
+    }
+
+    // Floor/wall trim (decorative molding)
+    ctx.fillStyle = '#3a1a0a';
+    ctx.fillRect(0, wallEnd, W, 6);
+    ctx.fillStyle = '#7a3a1a';
+    ctx.fillRect(0, wallEnd + 2, W, 1);
+
+    // Window on left side of brick wall
+    const winX = 60, winY = 24, winW = 220, winH = wallEnd - 60;
+    // Frame
+    ctx.fillStyle = '#1a0e08';
+    ctx.fillRect(winX - 6, winY - 6, winW + 12, winH + 12);
+    // Pane background (night sky / street)
+    const skyGrad = ctx.createLinearGradient(0, winY, 0, winY + winH);
+    skyGrad.addColorStop(0, '#1b2848');
+    skyGrad.addColorStop(0.7, '#3a3f6a');
+    skyGrad.addColorStop(1, '#6a5a40');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(winX, winY, winW, winH);
+    // Stars
+    ctx.fillStyle = 'rgba(255,255,210,0.9)';
+    for (let i = 0; i < 14; i++) {
+        const sx = winX + ((i * 47) % winW);
+        const sy = winY + ((i * 23) % (winH * 0.55));
+        ctx.fillRect(sx, sy, 1, 1);
+    }
+    // Window cross-mullions
+    ctx.fillStyle = '#1a0e08';
+    ctx.fillRect(winX + winW / 2 - 2, winY, 4, winH);
+    ctx.fillRect(winX, winY + winH / 2 - 2, winW, 4);
+
+    // Neon sign center-top
+    const signCenter = W / 2;
+    const signTop = 16;
+    const signW = 320, signH = 38;
+    // Glow halo
+    const glow = ctx.createRadialGradient(signCenter, signTop + signH / 2, 4, signCenter, signTop + signH / 2, signW * 0.6);
+    glow.addColorStop(0, 'rgba(255,90,80,0.5)');
+    glow.addColorStop(1, 'rgba(255,90,80,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(signCenter - signW * 0.6, signTop - 20, signW * 1.2, signH + 40);
+    // Sign body
+    ctx.fillStyle = '#1a0a08';
+    roundRect(signCenter - signW / 2, signTop, signW, signH, 6); ctx.fill();
+    ctx.strokeStyle = '#ff7043';
+    ctx.lineWidth = 2;
+    roundRect(signCenter - signW / 2, signTop, signW, signH, 6); ctx.stroke();
+    // Sign text (neon glow)
+    ctx.shadowColor = '#ff5252';
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = '#ffd54f';
+    ctx.font = 'bold 24px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText("LUIGI'S PIZZERIA", signCenter, signTop + signH / 2);
+    ctx.shadowBlur = 0;
+    ctx.textBaseline = 'alphabetic';
+
+    // Hanging string lights along the top of the brick wall
+    ctx.strokeStyle = '#3a2208';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 6);
+    for (let x = 30; x <= W; x += 40) {
+        const sag = 6 + Math.sin(x * 0.04) * 2;
+        ctx.lineTo(x, 6 + sag);
+    }
+    ctx.stroke();
+    for (let x = 24; x <= W; x += 40) {
+        const sag = 6 + Math.sin(x * 0.04) * 2;
+        const colors = ['#ffd54f', '#ff7043', '#7cff7c', '#7fbfff', '#ec407a'];
+        ctx.fillStyle = colors[Math.floor(x / 40) % colors.length];
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(x, 8 + sag, 3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    // Decorative chef hat on right of brick wall
+    const hatX = W - 100, hatY = wallEnd - 60;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(hatX, hatY - 6, 26, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(hatX - 12, hatY - 16, 14, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(hatX + 10, hatY - 18, 13, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#222';
+    ctx.fillRect(hatX - 24, hatY + 4, 48, 8);
+
     // Ambient grease specks
-    ctx.fillStyle = 'rgba(80,50,30,0.35)';
+    ctx.fillStyle = 'rgba(80,50,30,0.25)';
     for (let i = 0; i < 200; i++) {
         const x = (i * 73) % W;
-        const y = (i * 131) % H;
+        const y = wallEnd + ((i * 131) % (H - wallEnd));
         ctx.fillRect(x, y, 1, 1);
     }
 
@@ -609,17 +868,18 @@ function drawBackground() {
     ctx.fillStyle = '#ffd54f';
     ctx.font = 'bold 26px Segoe UI';
     ctx.textAlign = 'left';
-    ctx.fillText('🍕 Pizza Rush', 20, 42);
+    ctx.fillText(`🍕 Day ${state.day}`, 20, 42);
 
-    // Score / time
+    // Cash
     ctx.font = 'bold 24px Segoe UI';
     ctx.textAlign = 'right';
     ctx.fillStyle = '#7cff7c';
     ctx.fillText(`$${state.score}`, W - 30, 42);
-    ctx.fillStyle = state.timeLeft < 15 ? '#ff5252' : '#ffe082';
+    // Day timer
+    ctx.fillStyle = state.dayTimeLeft < 15 ? '#ff5252' : '#ffe082';
     ctx.font = 'bold 22px Segoe UI';
     ctx.textAlign = 'center';
-    ctx.fillText(`${Math.max(0, state.timeLeft).toFixed(1)}s`, W / 2, 42);
+    ctx.fillText(`${Math.max(0, state.dayTimeLeft).toFixed(1)}s left in shift`, W / 2, 42);
 
     // Flash overlays
     if (state.flashGood > 0) {
@@ -1119,13 +1379,126 @@ function drawFloaters() {
 
 function drawHelpHints() {
     if (state.carrying) return;
-    if (state.prepPizza.toppings.length === 0 && state.served === 0) {
+    if (state.prepPizza.toppings.length === 0 && state.servedTotal === 0) {
         const center = prepPizzaCenter();
         ctx.fillStyle = 'rgba(91,45,16,0.7)';
         ctx.font = 'italic 14px Segoe UI';
         ctx.textAlign = 'center';
         ctx.fillText('← Click ingredients to add them here', center.x, center.y - center.r - 18);
     }
+}
+
+// ===== Shop rendering =====
+function drawShop() {
+    // Dim the kitchen behind
+    ctx.fillStyle = 'rgba(0,0,0,0.78)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Title
+    ctx.fillStyle = '#ffd54f';
+    ctx.font = 'bold 42px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText(`🌙 End of Day ${state.day}`, W / 2, 70);
+    ctx.font = '17px Segoe UI';
+    ctx.fillStyle = '#ffe6d6';
+    ctx.fillText(`Served ${state.servedDay} customers today  ·  Lost ${state.lostDay}  ·  Cash: $${state.score}`, W / 2, 102);
+    ctx.fillStyle = '#cce0c1';
+    ctx.font = '14px Segoe UI';
+    ctx.fillText('Buy upgrades to keep up with the rush →', W / 2, 130);
+    // Cash badge top-right
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    roundRect(W - 180, 18, 162, 44, 10); ctx.fill();
+    ctx.strokeStyle = '#ffd54f';
+    ctx.lineWidth = 2;
+    roundRect(W - 180, 18, 162, 44, 10); ctx.stroke();
+    ctx.fillStyle = '#7cff7c';
+    ctx.font = 'bold 24px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText(`$${state.score}`, W - 99, 49);
+
+    // Upgrade cards
+    Object.keys(UPGRADES).forEach((key, i) => {
+        drawUpgradeCard(key, i);
+    });
+
+    // Next day button
+    const r = nextDayButtonRect();
+    const hover = pointInRect(mouse.x, mouse.y, r);
+    ctx.fillStyle = hover ? '#5cd06c' : '#43a047';
+    roundRect(r.x, r.y, r.w, r.h, 10); ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    roundRect(r.x, r.y, r.w, r.h, 10); ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`▶ Open Day ${state.day + 1}`, r.x + r.w / 2, r.y + r.h / 2);
+    ctx.textBaseline = 'alphabetic';
+}
+
+function drawUpgradeCard(key, i) {
+    const u = UPGRADES[key];
+    const lvl = state.upgrades[key];
+    const r = upgradeButtonRect(i);
+    const isMax = lvl >= u.max;
+    const cost = isMax ? 0 : upgradeCost(key, lvl);
+    const canAfford = !isMax && state.score >= cost;
+    const hover = pointInRect(mouse.x, mouse.y, r);
+
+    // Card background
+    let bg = '#3a1f10';
+    if (isMax) bg = '#1f1208';
+    else if (canAfford) bg = hover ? '#5b3018' : '#4a2615';
+    else bg = '#2a1808';
+    ctx.fillStyle = bg;
+    roundRect(r.x, r.y, r.w, r.h, 12); ctx.fill();
+    ctx.strokeStyle = isMax ? '#5d4037' : (canAfford ? '#ffd54f' : '#7d4c3a');
+    ctx.lineWidth = 2;
+    roundRect(r.x, r.y, r.w, r.h, 12); ctx.stroke();
+
+    // Icon
+    ctx.font = '36px Segoe UI Emoji';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(u.icon, r.x + 14, r.y + r.h / 2);
+
+    // Name + desc
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px Segoe UI';
+    ctx.textBaseline = 'top';
+    ctx.fillText(u.name, r.x + 60, r.y + 12);
+    ctx.fillStyle = '#cce0c1';
+    ctx.font = '12px Segoe UI';
+    ctx.fillText(u.desc, r.x + 60, r.y + 32);
+
+    // Level pips
+    const pipBaseX = r.x + 60;
+    const pipY = r.y + 56;
+    for (let p = 0; p < u.max; p++) {
+        ctx.fillStyle = p < lvl ? '#ffd54f' : 'rgba(255,255,255,0.2)';
+        ctx.beginPath();
+        ctx.arc(pipBaseX + p * 14, pipY, 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.fillStyle = '#ffe082';
+    ctx.font = '12px Segoe UI';
+    ctx.fillText(`Lv ${lvl} / ${u.max}`, pipBaseX + u.max * 14 + 8, pipY - 6);
+
+    // Cost / status
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    if (isMax) {
+        ctx.fillStyle = '#bbb';
+        ctx.font = 'bold 16px Segoe UI';
+        ctx.fillText('MAX', r.x + r.w - 16, r.y + r.h / 2);
+    } else {
+        ctx.fillStyle = canAfford ? '#7cff7c' : '#ff9090';
+        ctx.font = 'bold 22px Segoe UI';
+        ctx.fillText(`$${cost}`, r.x + r.w - 16, r.y + r.h / 2);
+    }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
 }
 
 // ===== Main loop =====
@@ -1137,7 +1510,15 @@ function loop(ts) {
     if (!state) {
         ctx.fillStyle = '#1a0e08';
         ctx.fillRect(0, 0, W, H);
-    } else if (!state.gameEnded) {
+    } else if (state.phase === 'shop') {
+        updateShop(dt);
+        drawBackground();
+        drawCustomerStrip();
+        drawIngredientPanel();
+        drawOvenPanel();
+        drawPrep();
+        drawShop();
+    } else if (state.phase === 'playing' && !state.gameEnded) {
         update(dt);
         drawBackground();
         drawCustomerStrip();
@@ -1148,7 +1529,6 @@ function loop(ts) {
         drawFloaters();
         drawCarrying();
     } else {
-        // Game ended; freeze last frame visuals
         drawBackground();
         drawCustomerStrip();
         drawIngredientPanel();
