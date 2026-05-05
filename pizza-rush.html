@@ -426,6 +426,10 @@ canvas.addEventListener('mousemove', e => {
 });
 canvas.addEventListener('mousedown', e => {
     initAudio();
+    // Capture position from this event in case mousemove didn't fire first
+    const r = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - r.left;
+    mouse.y = e.clientY - r.top;
     mouse.down = true;
     mouse.justDown = true;
 });
