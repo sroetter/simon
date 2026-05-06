@@ -976,14 +976,60 @@ function updateSnowballs(dt) {
                     // Award kill credit to the shooter
                     const shooter = state.players[s.owner];
                     if (shooter && shooter !== p) shooter.kills = (shooter.kills || 0) + 1;
+                    // Remember who got us — used by the revenge mechanic below
+                    p.killedByIdx = s.owner;
+
+                    // REVENGE: any player p had previously KO'd comes back to
+                    // life now that p is down. Their old forts are destroyed
+                    // (clean slate — they have to rebuild their base).
+                    state.players.forEach(victim => {
+                        if (victim.alive) return;
+                        if (victim.killedByIdx !== p.idx) return;
+                        victim.alive = true;
+                        victim.hp = Math.max(2, Math.ceil(PLAYER_HP * 0.5));
+                        victim.killedByIdx = null;
+                        victim.knockoutTimer = 0;
+                        victim.invulnTimer = 2.5;     // brief grace period
+                        // Destroy their forts (and any base regen progress)
+                        state.forts.forEach(f => { if (f.owner === victim.idx) f.alive = false; });
+                        victim.shieldActive = false;
+                        // Respawn somewhere safe-ish — random spot inside arena
+                        const a = state.arena;
+                        const ang = Math.random() * Math.PI * 2;
+                        const radius = Math.min(a.w, a.h) * 0.32;
+                        victim.x = a.x + a.w / 2 + Math.cos(ang) * radius;
+                        victim.y = a.y + a.h / 2 + Math.sin(ang) * radius;
+                        // VFX
+                        for (let i = 0; i < 36; i++) {
+                            const aa = Math.random() * Math.PI * 2;
+                            const sp = 100 + Math.random() * 220;
+                            state.particles.push({
+                                x: victim.x, y: victim.y - 8,
+                                vx: Math.cos(aa) * sp, vy: Math.sin(aa) * sp - 40,
+                                life: 0.7, maxLife: 0.7,
+                                size: 2 + Math.random() * 2, color: '#ffeb3b',
+                            });
+                        }
+                        state.particles.push({
+                            x: victim.x, y: victim.y - 35, vx: 0, vy: -30,
+                            life: 1.6, maxLife: 1.6, size: 0,
+                            color: '#ffeb3b', isText: true, text: 'REVENGE!',
+                        });
+                        tone(440, 0.1, 'square', 0.16);
+                        setTimeout(() => tone(660, 0.1, 'square', 0.14), 100);
+                        setTimeout(() => tone(880, 0.15, 'square', 0.14), 200);
+                    });
+
                     // If the last human just got knocked out, schedule a return
                     // to the main menu after the snowman fall animation finishes.
-                    if (!p.isBot) {
-                        const humansAlive = state.players.some(pp => !pp.isBot && pp.alive);
-                        if (!humansAlive && !state.humanDiedTimer) {
-                            state.humanDiedTimer = 2.0;
-                        }
+                    // (Re-check after revenge revives — a revived human cancels.)
+                    const humansAlive = state.players.some(pp => !pp.isBot && pp.alive);
+                    if (!humansAlive && !state.humanDiedTimer) {
+                        state.humanDiedTimer = 2.0;
+                    } else if (humansAlive && state.humanDiedTimer) {
+                        state.humanDiedTimer = 0;
                     }
+
                     // Game ends when only one combatant remains
                     const alive = state.players.filter(pp => pp.alive);
                     if (alive.length <= 1) {
