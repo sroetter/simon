@@ -976,6 +976,14 @@ function updateSnowballs(dt) {
                     // Award kill credit to the shooter
                     const shooter = state.players[s.owner];
                     if (shooter && shooter !== p) shooter.kills = (shooter.kills || 0) + 1;
+                    // If the last human just got knocked out, schedule a return
+                    // to the main menu after the snowman fall animation finishes.
+                    if (!p.isBot) {
+                        const humansAlive = state.players.some(pp => !pp.isBot && pp.alive);
+                        if (!humansAlive && !state.humanDiedTimer) {
+                            state.humanDiedTimer = 2.0;
+                        }
+                    }
                     // Game ends when only one combatant remains
                     const alive = state.players.filter(pp => pp.alive);
                     if (alive.length <= 1) {
@@ -2521,6 +2529,18 @@ function loop(ts) {
         ctx.fillRect(0, 0, W, H);
     } else {
         state.time += dt;
+        // If the last human died, count down to "return to menu"
+        if (state.humanDiedTimer && state.humanDiedTimer > 0) {
+            state.humanDiedTimer -= dt;
+            if (state.humanDiedTimer <= 0) {
+                state = null;
+                overlay.classList.remove('hidden');
+                startScreen.style.display = '';
+                gameOverScreen.style.display = 'none';
+                requestAnimationFrame(loop);
+                return;
+            }
+        }
         if (state.running && !state.gameEnded) {
             state.players.forEach(p => updatePlayer(p, dt));
             updateSnowballs(dt);
