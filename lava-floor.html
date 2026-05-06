@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lava Floor - Simon's Game Gallery</title>
+<title>Lava Racer - Simon's Game Gallery</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -103,16 +103,22 @@ h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 12px; 
 
 <div id="overlay">
     <div class="box" id="startScreen">
-        <h1>🌋 LAVA FLOOR 🌋</h1>
+        <h1>🌋 LAVA RACER 🌋</h1>
         <h2>Climb up — last one out of the lava wins!</h2>
         <div class="controls">
             <b>Controls:</b> A/D or ←/→ to move &middot; W/Space/↑ to jump &middot; Hold <b>Shift</b> to sprint<br>
             Hold jump for a high leap, tap for a short hop. W or ↑ on a ladder to climb.<br>
-            <b>Watch out for:</b> 🟢 green trampolines (super-bounce), 🟫 cracked stone (collapses fast!), 💰 gold coins to grab.
+            <b>Platforms:</b> 🟢 trampoline (super-bounce), 🟫 cracked stone (collapses fast), 🟡 yellow pressure (yellow→orange→red→break, 3 sec, respawns), 💰 coins.
         </div>
 
         <div class="label">Your color:</div>
         <div class="row color-row" id="colorPicker"></div>
+
+        <div class="label">Mode:</div>
+        <div class="row">
+            <button class="btn diff mode active" data-mode="survival">Survival (last alive wins)</button>
+            <button class="btn diff mode" data-mode="race">Race (first to top wins)</button>
+        </div>
 
         <div class="label">Number of bots:</div>
         <div class="row">
@@ -130,8 +136,12 @@ h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 12px; 
         </div>
 
         <div class="row">
-            <button class="btn" id="startBtn">Start Climbing</button>
+            <button class="btn" id="start1PBtn">1 Player</button>
+            <button class="btn" id="start2PBtn">2 Players</button>
         </div>
+        <p style="font-size:12px;color:#cce0c1;margin-top:6px;">
+            <b>P2 controls:</b> Arrow keys move &middot; Enter jumps &middot; Right-Shift sprint
+        </p>
     </div>
 
     <div class="box" id="gameOverScreen" style="display:none;">
@@ -221,6 +231,7 @@ const DIFF = {
 let p1ColorIdx = 0;
 let botCount = 3;
 let currentDifficulty = 'medium';
+let currentMode = 'survival'; // 'survival' | 'race'
 
 // ===== Procedural arena =====
 function generateArena() {
@@ -251,12 +262,14 @@ function generateArena() {
             const x = i * slotW + Math.random() * Math.max(0, slotW - w - 20) + 10;
             // Roll platform type — special variants make play more dynamic.
             //   bounce: trampoline (~10%)
-            //   crumble: cracks under your feet (~12%)
+            //   crumble: instantly cracks under your feet (~8%)
+            //   pressure: yellow → orange → red → break, then respawns (~12%)
             //   regular stone/wood/metal: the rest
             let platType;
             const tr = Math.random();
             if (tr < 0.10) platType = 'bounce';
-            else if (tr < 0.22) platType = 'crumble';
+            else if (tr < 0.18) platType = 'crumble';
+            else if (tr < 0.30) platType = 'pressure';
             else platType = ['stone', 'wood', 'metal'][Math.floor(Math.random() * 3)];
             const plat = { x, y, w, h: 12, type: platType, alive: true };
             // 30% of regular platforms have a coin floating above
@@ -281,16 +294,16 @@ function generateArena() {
 }
 
 // ===== State factory =====
-function makeState(bots) {
+function makeState(humans, bots, mode) {
     const cfg = DIFF[currentDifficulty];
     const arena = generateArena();
-    const total = 1 + bots; // 1 human always
+    const total = humans + bots;
     const players = [];
 
     // Spawn players spread across the bottom floor
     for (let i = 0; i < total; i++) {
-        const isBot = i > 0;
-        const palIdx = (i === 0) ? p1ColorIdx : ((i + p1ColorIdx) % PLAYER_PALETTE.length);
+        const isBot = i >= humans;
+        const palIdx = (i === 0) ? p1ColorIdx : ((i + p1ColorIdx + 1) % PLAYER_PALETTE.length);
         const palette = PLAYER_PALETTE[palIdx % PLAYER_PALETTE.length];
         const spawnX = (i + 1) * (ARENA_W / (total + 1));
         const spawnY = ARENA_H - 30 - PLAYER_H / 2 - 1;
@@ -321,11 +334,15 @@ function makeState(bots) {
 
     return {
         cfg,
+        mode: mode || 'survival',
+        humans,
         arena,
         players,
-        cameraY: ARENA_H - H + 140, // pulled down so the lava is visible below the floor
+        cameraY: ARENA_H - H + 140,
         cameraX: 0,
-        lavaY: ARENA_H + 80,        // lava starts well below the floor, visibly rising up at you
+        // In race mode the lava is much slower (just atmospheric pressure)
+        lavaY: ARENA_H + 80,
+        lavaSpeedMult: (mode === 'race') ? 0.35 : 1.0,
         time: 0,
         gameEnded: false,
         winner: -1,
@@ -334,6 +351,7 @@ function makeState(bots) {
         humanDiedTimer: 0,
         particles: [],
         floaters: [],
+        zoom: 1,
     };
 }
 
@@ -354,9 +372,9 @@ window.addEventListener('keyup', e => {
 function consumeJust(code) { if (justPressed[code]) { justPressed[code] = false; return true; } return false; }
 
 // ===== Game flow =====
-function startGame() {
+function startGame(humans) {
     initAudio();
-    state = makeState(botCount);
+    state = makeState(humans, botCount, currentMode);
     overlay.classList.add('hidden');
     startScreen.style.display = 'none';
     gameOverScreen.style.display = 'none';
@@ -406,15 +424,21 @@ function showGameOver() {
 document.querySelectorAll('.btn.diff').forEach(b => {
     b.addEventListener('click', () => {
         const isBots = b.classList.contains('bots');
-        const selector = isBots ? '.btn.diff.bots' : '.btn.diff:not(.bots)';
+        const isMode = b.classList.contains('mode');
+        let selector;
+        if (isBots) selector = '.btn.diff.bots';
+        else if (isMode) selector = '.btn.diff.mode';
+        else selector = '.btn.diff:not(.bots):not(.mode)';
         document.querySelectorAll(selector).forEach(x => x.classList.remove('active'));
         b.classList.add('active');
         if (isBots) botCount = parseInt(b.dataset.bots, 10);
+        else if (isMode) currentMode = b.dataset.mode;
         else currentDifficulty = b.dataset.diff;
     });
 });
-document.getElementById('startBtn').addEventListener('click', startGame);
-document.getElementById('rematchBtn').addEventListener('click', startGame);
+document.getElementById('start1PBtn').addEventListener('click', () => startGame(1));
+document.getElementById('start2PBtn').addEventListener('click', () => startGame(2));
+document.getElementById('rematchBtn').addEventListener('click', () => startGame(state ? state.humans : 1));
 document.getElementById('menuBtn').addEventListener('click', () => {
     state = null;
     overlay.classList.remove('hidden');
@@ -438,15 +462,29 @@ function playerOnLadder(p) {
 }
 
 // ===== Input → player action =====
-function inputForP1(p, dt) {
-    let ix = 0;
-    if (codes['KeyA'] || codes['ArrowLeft']) ix -= 1;
-    if (codes['KeyD'] || codes['ArrowRight']) ix += 1;
-    let upHeld = codes['KeyW'] || codes['ArrowUp'];
-    let downHeld = codes['KeyS'] || codes['ArrowDown'];
-    let jumpJust = consumeJust('KeyW') || consumeJust('Space') || consumeJust('ArrowUp');
-    let jumpHeld = codes['Space'] || codes['KeyW'] || codes['ArrowUp'];
-    let sprint = codes['ShiftLeft'] || codes['ShiftRight'];
+function inputForHuman(p, dt) {
+    let ix = 0, upHeld = false, downHeld = false, jumpJust = false, jumpHeld = false, sprint = false;
+    if (p.idx === 0) {
+        // P1: WASD + Space + Left-Shift. In 1P mode also accepts arrows.
+        const dual = state.humans === 1;
+        if (codes['KeyA'] || (dual && codes['ArrowLeft'])) ix -= 1;
+        if (codes['KeyD'] || (dual && codes['ArrowRight'])) ix += 1;
+        upHeld = codes['KeyW'] || (dual && codes['ArrowUp']);
+        downHeld = codes['KeyS'] || (dual && codes['ArrowDown']);
+        jumpJust = consumeJust('KeyW') || consumeJust('Space')
+                || (dual && (consumeJust('ArrowUp') || consumeJust('Enter')));
+        jumpHeld = codes['Space'] || codes['KeyW'] || (dual && (codes['ArrowUp'] || codes['Enter']));
+        sprint = codes['ShiftLeft'] || (dual && codes['ShiftRight']);
+    } else {
+        // P2: Arrow keys + Enter + Right-Shift
+        if (codes['ArrowLeft']) ix -= 1;
+        if (codes['ArrowRight']) ix += 1;
+        upHeld = codes['ArrowUp'];
+        downHeld = codes['ArrowDown'];
+        jumpJust = consumeJust('ArrowUp') || consumeJust('Enter');
+        jumpHeld = codes['ArrowUp'] || codes['Enter'];
+        sprint = codes['ShiftRight'];
+    }
     return { ix, upHeld, downHeld, jumpJust, jumpHeld, sprint };
 }
 
@@ -463,7 +501,7 @@ function updatePlayer(p, dt) {
     if (p.isBot) {
         cmd = aiCommand(p, dt);
     } else {
-        cmd = inputForP1(p, dt);
+        cmd = inputForHuman(p, dt);
     }
 
     p.prevY = p.y;
@@ -586,6 +624,9 @@ function updatePlayer(p, dt) {
                     if (!wasGrounded) landSound();
                     if (plat.type === 'crumble' && plat.crumbleStart === undefined) {
                         plat.crumbleStart = state.time;
+                    }
+                    if (plat.type === 'pressure' && plat.pressureStart === undefined) {
+                        plat.pressureStart = state.time;
                     }
                 }
                 break;
@@ -771,51 +812,71 @@ function aiCommand(p, dt) {
 
 // ===== Lava =====
 function updateLava(dt) {
-    // Lava is a y-coordinate that decreases as it rises (world coords up is small y).
-    const speed = state.cfg.lavaBase + state.cfg.lavaAccel * state.time;
+    // In race mode the lava is much slower (atmospheric pressure only).
+    const speed = (state.cfg.lavaBase + state.cfg.lavaAccel * state.time) * state.lavaSpeedMult;
     state.lavaY -= speed * dt;
-    // Don't let lava cross the top
     if (state.lavaY < 30) state.lavaY = 30;
 }
 
 // ===== Camera =====
+// Auto-zoom: ensure both the highest alive human AND the lava are always
+// visible. When the gap exceeds a normal viewport the world scales down so
+// nothing falls off.
 function updateCamera(dt) {
-    // Follow midpoint of human(s) (but always show some lava below)
     const humans = state.players.filter(p => !p.isBot && p.alive);
-    let targetY;
+    // The "tracked" range: from the highest alive human (smallest y) to the lava
+    let topY, bottomY;
     if (humans.length > 0) {
-        let sum = 0;
-        for (const h of humans) sum += h.y;
-        const avg = sum / humans.length;
-        targetY = avg - H * 0.55;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (const h of humans) {
+            if (h.y < minY) minY = h.y;
+            if (h.y > maxY) maxY = h.y;
+        }
+        topY = minY - 80;
+        bottomY = state.lavaY + 80;
     } else {
-        // No humans alive — track lowest alive bot (or follow lava)
+        // No humans — show lava and the lowest alive bot, or just lava
         const alive = state.players.filter(p => p.alive);
         if (alive.length > 0) {
-            const lowest = alive.reduce((a, b) => a.y > b.y ? a : b);
-            targetY = lowest.y - H * 0.55;
+            let minY = Infinity, maxY = -Infinity;
+            for (const a of alive) {
+                if (a.y < minY) minY = a.y;
+                if (a.y > maxY) maxY = a.y;
+            }
+            topY = minY - 80;
+            bottomY = state.lavaY + 60;
         } else {
-            targetY = state.lavaY - H + 80;
+            topY = state.lavaY - H * 0.7;
+            bottomY = state.lavaY + 40;
         }
     }
-    // Make sure we always see at least some lava
-    if (targetY < state.lavaY - H + 60) targetY = state.lavaY - H + 60;
-    // Clamp camera so we don't show outside the arena
-    const minCam = 0;
-    // Allow seeing some "underground" below the floor so lava is visible
-    const maxCam = ARENA_H - H + 220;
-    if (targetY < minCam) targetY = minCam;
-    if (targetY > maxCam) targetY = maxCam;
-    state.cameraY += (targetY - state.cameraY) * 6 * dt;
-    state.cameraX = (W - ARENA_W * cameraScale()) / 2; // center horizontally
+
+    // Width fit
+    const widthScale = W / (ARENA_W + 40);
+    // Height fit (so both topY and bottomY are visible)
+    const verticalNeeded = bottomY - topY;
+    const heightScale = H / Math.max(H, verticalNeeded);
+    // Final zoom = min of both, but never too tiny
+    const targetZoom = Math.max(0.35, Math.min(widthScale, heightScale, 1.2));
+    state.zoom += (targetZoom - state.zoom) * 4 * dt;
+
+    // Camera Y: place tracked range centered vertically in the viewport
+    const scale = state.zoom;
+    const visH = H / scale;
+    const midY = (topY + bottomY) / 2;
+    let camY = midY - visH / 2;
+    // Hard guarantee: lava is visible — clamp camY so bottomY stays on screen
+    if (camY + visH < state.lavaY + 40) camY = state.lavaY + 40 - visH;
+    // Don't scroll below the world floor too far
+    const maxCam = ARENA_H - visH + 300;
+    if (camY > maxCam) camY = maxCam;
+
+    state.cameraY += (camY - state.cameraY) * 5 * dt;
+    state.cameraX = (W - ARENA_W * scale) / 2;
 }
 
-// Scale arena to fit width nicely if window is wide
-function cameraScale() {
-    // Hard-clamp scale so arena fits but doesn't become tiny
-    const maxScale = Math.min(W / (ARENA_W + 40), 1.4);
-    return Math.max(0.65, Math.min(1.2, maxScale));
-}
+function cameraScale() { return state.zoom || 1; }
 
 // ===== Floaters / Particles =====
 function updateParticles(dt) {
@@ -851,7 +912,6 @@ function update(dt) {
             if (plat.crumbleStart !== undefined && plat.alive !== false) {
                 if (state.time - plat.crumbleStart > 0.6) {
                     plat.alive = false;
-                    // Crumble dust particles
                     for (let i = 0; i < 14; i++) {
                         state.particles.push({
                             x: plat.x + Math.random() * plat.w,
@@ -867,6 +927,52 @@ function update(dt) {
                 }
             }
         }
+        // Pressure platforms: yellow (0-1s) → orange (1-2s) → red (2-3s) → break,
+        // then respawn 3 seconds later as yellow again.
+        for (const plat of state.arena.platforms) {
+            if (plat.type !== 'pressure') continue;
+            if (plat.alive !== false && plat.pressureStart !== undefined) {
+                const t = state.time - plat.pressureStart;
+                if (t >= 3) {
+                    plat.alive = false;
+                    plat.respawnAt = state.time + 3;
+                    plat.pressureStart = undefined;
+                    // Burst particles when it breaks
+                    for (let i = 0; i < 18; i++) {
+                        state.particles.push({
+                            x: plat.x + Math.random() * plat.w,
+                            y: plat.y + 4,
+                            vx: (Math.random() - 0.5) * 120,
+                            vy: 40 + Math.random() * 80,
+                            life: 0.7, maxLife: 0.7,
+                            size: 2 + Math.random() * 2,
+                            color: '#ff5252',
+                            gravity: 600,
+                        });
+                    }
+                    tone(180, 0.18, 'sawtooth', 0.12);
+                }
+            }
+            if (plat.alive === false && plat.respawnAt !== undefined && state.time >= plat.respawnAt) {
+                plat.alive = true;
+                plat.pressureStart = undefined;
+                plat.respawnAt = undefined;
+                // Reappear sparkle
+                for (let i = 0; i < 12; i++) {
+                    state.particles.push({
+                        x: plat.x + Math.random() * plat.w,
+                        y: plat.y + 4,
+                        vx: (Math.random() - 0.5) * 60,
+                        vy: -20 - Math.random() * 30,
+                        life: 0.5, maxLife: 0.5,
+                        size: 2 + Math.random() * 1.5,
+                        color: '#ffeb3b',
+                    });
+                }
+                tone(660, 0.08, 'sine', 0.08);
+                setTimeout(() => tone(990, 0.1, 'sine', 0.08), 60);
+            }
+        }
         // Animate coins
         for (const plat of state.arena.platforms) {
             if (plat.coin) plat.coin.bob += dt * 4;
@@ -874,9 +980,16 @@ function update(dt) {
         updateParticles(dt);
         updateCamera(dt);
 
-        // Win check: only one alive
+        // Win check
+        if (state.mode === 'race') {
+            // First player to touch the top safe-zone wins
+            const goalY = 50; // top platform is at y=30, give a small margin
+            const reached = state.players.find(p => p.alive && p.y < goalY);
+            if (reached) endGame(reached.idx);
+        }
+        // Survival fallback (also fires in race if everyone burns)
         const alive = state.players.filter(p => p.alive);
-        if (alive.length <= 1) {
+        if (alive.length <= 1 && !state.gameEnded) {
             const winner = alive[0];
             if (winner) endGame(winner.idx);
             else endGame(-1);
@@ -938,7 +1051,36 @@ function drawArena() {
 
     // Platforms
     state.arena.platforms.forEach(plat => {
-        if (plat.alive === false) return;
+        // For respawning pressure platforms, show a faint outline + timer
+        // where it'll reappear so players can plan jumps.
+        if (plat.alive === false) {
+            if (plat.type === 'pressure' && plat.respawnAt !== undefined) {
+                const sx = worldToScreenX(plat.x);
+                const sy = worldToScreenY(plat.y);
+                const sw = scaleVal(plat.w);
+                const sh = scaleVal(plat.h);
+                if (sy + sh > -20 && sy < H + 20) {
+                    const remaining = Math.max(0, plat.respawnAt - state.time);
+                    const flash = (Math.sin(state.time * 8) + 1) * 0.5;
+                    ctx.strokeStyle = `rgba(255,213,79,${0.35 + flash * 0.25})`;
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([4, 4]);
+                    ctx.strokeRect(sx, sy, sw, sh);
+                    ctx.setLineDash([]);
+                    // Timer above the empty slot
+                    const cx = sx + sw / 2, cy = sy - 14;
+                    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                    ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#ffd54f';
+                    ctx.font = `bold ${Math.round(scaleVal(10))}px Segoe UI`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(remaining.toFixed(1), cx, cy);
+                    ctx.textBaseline = 'alphabetic';
+                }
+            }
+            return;
+        }
         const sx = worldToScreenX(plat.x);
         const sy = worldToScreenY(plat.y);
         const sw = scaleVal(plat.w);
@@ -1015,6 +1157,52 @@ function drawArena() {
             ctx.fillRect(sx + shakeX, sy, sw, 3 * padPulse);
             ctx.fillStyle = 'rgba(255,255,255,0.4)';
             ctx.fillRect(sx + shakeX + 3, sy + 1, sw - 6, 1);
+        } else if (plat.type === 'pressure') {
+            // Yellow → Orange → Red countdown platform
+            let topColor, bodyColor, edgeColor;
+            const t = plat.pressureStart !== undefined ? state.time - plat.pressureStart : 0;
+            if (t < 1) {
+                topColor = '#fff176'; bodyColor = '#fbc02d'; edgeColor = '#a07f00';
+            } else if (t < 2) {
+                topColor = '#ffb74d'; bodyColor = '#ef6c00'; edgeColor = '#7a3a00';
+            } else {
+                topColor = '#ff8a80'; bodyColor = '#c62828'; edgeColor = '#5a0000';
+            }
+            // Pulsing as it gets closer to breaking — faster pulse later
+            const pulseRate = 4 + t * 5;
+            const shake = t > 1.5 ? Math.sin(state.time * 30) * (t - 1.5) * 1.5 : 0;
+            const xx = sx + shakeX + shake;
+            ctx.fillStyle = bodyColor;
+            ctx.fillRect(xx, sy, sw, sh);
+            ctx.fillStyle = topColor;
+            ctx.fillRect(xx, sy, sw, 4);
+            ctx.fillStyle = edgeColor;
+            ctx.fillRect(xx, sy + sh - 2, sw, 2);
+            // Brightening pulse on top edge as the timer ticks
+            if (plat.pressureStart !== undefined) {
+                const flash = (Math.sin(state.time * pulseRate) + 1) * 0.5;
+                ctx.fillStyle = `rgba(255,255,255,${0.25 + flash * 0.5})`;
+                ctx.fillRect(xx, sy, sw, 2);
+            }
+            // Countdown ring above the platform: shows seconds left to break
+            if (plat.pressureStart !== undefined) {
+                const remaining = Math.max(0, 3 - t);
+                const cx = xx + sw / 2;
+                const cy = sy - 14;
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = topColor;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(cx, cy, 7, -Math.PI / 2, -Math.PI / 2 + (remaining / 3) * Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = topColor;
+                ctx.font = `bold ${Math.round(scaleVal(10))}px Segoe UI`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(remaining.toFixed(1), cx, cy);
+                ctx.textBaseline = 'alphabetic';
+            }
         } else if (plat.type === 'crumble') {
             // Cracked unstable stone
             const dmg = plat.crumbleStart !== undefined
