@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lava Floor - Simon's Game Gallery</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #1a0908;
+    min-height: 100vh; overflow: hidden;
+    color: white;
+    -webkit-user-select: none; user-select: none;
+}
+canvas { display: block; position: absolute; top: 0; left: 0; cursor: default; }
+
+.back-btn {
+    position: fixed; top: 14px; left: 14px;
+    text-decoration: none; color: #ffab40;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,171,64,0.6);
+    padding: 8px 14px; border-radius: 8px;
+    font-size: 14px; z-index: 100;
+}
+.back-btn:hover { background: rgba(255,171,64,0.18); }
+
+#overlay {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50; background: rgba(0,0,0,0.78);
+}
+#overlay.hidden { display: none; }
+
+.box {
+    background: linear-gradient(135deg, #6d2510, #2a0d04);
+    border: 3px solid #ff5722;
+    border-radius: 18px;
+    padding: 26px 34px; text-align: center;
+    width: 92%; max-width: 600px;
+    box-shadow: 0 16px 60px rgba(0,0,0,0.7), 0 0 50px rgba(255,87,34,0.2);
+}
+h1 {
+    font-size: 50px; margin-bottom: 4px;
+    color: #ffd54f; letter-spacing: 3px;
+    text-shadow: 0 0 18px rgba(255,87,34,0.55), 3px 3px 0 #4a1c00;
+}
+h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 12px; }
+
+.controls {
+    background: rgba(0,0,0,0.32); padding: 12px;
+    border-radius: 8px; text-align: left;
+    line-height: 1.6;
+    font-size: 14px;
+    color: #ffe6d6;
+    margin: 10px 0;
+}
+.controls b { color: #ffd54f; }
+
+.row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; }
+.btn {
+    background: linear-gradient(135deg, #ff7043, #d63300);
+    color: white; border: 2px solid #ffd9c2;
+    padding: 12px 26px; font-size: 17px; font-weight: bold;
+    border-radius: 10px; cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: 0 4px 0 #771c00;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #771c00; }
+.btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #771c00; }
+.btn.diff { padding: 8px 18px; font-size: 14px; min-width: 90px; background: linear-gradient(135deg, #455a64, #263238); border-color: #b0bec5; box-shadow: 0 4px 0 #1a232a; }
+.btn.diff.bots { padding: 6px 12px; min-width: 0; }
+.btn.diff.active { background: linear-gradient(135deg, #ff7f50, #d63300); border-color: #ffd9c2; box-shadow: 0 4px 0 #771c00; }
+.label { font-size: 13px; color: #ffe082; margin: 8px 0 4px; }
+
+.color-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.color-swatch {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 2px solid #777; cursor: pointer;
+    padding: 0;
+    transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.color-swatch:hover { transform: scale(1.12); }
+.color-swatch.active {
+    border-color: #ffd54f;
+    box-shadow: 0 0 10px rgba(255,213,79,0.7);
+    transform: scale(1.18);
+}
+.winner { font-size: 30px; font-weight: bold; margin: 12px 0; }
+
+.footer-link {
+    position: fixed; bottom: 8px; left: 0; right: 0;
+    text-align: center; font-size: 12px;
+    color: rgba(255,255,255,0.4); z-index: 60; pointer-events: none;
+}
+.footer-link a { color: rgba(255,255,255,0.65); text-decoration: underline; pointer-events: auto; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+
+<div id="overlay">
+    <div class="box" id="startScreen">
+        <h1>🌋 LAVA FLOOR 🌋</h1>
+        <h2>Climb up — last one out of the lava wins!</h2>
+        <div class="controls">
+            <b>Controls (P1):</b> A/D or ←/→ to move &middot; W/Space/↑ to jump &middot; W or ↑ to climb a ladder<br>
+            Platforms are jump-through — you can hop up through them, then land on top.<br>
+            The lava rises faster as the round goes on. <b>Don't touch it.</b>
+        </div>
+
+        <div class="label">Your color:</div>
+        <div class="row color-row" id="colorPicker"></div>
+
+        <div class="label">Number of bots:</div>
+        <div class="row">
+            <button class="btn diff bots" data-bots="1">1</button>
+            <button class="btn diff bots active" data-bots="3">3</button>
+            <button class="btn diff bots" data-bots="5">5</button>
+            <button class="btn diff bots" data-bots="7">7</button>
+        </div>
+
+        <div class="label">Difficulty (lava speed):</div>
+        <div class="row">
+            <button class="btn diff" data-diff="easy">Easy</button>
+            <button class="btn diff active" data-diff="medium">Medium</button>
+            <button class="btn diff" data-diff="hard">Hard</button>
+        </div>
+
+        <div class="row">
+            <button class="btn" id="startBtn">Start Climbing</button>
+        </div>
+    </div>
+
+    <div class="box" id="gameOverScreen" style="display:none;">
+        <h1>GAME OVER</h1>
+        <div class="winner" id="winnerText"></div>
+        <div class="row">
+            <button class="btn" id="rematchBtn">Rematch</button>
+            <button class="btn" id="menuBtn" style="background: linear-gradient(135deg, #455a64, #263238); border-color: #b0bec5; box-shadow: 0 4px 0 #1a232a;">Main Menu</button>
+        </div>
+    </div>
+</div>
+
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<script>
+(() => {
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startScreen = document.getElementById('startScreen');
+const gameOverScreen = document.getElementById('gameOverScreen');
+
+// World-space (logical) constants
+const ARENA_W = 800;
+const ARENA_H = 7000;
+const PLAYER_W = 22, PLAYER_H = 32;
+const GRAVITY = 1500;
+const JUMP_V = 560;
+const MOVE_V = 240;
+const CLIMB_V = 220;
+const LADDER_GRAB_TOP_PAD = 8; // can grab from slightly above
+
+let W = 0, H = 0;
+let state = null;
+function resize() {
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W; canvas.height = H;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ===== Audio =====
+let audioCtx = null;
+function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+function tone(freq, dur, type = 'sine', vol = 0.15) {
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+}
+function jumpSound() { tone(360, 0.08, 'square', 0.08); tone(540, 0.08, 'square', 0.06); }
+function landSound() { tone(140, 0.05, 'square', 0.05); }
+function climbSound() { tone(300, 0.05, 'sine', 0.04); }
+function lavaSound() {
+    tone(80, 0.4, 'sawtooth', 0.16);
+    setTimeout(() => tone(60, 0.5, 'sawtooth', 0.14), 100);
+}
+function winSound() {
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.18, 'square', 0.14), i * 130));
+}
+
+const PLAYER_PALETTE = [
+    { coat: '#d8463c', dark: '#9a2c25', hat: '#b9352a', pom: '#ffd6d4', label: '#ff5d5d' },
+    { coat: '#3d6fc8', dark: '#264a8a', hat: '#2d5dad', pom: '#cfe1ff', label: '#5dadff' },
+    { coat: '#7e57c2', dark: '#4d2c91', hat: '#5e35b1', pom: '#e9dcff', label: '#b39ddb' },
+    { coat: '#43a047', dark: '#1b5e20', hat: '#2e7d32', pom: '#c8e6c9', label: '#81c784' },
+    { coat: '#fb8c00', dark: '#bf360c', hat: '#e65100', pom: '#ffe0b2', label: '#ffb74d' },
+    { coat: '#00acc1', dark: '#006064', hat: '#00838f', pom: '#b2ebf2', label: '#4dd0e1' },
+    { coat: '#ec407a', dark: '#880e4f', hat: '#ad1457', pom: '#ffe0eb', label: '#f48fb1' },
+    { coat: '#fdd835', dark: '#a37501', hat: '#f9a825', pom: '#fff8e1', label: '#fff176' },
+];
+
+const DIFF = {
+    easy:   { lavaBase: 16, lavaAccel: 0.45, label: 'Easy' },
+    medium: { lavaBase: 24, lavaAccel: 0.7,  label: 'Medium' },
+    hard:   { lavaBase: 32, lavaAccel: 1.1,  label: 'Hard' },
+};
+
+let p1ColorIdx = 0;
+let botCount = 3;
+let currentDifficulty = 'medium';
+
+// ===== Procedural arena =====
+function generateArena() {
+    const platforms = [];
+    const ladders = [];
+    // Solid floor at bottom (lava starts below)
+    platforms.push({ x: 0, y: ARENA_H - 30, w: ARENA_W, h: 30, type: 'floor' });
+
+    // Tiers above. We'll alternate row patterns to keep things navigable.
+    // Each tier ~110px above the last; first tier sits just above the floor.
+    const tierHeight = 110;
+    const numTiers = Math.floor((ARENA_H - 200) / tierHeight);
+    const tierY = (i) => ARENA_H - 30 - i * tierHeight - 30;
+
+    for (let t = 1; t <= numTiers; t++) {
+        const y = tierY(t);
+        // 1-3 platforms per tier; ensure at least one is reachable from below.
+        const n = 1 + Math.floor(Math.random() * 3);
+        const tierPlatforms = [];
+        for (let i = 0; i < n; i++) {
+            const w = 90 + Math.random() * 100;
+            const slotW = ARENA_W / n;
+            const x = i * slotW + Math.random() * (slotW - w - 20) + 10;
+            const platType = ['stone', 'wood', 'metal'][Math.floor(Math.random() * 3)];
+            const plat = { x, y, w, h: 14, type: platType };
+            tierPlatforms.push(plat);
+            platforms.push(plat);
+        }
+        // 35% chance: place a ladder going up from one of these platforms
+        if (Math.random() < 0.4) {
+            const target = tierPlatforms[Math.floor(Math.random() * tierPlatforms.length)];
+            const ladderX = target.x + target.w / 2 - 8;
+            const yTop = y - tierHeight; // up to next tier's y
+            ladders.push({ x: ladderX, y: yTop, w: 16, h: y - yTop + 4 });
+        }
+    }
+
+    // Top safe lip
+    platforms.push({ x: 0, y: 30, w: ARENA_W, h: 18, type: 'top' });
+    return { platforms, ladders, tierHeight, numTiers };
+}
+
+// ===== State factory =====
+function makeState(bots) {
+    const cfg = DIFF[currentDifficulty];
+    const arena = generateArena();
+    const total = 1 + bots; // 1 human always
+    const players = [];
+
+    // Spawn players spread across the bottom floor
+    for (let i = 0; i < total; i++) {
+        const isBot = i > 0;
+        const palIdx = (i === 0) ? p1ColorIdx : ((i + p1ColorIdx) % PLAYER_PALETTE.length);
+        const palette = PLAYER_PALETTE[palIdx % PLAYER_PALETTE.length];
+        const spawnX = (i + 1) * (ARENA_W / (total + 1));
+        const spawnY = ARENA_H - 30 - PLAYER_H / 2 - 1;
+        players.push({
+            idx: i, isBot,
+            x: spawnX, y: spawnY,
+            vx: 0, vy: 0,
+            prevY: spawnY,
+            grounded: true,
+            climbing: false,
+            facing: 1,
+            alive: true,
+            deathTimer: 0,
+            wasInLava: false,
+            animTime: 0,
+            moving: false,
+            jumpJust: false,
+            coat: palette.coat,
+            dark: palette.dark,
+            hat: palette.hat,
+            pom: palette.pom,
+            label: palette.label,
+            skin: '#f0c6a3',
+            ai: { jumpCd: 0, target: null, lastY: spawnY, stuckTimer: 0 },
+            kills: 0,
+        });
+    }
+
+    return {
+        cfg,
+        arena,
+        players,
+        cameraY: ARENA_H - H, // start camera at bottom
+        cameraX: 0,
+        lavaY: ARENA_H,        // lava top in world coords (drops as it rises visually)
+        time: 0,
+        gameEnded: false,
+        winner: -1,
+        endTimer: 0,
+        running: true,
+        humanDiedTimer: 0,
+        particles: [],
+        floaters: [],
+    };
+}
+
+// ===== Input =====
+const keys = {};
+const codes = {};
+const justPressed = {};
+window.addEventListener('keydown', e => {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    if (!codes[e.code]) justPressed[e.code] = true;
+    codes[e.code] = true;
+    keys[e.key.toLowerCase()] = true;
+});
+window.addEventListener('keyup', e => {
+    codes[e.code] = false;
+    keys[e.key.toLowerCase()] = false;
+});
+function consumeJust(code) { if (justPressed[code]) { justPressed[code] = false; return true; } return false; }
+
+// ===== Game flow =====
+function startGame() {
+    initAudio();
+    state = makeState(botCount);
+    overlay.classList.add('hidden');
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = 'none';
+}
+
+function endGame(winnerIdx) {
+    if (state.gameEnded) return;
+    state.gameEnded = true;
+    state.winner = winnerIdx;
+    state.endTimer = 2.0;
+    winSound();
+}
+
+function showGameOver() {
+    state.running = false;
+    const winnerEl = document.getElementById('winnerText');
+    const w = state.winner >= 0 ? state.players[state.winner] : null;
+    if (w) {
+        winnerEl.textContent = w.isBot ? `Bot ${w.idx + 1} survived!` : 'You survived!';
+        winnerEl.style.color = w.label;
+    } else {
+        winnerEl.textContent = 'The lava took everyone!';
+        winnerEl.style.color = '#ff5252';
+    }
+    overlay.classList.remove('hidden');
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = '';
+}
+
+// Color picker
+(function buildColorPicker() {
+    const pickerEl = document.getElementById('colorPicker');
+    PLAYER_PALETTE.forEach((pal, i) => {
+        const sw = document.createElement('button');
+        sw.className = 'color-swatch';
+        sw.style.background = `linear-gradient(135deg, ${pal.coat}, ${pal.dark})`;
+        if (i === p1ColorIdx) sw.classList.add('active');
+        sw.addEventListener('click', () => {
+            p1ColorIdx = i;
+            pickerEl.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+            sw.classList.add('active');
+        });
+        pickerEl.appendChild(sw);
+    });
+})();
+
+document.querySelectorAll('.btn.diff').forEach(b => {
+    b.addEventListener('click', () => {
+        const isBots = b.classList.contains('bots');
+        const selector = isBots ? '.btn.diff.bots' : '.btn.diff:not(.bots)';
+        document.querySelectorAll(selector).forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        if (isBots) botCount = parseInt(b.dataset.bots, 10);
+        else currentDifficulty = b.dataset.diff;
+    });
+});
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('rematchBtn').addEventListener('click', startGame);
+document.getElementById('menuBtn').addEventListener('click', () => {
+    state = null;
+    overlay.classList.remove('hidden');
+    startScreen.style.display = '';
+    gameOverScreen.style.display = 'none';
+});
+
+// ===== Helpers =====
+function rectOverlap(r1x, r1y, r1w, r1h, r2x, r2y, r2w, r2h) {
+    return r1x < r2x + r2w && r1x + r1w > r2x && r1y < r2y + r2h && r1y + r1h > r2y;
+}
+function playerOnLadder(p) {
+    const px = p.x - PLAYER_W / 2 + PLAYER_W / 4;
+    const py = p.y - PLAYER_H / 2;
+    for (const l of state.arena.ladders) {
+        if (rectOverlap(px, py, PLAYER_W / 2, PLAYER_H, l.x, l.y - LADDER_GRAB_TOP_PAD, l.w, l.h + LADDER_GRAB_TOP_PAD)) {
+            return l;
+        }
+    }
+    return null;
+}
+
+// ===== Input → player action =====
+function inputForP1(p, dt) {
+    let ix = 0;
+    if (codes['KeyA'] || codes['ArrowLeft']) ix -= 1;
+    if (codes['KeyD'] || codes['ArrowRight']) ix += 1;
+    let upHeld = codes['KeyW'] || codes['ArrowUp'];
+    let downHeld = codes['KeyS'] || codes['ArrowDown'];
+    let jumpJust = consumeJust('KeyW') || consumeJust('Space') || consumeJust('ArrowUp');
+    return { ix, upHeld, downHeld, jumpJust };
+}
+
+// ===== Update player =====
+function updatePlayer(p, dt) {
+    if (!p.alive) {
+        p.deathTimer += dt;
+        // Sink in lava
+        p.y += 80 * dt;
+        return;
+    }
+
+    let cmd;
+    if (p.isBot) {
+        cmd = aiCommand(p, dt);
+    } else {
+        cmd = inputForP1(p, dt);
+    }
+
+    p.prevY = p.y;
+
+    // Ladder check: are we touching a ladder?
+    const ladder = playerOnLadder(p);
+    if (!ladder) p.climbing = false;
+
+    if (ladder) {
+        // Grab on if pressing up/down or already climbing
+        if (cmd.upHeld || cmd.downHeld) {
+            p.climbing = true;
+            // Center horizontally on ladder
+            const ladderCx = ladder.x + ladder.w / 2;
+            p.x += (ladderCx - p.x) * 0.3;
+        }
+    }
+
+    if (p.climbing) {
+        let cy = 0;
+        if (cmd.upHeld) cy -= 1;
+        if (cmd.downHeld) cy += 1;
+        p.vy = cy * CLIMB_V;
+        p.vx = cmd.ix * MOVE_V * 0.4;  // slower horizontal while climbing
+        // Jump off ladder
+        if (cmd.jumpJust) {
+            p.climbing = false;
+            p.vy = -JUMP_V * 0.8;
+            jumpSound();
+        }
+        if (cmd.upHeld || cmd.downHeld) {
+            p.animTime += dt * 6;
+            if (Math.floor(state.time * 5) !== p.lastClimbStep) {
+                p.lastClimbStep = Math.floor(state.time * 5);
+                if (Math.random() < 0.4) climbSound();
+            }
+        }
+    } else {
+        // Gravity
+        p.vy += GRAVITY * dt;
+        p.vx = cmd.ix * MOVE_V;
+        if (cmd.ix !== 0) p.facing = cmd.ix;
+
+        // Jump
+        if (cmd.jumpJust && p.grounded) {
+            p.vy = -JUMP_V;
+            p.grounded = false;
+            jumpSound();
+        }
+    }
+
+    // Move
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+
+    // Wall clamp
+    if (p.x < PLAYER_W / 2) { p.x = PLAYER_W / 2; p.vx = 0; }
+    if (p.x > ARENA_W - PLAYER_W / 2) { p.x = ARENA_W - PLAYER_W / 2; p.vx = 0; }
+
+    // Top clamp
+    if (p.y < PLAYER_H / 2) { p.y = PLAYER_H / 2; p.vy = Math.max(0, p.vy); }
+
+    // Platform collision (top-down landing only — jump-through)
+    if (!p.climbing) {
+        const wasGrounded = p.grounded;
+        p.grounded = false;
+        for (const plat of state.arena.platforms) {
+            const px = p.x - PLAYER_W / 2;
+            const pw = PLAYER_W;
+            // Horizontal overlap with the platform's rect
+            if (px + pw < plat.x || px > plat.x + plat.w) continue;
+            const platTop = plat.y;
+            const playerBottom = p.y + PLAYER_H / 2;
+            const prevBottom = p.prevY + PLAYER_H / 2;
+            // Coming from above
+            if (p.vy >= 0 && prevBottom <= platTop + 1.5 && playerBottom >= platTop) {
+                p.y = platTop - PLAYER_H / 2;
+                p.vy = 0;
+                p.grounded = true;
+                if (!wasGrounded && p.vy === 0) landSound();
+                break;
+            }
+        }
+    } else {
+        p.grounded = false;
+    }
+
+    // Animation
+    if (Math.abs(p.vx) > 5 || (p.climbing && (cmd.upHeld || cmd.downHeld))) {
+        p.animTime += dt * 8;
+        p.moving = true;
+    } else {
+        p.moving = false;
+    }
+
+    // Lava collision
+    if (p.y + PLAYER_H / 2 > state.lavaY) {
+        p.alive = false;
+        p.deathTimer = 0;
+        // Splash particles
+        for (let i = 0; i < 30; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const sp = 80 + Math.random() * 220;
+            state.particles.push({
+                x: p.x, y: p.y,
+                vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 200,
+                life: 0.9, maxLife: 0.9,
+                size: 2 + Math.random() * 3,
+                color: Math.random() < 0.5 ? '#ff5252' : '#ffab40',
+                gravity: 700,
+            });
+        }
+        state.particles.push({
+            x: p.x, y: p.y - 60, vx: 0, vy: -30, life: 1.6, maxLife: 1.6,
+            size: 0, color: '#ff5252', isText: true, text: p.isBot ? `BOT ${p.idx + 1} BURNED!` : 'YOU BURNED!',
+        });
+        lavaSound();
+        if (!p.isBot) {
+            state.humanDiedTimer = 2.4;  // brief drama, then back to menu
+        }
+    }
+}
+
+// ===== AI =====
+function aiCommand(p, dt) {
+    const cmd = { ix: 0, upHeld: false, downHeld: false, jumpJust: false };
+    const a = state.arena;
+    p.ai.jumpCd = Math.max(0, p.ai.jumpCd - dt);
+    p.ai.stuckTimer += dt;
+
+    // Basic strategy: find a destination above me. Prefer ladders if near one,
+    // else pick nearest platform whose top is above me.
+    const myY = p.y;
+
+    // Are we currently on a ladder?
+    const onLadder = playerOnLadder(p);
+    if (onLadder && myY > onLadder.y) {
+        // Climb up while on a ladder until we reach its top
+        cmd.upHeld = true;
+        // If we've reached a platform at the top, drop input
+        return cmd;
+    }
+
+    // Look for the closest platform above us we could realistically reach
+    let target = null;
+    let bestScore = -Infinity;
+    for (const plat of a.platforms) {
+        if (plat.type === 'top' || plat.type === 'floor') continue;
+        if (plat.y >= myY - 8) continue;
+        const dy = myY - plat.y;
+        const cx = plat.x + plat.w / 2;
+        const dx = Math.abs(p.x - cx);
+        // Reachable height: a single jump tops at ~JUMP_V^2 / (2 * GRAVITY) ≈ 105px
+        if (dy > 130) continue;
+        const score = -dy * 0.6 - dx * 0.4;
+        if (score > bestScore) { bestScore = score; target = plat; }
+    }
+
+    // Look for nearby ladders that go higher
+    let nearestLadder = null, nLD = 9999;
+    for (const l of a.ladders) {
+        if (l.y >= myY - 6) continue;
+        const lx = l.x + l.w / 2;
+        const dx = Math.abs(p.x - lx);
+        const dy = Math.max(0, myY - l.y - l.h); // gap above ladder we'd need to jump
+        if (dx + dy < nLD && dy < 60) {
+            nLD = dx + dy;
+            nearestLadder = l;
+        }
+    }
+
+    // Choose between platform target and ladder
+    let goal = null;
+    if (target && nearestLadder) {
+        // Prefer ladder if target is more than 90 px up (we couldn't jump that)
+        const dyToTarget = myY - target.y;
+        if (dyToTarget > 90) goal = { kind: 'ladder', x: nearestLadder.x + nearestLadder.w / 2, y: nearestLadder.y };
+        else goal = { kind: 'platform', x: target.x + target.w / 2, y: target.y, plat: target };
+    } else if (nearestLadder) {
+        goal = { kind: 'ladder', x: nearestLadder.x + nearestLadder.w / 2, y: nearestLadder.y };
+    } else if (target) {
+        goal = { kind: 'platform', x: target.x + target.w / 2, y: target.y, plat: target };
+    }
+
+    if (!goal) {
+        // Fallback: just move toward arena center
+        cmd.ix = (ARENA_W / 2 - p.x) > 0 ? 1 : -1;
+        if (p.grounded && p.ai.jumpCd <= 0 && Math.random() < 0.02) {
+            cmd.jumpJust = true;
+            p.ai.jumpCd = 0.4;
+        }
+        return cmd;
+    }
+
+    // Walk toward goal x
+    const dx = goal.x - p.x;
+    if (Math.abs(dx) > 6) cmd.ix = dx > 0 ? 1 : -1;
+
+    if (goal.kind === 'platform') {
+        // Try to jump when reasonably under the platform's x and grounded
+        const platLeft = goal.plat.x - 12;
+        const platRight = goal.plat.x + goal.plat.w + 12;
+        if (p.grounded && p.x > platLeft && p.x < platRight && p.ai.jumpCd <= 0) {
+            cmd.jumpJust = true;
+            p.ai.jumpCd = 0.5;
+        }
+    } else if (goal.kind === 'ladder') {
+        // Jump if we need to reach the bottom of the ladder
+        const ldLeft = goal.x - 24, ldRight = goal.x + 24;
+        if (p.grounded && p.x > ldLeft && p.x < ldRight) {
+            // If the ladder bottom is above us, jump up to grab
+            if (p.y - goal.y > 60 && p.ai.jumpCd <= 0) {
+                cmd.jumpJust = true;
+                p.ai.jumpCd = 0.4;
+            } else {
+                cmd.upHeld = true; // step into the ladder
+            }
+        }
+    }
+
+    // Anti-stuck: if we haven't moved much in 1.5s, do a random jump
+    if (Math.abs(p.y - p.ai.lastY) < 12 && p.ai.stuckTimer > 1.5) {
+        cmd.jumpJust = p.grounded && p.ai.jumpCd <= 0;
+        if (cmd.jumpJust) p.ai.jumpCd = 0.5;
+        p.ai.stuckTimer = 0;
+    }
+    if (p.ai.stuckTimer > 0.5) p.ai.lastY = p.y;
+    return cmd;
+}
+
+// ===== Lava =====
+function updateLava(dt) {
+    // Lava is a y-coordinate that decreases as it rises (world coords up is small y).
+    const speed = state.cfg.lavaBase + state.cfg.lavaAccel * state.time;
+    state.lavaY -= speed * dt;
+    // Don't let lava cross the top
+    if (state.lavaY < 30) state.lavaY = 30;
+}
+
+// ===== Camera =====
+function updateCamera(dt) {
+    // Follow midpoint of human(s) (but always show some lava below)
+    const humans = state.players.filter(p => !p.isBot && p.alive);
+    let targetY;
+    if (humans.length > 0) {
+        let sum = 0;
+        for (const h of humans) sum += h.y;
+        const avg = sum / humans.length;
+        targetY = avg - H * 0.55;
+    } else {
+        // No humans alive — track lowest alive bot (or follow lava)
+        const alive = state.players.filter(p => p.alive);
+        if (alive.length > 0) {
+            const lowest = alive.reduce((a, b) => a.y > b.y ? a : b);
+            targetY = lowest.y - H * 0.55;
+        } else {
+            targetY = state.lavaY - H + 80;
+        }
+    }
+    // Make sure we always see at least some lava
+    if (targetY < state.lavaY - H + 60) targetY = state.lavaY - H + 60;
+    // Clamp camera so we don't show outside the arena
+    const minCam = 0;
+    const maxCam = ARENA_H - H;
+    if (targetY < minCam) targetY = minCam;
+    if (targetY > maxCam) targetY = maxCam;
+    state.cameraY += (targetY - state.cameraY) * 6 * dt;
+    state.cameraX = (W - ARENA_W * cameraScale()) / 2; // center horizontally
+}
+
+// Scale arena to fit width nicely if window is wide
+function cameraScale() {
+    // Hard-clamp scale so arena fits but doesn't become tiny
+    const maxScale = Math.min(W / (ARENA_W + 40), 1.4);
+    return Math.max(0.65, Math.min(1.2, maxScale));
+}
+
+// ===== Floaters / Particles =====
+function updateParticles(dt) {
+    state.particles.forEach(p => {
+        p.x += (p.vx || 0) * dt;
+        p.y += (p.vy || 0) * dt;
+        if (p.gravity) p.vy += p.gravity * dt;
+        p.life -= dt;
+    });
+    state.particles = state.particles.filter(p => p.life > 0);
+}
+
+// ===== Update =====
+function update(dt) {
+    state.time += dt;
+
+    if (state.humanDiedTimer && state.humanDiedTimer > 0) {
+        state.humanDiedTimer -= dt;
+        if (state.humanDiedTimer <= 0) {
+            state = null;
+            overlay.classList.remove('hidden');
+            startScreen.style.display = '';
+            gameOverScreen.style.display = 'none';
+            return;
+        }
+    }
+
+    if (!state.gameEnded) {
+        updateLava(dt);
+        state.players.forEach(p => updatePlayer(p, dt));
+        updateParticles(dt);
+        updateCamera(dt);
+
+        // Win check: only one alive
+        const alive = state.players.filter(p => p.alive);
+        if (alive.length <= 1) {
+            const winner = alive[0];
+            if (winner) endGame(winner.idx);
+            else endGame(-1);
+        }
+    } else if (state.endTimer > 0) {
+        state.endTimer -= dt;
+        updateParticles(dt);
+        updateCamera(dt);
+        if (state.endTimer <= 0) showGameOver();
+    }
+}
+
+// ===== World→screen =====
+function worldToScreenX(wx) {
+    return state.cameraX + wx * cameraScale();
+}
+function worldToScreenY(wy) {
+    return (wy - state.cameraY) * cameraScale();
+}
+function scaleVal(v) { return v * cameraScale(); }
+
+// ===== Render =====
+function drawBackground() {
+    // Top: dark cave gradient. Lower: warmer (closer to lava).
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#0a0608');
+    grad.addColorStop(0.5, '#2a0d04');
+    grad.addColorStop(1, '#5b1808');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    // Cave specks
+    ctx.fillStyle = 'rgba(160,80,30,0.18)';
+    for (let i = 0; i < 220; i++) {
+        const x = (i * 73) % W;
+        const y = (i * 131) % H;
+        ctx.fillRect(x, y, 1, 1);
+    }
+}
+
+function drawArena() {
+    const ax = state.cameraX, scale = cameraScale();
+    // Cave walls (left + right edges of the arena)
+    ctx.fillStyle = '#1f0e08';
+    ctx.fillRect(ax - 80, 0, 80, H);
+    ctx.fillRect(ax + ARENA_W * scale, 0, 80, H);
+    // Wall decoration: vertical stone bricks
+    ctx.strokeStyle = 'rgba(255,160,80,0.15)';
+    ctx.lineWidth = 1;
+    for (let edge = 0; edge < 2; edge++) {
+        const xBase = edge === 0 ? ax - 80 : ax + ARENA_W * scale;
+        for (let y = 0; y < H; y += 30) {
+            ctx.beginPath();
+            ctx.moveTo(xBase, y); ctx.lineTo(xBase + 80, y); ctx.stroke();
+            const offset = (Math.floor(y / 30) % 2 === 0) ? 0 : 40;
+            ctx.beginPath();
+            ctx.moveTo(xBase + 40 - offset, y); ctx.lineTo(xBase + 40 - offset, y + 30); ctx.stroke();
+        }
+    }
+
+    // Platforms
+    state.arena.platforms.forEach(plat => {
+        const sx = worldToScreenX(plat.x);
+        const sy = worldToScreenY(plat.y);
+        const sw = scaleVal(plat.w);
+        const sh = scaleVal(plat.h);
+        if (sy + sh < -20 || sy > H + 20) return;
+        // Top highlight
+        if (plat.type === 'floor') {
+            // Solid floor
+            ctx.fillStyle = '#5a2310';
+            ctx.fillRect(sx, sy, sw, sh + 200);
+            ctx.fillStyle = '#2a0d04';
+            ctx.fillRect(sx, sy + sh + 200 - 6, sw, 6);
+            // Cracked top
+            ctx.fillStyle = '#7a3320';
+            ctx.fillRect(sx, sy, sw, 4);
+        } else if (plat.type === 'top') {
+            // Goal lip
+            ctx.fillStyle = '#ffd54f';
+            ctx.fillRect(sx, sy, sw, sh);
+            ctx.fillStyle = '#bf8c00';
+            ctx.fillRect(sx, sy + sh - 3, sw, 3);
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${Math.round(scaleVal(20))}px Segoe UI`;
+            ctx.textAlign = 'center';
+            ctx.fillText('🏆 SAFE ZONE 🏆', sx + sw / 2, sy - 6);
+        } else if (plat.type === 'wood') {
+            ctx.fillStyle = '#7a4f2a';
+            ctx.fillRect(sx, sy, sw, sh);
+            ctx.fillStyle = '#a87045';
+            ctx.fillRect(sx, sy, sw, 4);
+            ctx.strokeStyle = 'rgba(40,20,8,0.55)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < sw; i += 18) {
+                ctx.beginPath();
+                ctx.moveTo(sx + i, sy + 4); ctx.lineTo(sx + i, sy + sh); ctx.stroke();
+            }
+        } else if (plat.type === 'metal') {
+            ctx.fillStyle = '#54606a';
+            ctx.fillRect(sx, sy, sw, sh);
+            ctx.fillStyle = '#7a8794';
+            ctx.fillRect(sx, sy, sw, 3);
+            ctx.fillStyle = '#1c2126';
+            ctx.fillRect(sx, sy + sh - 3, sw, 3);
+            // Bolts
+            ctx.fillStyle = '#9aa6b0';
+            for (let i = 6; i < sw - 6; i += 24) {
+                ctx.beginPath(); ctx.arc(sx + i, sy + sh / 2, 2, 0, Math.PI * 2); ctx.fill();
+            }
+        } else {
+            // Stone
+            ctx.fillStyle = '#5a4a3a';
+            ctx.fillRect(sx, sy, sw, sh);
+            ctx.fillStyle = '#7a685a';
+            ctx.fillRect(sx, sy, sw, 4);
+            ctx.fillStyle = '#3a2c20';
+            ctx.fillRect(sx, sy + sh - 2, sw, 2);
+            // Crack speckles
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            for (let i = 0; i < sw / 8; i++) {
+                ctx.fillRect(sx + ((i * 31) % sw), sy + 5 + ((i * 17) % (sh - 6)), 1, 1);
+            }
+        }
+        // Subtle drop shadow below platform
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fillRect(sx, sy + sh, sw, 2);
+    });
+
+    // Ladders
+    state.arena.ladders.forEach(l => {
+        const sx = worldToScreenX(l.x);
+        const sy = worldToScreenY(l.y);
+        const sw = scaleVal(l.w);
+        const sh = scaleVal(l.h);
+        if (sy + sh < -20 || sy > H + 20) return;
+        // Side rails
+        ctx.fillStyle = '#7a4f2a';
+        ctx.fillRect(sx, sy, 4, sh);
+        ctx.fillRect(sx + sw - 4, sy, 4, sh);
+        ctx.fillStyle = '#a87045';
+        ctx.fillRect(sx, sy, 1.5, sh);
+        ctx.fillRect(sx + sw - 1.5, sy, 1.5, sh);
+        // Rungs
+        ctx.fillStyle = '#a87045';
+        const rungSpacing = scaleVal(14);
+        for (let y = sy + 4; y < sy + sh - 2; y += rungSpacing) {
+            ctx.fillRect(sx + 2, y, sw - 4, 3);
+        }
+    });
+}
+
+function drawLava() {
+    const sy = worldToScreenY(state.lavaY);
+    if (sy > H) return;
+    const ax = state.cameraX;
+    const scale = cameraScale();
+    // Main lava body — gradient from bright orange to dark red
+    const grad = ctx.createLinearGradient(0, sy, 0, H);
+    grad.addColorStop(0, '#ffb74d');
+    grad.addColorStop(0.15, '#ff6f00');
+    grad.addColorStop(0.5, '#c41200');
+    grad.addColorStop(1, '#5a0000');
+    ctx.fillStyle = grad;
+    ctx.fillRect(ax - 80, sy, ARENA_W * scale + 160, H - sy + 200);
+
+    // Top wave — animated bubbling crest
+    ctx.fillStyle = '#ffd180';
+    ctx.beginPath();
+    ctx.moveTo(ax - 80, sy + 4);
+    for (let x = ax - 80; x <= ax + ARENA_W * scale + 80; x += 12) {
+        const wave = Math.sin(state.time * 4 + x * 0.05) * 4 + Math.sin(state.time * 2.3 + x * 0.13) * 2;
+        ctx.lineTo(x, sy + 4 + wave);
+    }
+    ctx.lineTo(ax + ARENA_W * scale + 80, sy + 14);
+    ctx.lineTo(ax - 80, sy + 14);
+    ctx.closePath();
+    ctx.fill();
+    // Brighter foam line
+    ctx.strokeStyle = '#fff59d';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let x = ax - 80; x <= ax + ARENA_W * scale + 80; x += 12) {
+        const wave = Math.sin(state.time * 4 + x * 0.05) * 4 + Math.sin(state.time * 2.3 + x * 0.13) * 2;
+        if (x === ax - 80) ctx.moveTo(x, sy + 4 + wave);
+        else ctx.lineTo(x, sy + 4 + wave);
+    }
+    ctx.stroke();
+
+    // Bubbles rising on the lava surface
+    for (let i = 0; i < 12; i++) {
+        const seed = i * 17 + Math.floor(state.time * 1.4);
+        const t = ((state.time * (0.7 + (i * 0.07))) + i) % 2;
+        const x = ax + ((seed * 73) % (ARENA_W * scale));
+        const yOffset = (1 - t / 2) * 25;
+        const r = 2 + Math.sin(state.time * 3 + i) * 0.7;
+        ctx.fillStyle = `rgba(255,213,79,${0.6 - t * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(x, sy + 6 + yOffset, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Heat shimmer (stripes of higher brightness above lava)
+    const shimY = sy - 20;
+    if (shimY > 0) {
+        ctx.fillStyle = `rgba(255,150,80,${0.1 + Math.sin(state.time * 2) * 0.04})`;
+        ctx.fillRect(ax - 80, shimY, ARENA_W * scale + 160, 25);
+    }
+    // Glow halo above
+    const halo = ctx.createLinearGradient(0, sy - 80, 0, sy);
+    halo.addColorStop(0, 'rgba(255,87,34,0)');
+    halo.addColorStop(1, 'rgba(255,87,34,0.4)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(ax - 80, sy - 80, ARENA_W * scale + 160, 80);
+}
+
+function drawPlayer(p) {
+    const x = worldToScreenX(p.x);
+    const y = worldToScreenY(p.y);
+    const scale = cameraScale();
+    const w = PLAYER_W * scale, h = PLAYER_H * scale;
+    if (y < -50 || y > H + 50) return;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + h / 2 - 2, w * 0.55, w * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (!p.alive) {
+        // Burning flame above body
+        ctx.globalAlpha = Math.max(0, 1 - p.deathTimer * 0.8);
+        for (let i = 0; i < 3; i++) {
+            ctx.fillStyle = i === 0 ? '#ff5252' : (i === 1 ? '#ff7043' : '#ffd54f');
+            ctx.beginPath();
+            ctx.ellipse(x + (Math.random() - 0.5) * 4, y - h / 2 + i * 4 - Math.random() * 6, 8 - i * 2, 12 - i * 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    // Body (coat)
+    ctx.fillStyle = p.coat;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2, w * 0.45, h * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Coat shading
+    ctx.fillStyle = p.dark;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 6, w * 0.4, h * 0.22, 0, 0, Math.PI);
+    ctx.fill();
+    if (p.alive) {
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.beginPath();
+        ctx.ellipse(x - w * 0.18, y, w * 0.16, h * 0.22, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Legs (running animation)
+    const legSwing = p.moving ? Math.sin(p.animTime * 1.5) * 4 : 0;
+    ctx.fillStyle = '#3b2a1f';
+    ctx.beginPath(); ctx.ellipse(x - 4, y + h * 0.5 - 1 + legSwing, 3, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 4, y + h * 0.5 - 1 - legSwing, 3, 3, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Arms (when climbing, raised; when running, swinging)
+    if (p.climbing) {
+        ctx.fillStyle = p.dark;
+        ctx.beginPath(); ctx.arc(x - 6, y - h * 0.18, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 6, y - h * 0.18, 3, 0, Math.PI * 2); ctx.fill();
+    } else {
+        const armSwing = p.moving ? Math.sin(p.animTime * 1.5 + Math.PI) * 3 : 0;
+        ctx.fillStyle = p.dark;
+        ctx.beginPath(); ctx.arc(x - 7, y + 2 + armSwing, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 7, y + 2 - armSwing, 3, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Head
+    ctx.fillStyle = p.skin;
+    ctx.beginPath();
+    ctx.arc(x, y - h * 0.42, w * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+    // Eyes
+    if (p.alive) {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(x - 3, y - h * 0.42, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 3, y - h * 0.42, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#222';
+        const eyeOff = p.facing > 0 ? 1 : -1;
+        ctx.beginPath(); ctx.arc(x - 3 + eyeOff * 0.6, y - h * 0.42, 1, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 3 + eyeOff * 0.6, y - h * 0.42, 1, 0, Math.PI * 2); ctx.fill();
+    } else {
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(x - 5, y - h * 0.45); ctx.lineTo(x - 1, y - h * 0.39);
+        ctx.moveTo(x - 1, y - h * 0.45); ctx.lineTo(x - 5, y - h * 0.39);
+        ctx.moveTo(x + 1, y - h * 0.45); ctx.lineTo(x + 5, y - h * 0.39);
+        ctx.moveTo(x + 5, y - h * 0.45); ctx.lineTo(x + 1, y - h * 0.39);
+        ctx.stroke();
+    }
+
+    // Beanie hat
+    ctx.fillStyle = p.hat;
+    ctx.beginPath();
+    ctx.ellipse(x, y - h * 0.55, w * 0.34, w * 0.28, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = p.dark;
+    ctx.fillRect(x - w * 0.34, y - h * 0.49, w * 0.68, 3);
+    ctx.fillStyle = p.pom;
+    ctx.beginPath();
+    ctx.arc(x, y - h * 0.66, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Player number tag
+    ctx.fillStyle = p.label;
+    ctx.font = `bold ${Math.round(11 * scale)}px Segoe UI`;
+    ctx.textAlign = 'center';
+    ctx.fillText('P' + (p.idx + 1), x, y - h * 0.85);
+}
+
+function drawParticles() {
+    state.particles.forEach(p => {
+        const a = Math.max(0, p.life / p.maxLife);
+        ctx.globalAlpha = a;
+        if (p.isText) {
+            ctx.fillStyle = p.color;
+            ctx.font = 'bold 18px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText(p.text, worldToScreenX(p.x), worldToScreenY(p.y));
+        } else {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(worldToScreenX(p.x), worldToScreenY(p.y), p.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+    ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+    // Top: roster strip showing each player's height % climbed
+    const all = state.players;
+    const stripW = Math.min(W - 80, all.length * 80);
+    const stripX = (W - stripW) / 2;
+    const stripY = 14;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(stripX, stripY, stripW, 38);
+    const slotW = stripW / all.length;
+    all.forEach((p, i) => {
+        const cx = stripX + i * slotW + slotW / 2;
+        const cy = stripY + 18;
+        ctx.fillStyle = p.alive ? p.coat : '#3a3a3a';
+        ctx.beginPath(); ctx.arc(cx - 28, cy + 1, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = p.alive ? '#fff' : 'rgba(255,255,255,0.4)';
+        ctx.font = 'bold 12px Segoe UI';
+        ctx.textAlign = 'left';
+        const lbl = p.isBot ? `Bot ${p.idx + 1}` : `P${p.idx + 1}`;
+        ctx.fillText(lbl, cx - 18, cy - 2);
+        // Height % above floor
+        if (p.alive) {
+            const heightFrac = (ARENA_H - p.y) / (ARENA_H - 60);
+            const pct = Math.max(0, Math.min(100, Math.round(heightFrac * 100)));
+            ctx.fillStyle = '#ffd54f';
+            ctx.font = '11px Segoe UI';
+            ctx.fillText(`${pct}%`, cx - 18, cy + 11);
+        }
+        if (!p.alive) {
+            ctx.strokeStyle = 'rgba(255,80,80,0.7)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(cx - 36, cy + 12); ctx.lineTo(cx + 30, cy - 8);
+            ctx.stroke();
+        }
+    });
+
+    // Time + lava speed
+    ctx.font = 'bold 14px Segoe UI';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ffe082';
+    ctx.fillText(`${state.time.toFixed(1)}s`, W - 16, 16);
+    ctx.fillStyle = '#ffab40';
+    const speed = state.cfg.lavaBase + state.cfg.lavaAccel * state.time;
+    ctx.fillText(`Lava: ${speed.toFixed(0)}px/s`, W - 16, 32);
+
+    // Lava warning indicator (if lava is close to a human)
+    const human = state.players.find(p => !p.isBot && p.alive);
+    if (human) {
+        const distToLava = state.lavaY - (human.y + PLAYER_H / 2);
+        if (distToLava < 250) {
+            ctx.fillStyle = `rgba(255,82,82,${0.45 + Math.sin(state.time * 6) * 0.15})`;
+            ctx.font = 'bold 28px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('🔥 LAVA CLOSE 🔥', W / 2, H - 16);
+        }
+    }
+}
+
+function drawWinnerOverlay() {
+    if (!state.gameEnded) return;
+    const t = 1 - Math.max(0, state.endTimer) / 2.0;
+    ctx.fillStyle = `rgba(0,0,0,${0.5 * t})`;
+    ctx.fillRect(0, 0, W, H);
+    const w = state.winner >= 0 ? state.players[state.winner] : null;
+    ctx.font = 'bold 48px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = w ? w.label : '#ff5252';
+    const text = w ? (w.isBot ? `BOT ${w.idx + 1} SURVIVED!` : 'YOU SURVIVED!') : 'EVERYONE BURNED!';
+    ctx.fillText(text, W / 2, H / 2);
+}
+
+// ===== Main loop =====
+let lastTime = 0;
+function loop(ts) {
+    const dt = lastTime ? Math.min((ts - lastTime) / 1000, 0.033) : 0.016;
+    lastTime = ts;
+    if (!state) {
+        ctx.fillStyle = '#1a0908';
+        ctx.fillRect(0, 0, W, H);
+    } else {
+        update(dt);
+        if (state) {
+            drawBackground();
+            drawArena();
+            // Sort players by y so a higher player draws on top of a lower one
+            const sorted = [...state.players].sort((a, b) => a.y - b.y);
+            sorted.forEach(drawPlayer);
+            drawLava();
+            drawParticles();
+            drawHUD();
+            drawWinnerOverlay();
+        }
+    }
+    requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

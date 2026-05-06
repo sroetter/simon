@@ -375,14 +375,9 @@ function makeState(mode, difficulty, bots) {
         players.push(makePlayer(i, sx, sy, isBot, paletteOrder[i % paletteOrder.length]));
     }
 
-    // Pick a random initial It from the bots so the human isn't always
-    // chased from the start. (You can still get infected later by touch.)
-    // If somehow there are no bots, fall back to any player.
-    const botIndices = [];
-    for (let i = 0; i < total; i++) if (players[i].isBot) botIndices.push(i);
-    const itIdx = botIndices.length > 0
-        ? botIndices[Math.floor(Math.random() * botIndices.length)]
-        : Math.floor(Math.random() * total);
+    // Pick a uniformly random initial It from EVERYONE (humans included), so
+    // the player can also start as the tagger if they roll into it.
+    const itIdx = Math.floor(Math.random() * total);
     players[itIdx].isIt = true;
     players[itIdx].isOriginalIt = true;
 
