@@ -108,7 +108,7 @@ h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 12px; 
         <div class="controls">
             <b>Controls:</b> A/D or ←/→ to move &middot; W/Space/↑ to jump &middot; Hold <b>Shift</b> to sprint<br>
             Hold jump for a high leap, tap for a short hop. W or ↑ on a ladder to climb.<br>
-            <b>Platforms:</b> 🟢 trampoline (super-bounce), 🟫 cracked stone (collapses fast), 🟡 yellow pressure (yellow→orange→red→break, 3 sec, respawns), 💰 coins.
+            <b>Platforms:</b> 🟢 trampoline (super-bounce), 🟡 yellow pressure (yellow→orange→red→break, 3 sec, then respawns), 💰 coins.
         </div>
 
         <div class="label">Your color:</div>
@@ -262,13 +262,11 @@ function generateArena() {
             const x = i * slotW + Math.random() * Math.max(0, slotW - w - 20) + 10;
             // Roll platform type — special variants make play more dynamic.
             //   bounce: trampoline (~10%)
-            //   crumble: instantly cracks under your feet (~8%)
-            //   pressure: yellow → orange → red → break, then respawns (~12%)
+            //   pressure: yellow → orange → red → break, then respawns (~20%)
             //   regular stone/wood/metal: the rest
             let platType;
             const tr = Math.random();
             if (tr < 0.10) platType = 'bounce';
-            else if (tr < 0.18) platType = 'crumble';
             else if (tr < 0.30) platType = 'pressure';
             else platType = ['stone', 'wood', 'metal'][Math.floor(Math.random() * 3)];
             const plat = { x, y, w, h: 12, type: platType, alive: true };
