@@ -327,6 +327,7 @@ function makeState(humans, bots, mode) {
             skin: '#f0c6a3',
             ai: { jumpCd: 0, target: null, lastY: spawnY, stuckTimer: 0 },
             kills: 0,
+            invulnT: 0,
         });
     }
 
@@ -670,11 +671,34 @@ function updatePlayer(p, dt) {
         p.moving = false;
     }
 
-    // Lava collision
-    if (p.y + PLAYER_H / 2 > state.lavaY) {
+    // Tick invulnerability
+    if (p.invulnT > 0) p.invulnT = Math.max(0, p.invulnT - dt);
+
+    // Lava collision (skipped while invulnerable)
+    if (p.y + PLAYER_H / 2 > state.lavaY && p.invulnT <= 0) {
+        // In Race mode, players respawn above the lava with 5s invuln so the
+        // race never ends from a single mistake. Survival mode = permanent KO.
+        if (state.mode === 'race') {
+            respawnAboveLava(p);
+            // Splash particles
+            for (let i = 0; i < 18; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const sp = 80 + Math.random() * 200;
+                state.particles.push({
+                    x: p.x, y: p.y,
+                    vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 180,
+                    life: 0.7, maxLife: 0.7,
+                    size: 2 + Math.random() * 2,
+                    color: Math.random() < 0.5 ? '#ff5252' : '#ffab40',
+                    gravity: 700,
+                });
+            }
+            lavaSound();
+            return;
+        }
+        // Survival: dead for good.
         p.alive = false;
         p.deathTimer = 0;
-        // Splash particles
         for (let i = 0; i < 30; i++) {
             const a = Math.random() * Math.PI * 2;
             const sp = 80 + Math.random() * 220;
@@ -693,9 +717,55 @@ function updatePlayer(p, dt) {
         });
         lavaSound();
         if (!p.isBot) {
-            state.humanDiedTimer = 2.4;  // brief drama, then back to menu
+            state.humanDiedTimer = 2.4;
         }
     }
+}
+
+// Race-mode respawn: place a fallen player on the lowest platform that's
+// still above the lava and grant 5 sec of invulnerability.
+function respawnAboveLava(p) {
+    // Find the lowest (closest to lava) platform whose top is still above lava
+    let target = null, bestY = -Infinity;
+    for (const plat of state.arena.platforms) {
+        if (plat.alive === false) continue;
+        // Skip the floor — it's submerged once lava rises past it
+        if (plat.y >= state.lavaY - 10) continue;
+        if (plat.y > bestY) { bestY = plat.y; target = plat; }
+    }
+    if (target) {
+        p.x = target.x + target.w / 2;
+        p.y = target.y - PLAYER_H / 2 - 1;
+    } else {
+        // No platform survives — float just above the lava
+        p.x = ARENA_W / 2;
+        p.y = state.lavaY - 50;
+    }
+    p.vx = 0;
+    p.vy = 0;
+    p.prevY = p.y;
+    p.invulnT = 5;
+    p.grounded = true;
+    p.climbing = false;
+    // Burst of green respawn particles
+    for (let i = 0; i < 30; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 80 + Math.random() * 180;
+        state.particles.push({
+            x: p.x, y: p.y,
+            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60,
+            life: 0.6, maxLife: 0.6,
+            size: 2 + Math.random() * 2,
+            color: Math.random() < 0.5 ? '#7cffa3' : '#bbffd1',
+        });
+    }
+    state.particles.push({
+        x: p.x, y: p.y - 50, vx: 0, vy: -30, life: 1.4, maxLife: 1.4,
+        size: 0, color: '#7cffa3', isText: true, text: 'RESPAWN!',
+    });
+    tone(660, 0.08, 'sine', 0.12);
+    setTimeout(() => tone(880, 0.1, 'sine', 0.10), 80);
+    setTimeout(() => tone(1100, 0.12, 'sine', 0.10), 160);
 }
 
 // ===== AI =====
@@ -1422,11 +1492,43 @@ function drawPlayer(p) {
     const w = PLAYER_W * scale, h = PLAYER_H * scale;
     if (y < -50 || y > H + 50) return;
 
+    // Invulnerability bubble (race-mode respawn). Pulses, blinks the player
+    // so it's obvious they're temporarily safe.
+    let invFlashAlpha = 1;
+    if (p.alive && p.invulnT > 0) {
+        const tt = p.invulnT;
+        // Bubble aura
+        const pulse = 0.6 + Math.sin(state.time * 8) * 0.4;
+        const auraR = w * 1.0 + 4 * pulse;
+        const grad = ctx.createRadialGradient(x, y, 2, x, y, auraR);
+        grad.addColorStop(0, `rgba(124,255,163,${0.35 * pulse})`);
+        grad.addColorStop(1, 'rgba(124,255,163,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, auraR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(180,255,200,${0.6 + pulse * 0.3})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, auraR * 0.85, 0, Math.PI * 2);
+        ctx.stroke();
+        // Body blink — speeds up as invuln runs out
+        const blinkRate = tt > 1 ? 6 : 14;
+        invFlashAlpha = (Math.sin(state.time * blinkRate) > 0) ? 1 : 0.55;
+        // Countdown number above head
+        ctx.fillStyle = '#7cffa3';
+        ctx.font = `bold ${Math.round(scaleVal(11))}px Segoe UI`;
+        ctx.textAlign = 'center';
+        ctx.fillText(tt.toFixed(1) + 's', x, y - h * 0.95);
+    }
+
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.beginPath();
     ctx.ellipse(x, y + h / 2 - 2, w * 0.55, w * 0.2, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.globalAlpha *= invFlashAlpha;
 
     if (!p.alive) {
         // Burning flame above body
@@ -1517,6 +1619,9 @@ function drawPlayer(p) {
     ctx.font = `bold ${Math.round(11 * scale)}px Segoe UI`;
     ctx.textAlign = 'center';
     ctx.fillText('P' + (p.idx + 1), x, y - h * 0.85);
+
+    // Reset alpha after invuln blink
+    ctx.globalAlpha = 1;
 }
 
 function drawParticles() {
