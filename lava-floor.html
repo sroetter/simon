@@ -106,9 +106,9 @@ h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 12px; 
         <h1>🌋 LAVA FLOOR 🌋</h1>
         <h2>Climb up — last one out of the lava wins!</h2>
         <div class="controls">
-            <b>Controls (P1):</b> A/D or ←/→ to move &middot; W/Space/↑ to jump &middot; W or ↑ to climb a ladder<br>
-            Platforms are jump-through — you can hop up through them, then land on top.<br>
-            The lava rises faster as the round goes on. <b>Don't touch it.</b>
+            <b>Controls:</b> A/D or ←/→ to move &middot; W/Space/↑ to jump &middot; <b>Hold Shift to sprint</b><br>
+            <b>Hold the jump key for a higher jump, tap for a short hop</b> — timing matters for thin platforms.<br>
+            Platforms are jump-through; W or ↑ on a ladder to climb. The lava rises faster the longer you stall.
         </div>
 
         <div class="label">Your color:</div>
@@ -158,10 +158,14 @@ const gameOverScreen = document.getElementById('gameOverScreen');
 const ARENA_W = 1200;     // wider arena — more room to navigate
 const ARENA_H = 7000;
 const PLAYER_W = 22, PLAYER_H = 32;
-const GRAVITY = 1500;
-const JUMP_V = 620;       // gives ~128px max jump height — comfortably clears a tier
-const MOVE_V = 250;
+const GRAVITY = 1450;        // base gravity (rising)
+const FALL_GRAVITY = 2100;   // heavier when falling — snappy platformer feel
+const JUMP_V = 640;          // ~141 px max jump height (clears a tier with margin)
+const JUMP_CUT_V = -200;     // velocity cap when you release jump early
+const MOVE_V = 230;
+const SPRINT_MULT = 1.55;    // hold Shift to run faster
 const CLIMB_V = 220;
+const COYOTE_TIME = 0.10;    // can still jump for this long after walking off a ledge
 const LADDER_GRAB_TOP_PAD = 8; // can grab from slightly above
 
 let W = 0, H = 0;
@@ -208,9 +212,9 @@ const PLAYER_PALETTE = [
 ];
 
 const DIFF = {
-    easy:   { lavaBase: 16, lavaAccel: 0.45, label: 'Easy' },
-    medium: { lavaBase: 24, lavaAccel: 0.7,  label: 'Medium' },
-    hard:   { lavaBase: 32, lavaAccel: 1.1,  label: 'Hard' },
+    easy:   { lavaBase: 22, lavaAccel: 0.65, label: 'Easy' },
+    medium: { lavaBase: 32, lavaAccel: 1.0,  label: 'Medium' },
+    hard:   { lavaBase: 44, lavaAccel: 1.5,  label: 'Hard' },
 };
 
 let p1ColorIdx = 0;
@@ -235,20 +239,23 @@ function generateArena() {
 
     for (let t = 1; t <= numTiers; t++) {
         const y = tierY(t);
-        // 2-4 platforms per tier (wider arena = more spots)
-        const n = 2 + Math.floor(Math.random() * 3);
+        // Variable platform count — sometimes only 1, sometimes 4. Forces
+        // route planning instead of "always a platform near you".
+        const n = (Math.random() < 0.15 ? 1 : (1 + Math.floor(Math.random() * 4)));
         const tierPlatforms = [];
         for (let i = 0; i < n; i++) {
-            const w = 100 + Math.random() * 120;
+            // Mix of narrow tightrope platforms and big landing pads
+            const isNarrow = Math.random() < 0.3;
+            const w = isNarrow ? (50 + Math.random() * 30) : (90 + Math.random() * 130);
             const slotW = ARENA_W / n;
             const x = i * slotW + Math.random() * Math.max(0, slotW - w - 20) + 10;
             const platType = ['stone', 'wood', 'metal'][Math.floor(Math.random() * 3)];
-            const plat = { x, y, w, h: 14, type: platType };
+            const plat = { x, y, w, h: 12, type: platType };
             tierPlatforms.push(plat);
             platforms.push(plat);
         }
-        // 60% chance: place a ladder going up from one of these platforms
-        if (Math.random() < 0.6) {
+        // Ladder spawn back to ~45% — more jumps required
+        if (Math.random() < 0.45) {
             const target = tierPlatforms[Math.floor(Math.random() * tierPlatforms.length)];
             const ladderX = target.x + target.w / 2 - 8;
             const yTop = y - tierHeight;
@@ -426,7 +433,9 @@ function inputForP1(p, dt) {
     let upHeld = codes['KeyW'] || codes['ArrowUp'];
     let downHeld = codes['KeyS'] || codes['ArrowDown'];
     let jumpJust = consumeJust('KeyW') || consumeJust('Space') || consumeJust('ArrowUp');
-    return { ix, upHeld, downHeld, jumpJust };
+    let jumpHeld = codes['Space'] || codes['KeyW'] || codes['ArrowUp'];
+    let sprint = codes['ShiftLeft'] || codes['ShiftRight'];
+    return { ix, upHeld, downHeld, jumpJust, jumpHeld, sprint };
 }
 
 // ===== Update player =====
@@ -481,16 +490,38 @@ function updatePlayer(p, dt) {
             }
         }
     } else {
-        // Gravity
-        p.vy += GRAVITY * dt;
-        p.vx = cmd.ix * MOVE_V;
-        if (cmd.ix !== 0) p.facing = cmd.ix;
+        // Track time since last grounded for coyote time
+        if (p.grounded) p.coyoteT = COYOTE_TIME;
+        else p.coyoteT = Math.max(0, (p.coyoteT || 0) - dt);
 
-        // Jump
-        if (cmd.jumpJust && p.grounded) {
+        // Split gravity — heavier when falling so jumps feel snappy
+        const g = p.vy < 0 ? GRAVITY : FALL_GRAVITY;
+        p.vy += g * dt;
+
+        // Sprint
+        const speed = MOVE_V * (cmd.sprint ? SPRINT_MULT : 1);
+        // Apply some horizontal damping when no input so you don't slide off
+        if (cmd.ix !== 0) {
+            p.vx = cmd.ix * speed;
+            p.facing = cmd.ix;
+        } else {
+            p.vx *= Math.pow(0.0001, dt); // strong friction
+        }
+
+        // Jump (with coyote time)
+        if (cmd.jumpJust && (p.grounded || p.coyoteT > 0)) {
             p.vy = -JUMP_V;
             p.grounded = false;
+            p.coyoteT = 0;
+            p.jumpHeld = true;
             jumpSound();
+        }
+
+        // Variable jump height: if you release the jump key while still rising,
+        // cut your upward velocity. Hold it longer for a higher jump — that's
+        // the skill input.
+        if (!cmd.jumpHeld && p.vy < JUMP_CUT_V) {
+            p.vy = JUMP_CUT_V;
         }
     }
 
@@ -568,7 +599,7 @@ function updatePlayer(p, dt) {
 
 // ===== AI =====
 function aiCommand(p, dt) {
-    const cmd = { ix: 0, upHeld: false, downHeld: false, jumpJust: false };
+    const cmd = { ix: 0, upHeld: false, downHeld: false, jumpJust: false, jumpHeld: true, sprint: false };
     const a = state.arena;
     p.ai.jumpCd = Math.max(0, p.ai.jumpCd - dt);
     p.ai.stuckTimer += dt;
@@ -637,9 +668,12 @@ function aiCommand(p, dt) {
         return cmd;
     }
 
-    // Walk toward goal x
+    // Walk toward goal x; sprint if there's significant horizontal distance
     const dx = goal.x - p.x;
-    if (Math.abs(dx) > 6) cmd.ix = dx > 0 ? 1 : -1;
+    if (Math.abs(dx) > 6) {
+        cmd.ix = dx > 0 ? 1 : -1;
+        if (Math.abs(dx) > 90) cmd.sprint = true;
+    }
 
     if (goal.kind === 'platform') {
         // Try to jump when reasonably under the platform's x and grounded
