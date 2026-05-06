@@ -356,10 +356,10 @@ function showGameOver() {
     const winnerEl = document.getElementById('winnerText');
     const w = state.winner >= 0 ? state.players[state.winner] : null;
     if (w) {
-        winnerEl.textContent = w.isBot ? `Bot ${w.idx + 1} survived!` : 'You survived!';
+        winnerEl.textContent = w.isBot ? `Bot ${w.idx + 1} WON!!!` : 'You WON!!!';
         winnerEl.style.color = w.label;
     } else {
-        winnerEl.textContent = 'The lava took everyone!';
+        winnerEl.textContent = 'Nobody WON!!!';
         winnerEl.style.color = '#ff5252';
     }
     overlay.classList.remove('hidden');
@@ -1224,7 +1224,7 @@ function drawWinnerOverlay() {
     ctx.font = 'bold 48px Segoe UI';
     ctx.textAlign = 'center';
     ctx.fillStyle = w ? w.label : '#ff5252';
-    const text = w ? (w.isBot ? `BOT ${w.idx + 1} SURVIVED!` : 'YOU SURVIVED!') : 'EVERYONE BURNED!';
+    const text = w ? (w.isBot ? `BOT ${w.idx + 1} WON!!!` : 'YOU WON!!!') : 'NOBODY WON!!!';
     ctx.fillText(text, W / 2, H / 2);
 }
 
