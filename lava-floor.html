@@ -549,12 +549,16 @@ function updatePlayer(p, dt) {
 
         // Sprint
         const speed = MOVE_V * (cmd.sprint ? SPRINT_MULT : 1);
-        // Apply some horizontal damping when no input so you don't slide off
+        // Stop on a dime when grounded — this prevents slipping off the
+        // edge of a platform after releasing the move keys. Air friction
+        // is much milder so you keep momentum mid-jump.
         if (cmd.ix !== 0) {
             p.vx = cmd.ix * speed;
             p.facing = cmd.ix;
+        } else if (p.grounded) {
+            p.vx = 0;                  // instant stop on the ground
         } else {
-            p.vx *= Math.pow(0.0001, dt); // strong friction
+            p.vx *= Math.pow(0.4, dt); // mild air drag (keeps most of jump arc)
         }
 
         // Jump (with coyote time)
