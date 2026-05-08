@@ -772,109 +772,138 @@ function respawnAboveLava(p) {
 function aiCommand(p, dt) {
     const cmd = { ix: 0, upHeld: false, downHeld: false, jumpJust: false, jumpHeld: true, sprint: false };
     const a = state.arena;
+    const isRace = state.mode === 'race';
     p.ai.jumpCd = Math.max(0, p.ai.jumpCd - dt);
-    p.ai.stuckTimer += dt;
-
-    // Basic strategy: find a destination above me. Prefer ladders if near one,
-    // else pick nearest platform whose top is above me.
+    p.ai.stuckTimer = (p.ai.stuckTimer || 0) + dt;
     const myY = p.y;
 
-    // Are we currently on a ladder?
+    // Already on a ladder? Just climb until we top out (or until our feet
+    // are above the next platform we could step onto).
     const onLadder = playerOnLadder(p);
-    if (onLadder && myY > onLadder.y) {
-        // Climb up while on a ladder until we reach its top
+    if (onLadder && myY > onLadder.y + 10) {
         cmd.upHeld = true;
-        // If we've reached a platform at the top, drop input
+        // Center horizontally on ladder so we don't fall off
+        const lcx = onLadder.x + onLadder.w / 2;
+        if (p.x < lcx - 2) cmd.ix = 0.4;
+        else if (p.x > lcx + 2) cmd.ix = -0.4;
         return cmd;
     }
 
-    // Look for the closest platform above us we could realistically reach
-    let target = null;
-    let bestScore = -Infinity;
+    // ---- Score every reachable platform above us ----
+    // JUMP_V=620, GRAVITY=1450 -> max jump height ~132 px.
+    const MAX_JUMP_H = 130;
+    let bestPlat = null, bestPlatScore = -Infinity;
     for (const plat of a.platforms) {
-        if (plat.type === 'top' || plat.type === 'floor') continue;
+        if (plat.alive === false) continue;
+        if (plat.type === 'floor') continue;
         if (plat.y >= myY - 8) continue;
         const dy = myY - plat.y;
         const cx = plat.x + plat.w / 2;
         const dx = Math.abs(p.x - cx);
-        // Reachable height: a single jump tops at ~JUMP_V^2 / (2 * GRAVITY) ≈ 105px
-        if (dy > 130) continue;
-        const score = -dy * 0.6 - dx * 0.4;
-        if (score > bestScore) { bestScore = score; target = plat; }
-    }
-
-    // Look for nearby ladders that go higher
-    let nearestLadder = null, nLD = 9999;
-    for (const l of a.ladders) {
-        if (l.y >= myY - 6) continue;
-        const lx = l.x + l.w / 2;
-        const dx = Math.abs(p.x - lx);
-        const dy = Math.max(0, myY - l.y - l.h); // gap above ladder we'd need to jump
-        if (dx + dy < nLD && dy < 60) {
-            nLD = dx + dy;
-            nearestLadder = l;
+        if (dy > MAX_JUMP_H) continue;       // out of vertical range
+        if (dx > 280) continue;              // too far horizontally even with sprint
+        let score = -dy * 0.5 - dx * 0.35 + plat.w * 0.06;
+        // Strong preference for trampolines — landing on one nets you ~1.7x
+        // jump height for free. Worth detouring for.
+        if (plat.type === 'bounce') score += 70;
+        // Top platform = ultimate goal in race mode
+        if (plat.type === 'top') score += 200;
+        // Avoid pressure platforms whose timer is dangerously low
+        if (plat.type === 'pressure' && plat.pressureStart !== undefined) {
+            const remaining = 3 - (state.time - plat.pressureStart);
+            if (remaining < 1.2) score -= 150;
+            else if (remaining < 2.0) score -= 40;
         }
+        if (score > bestPlatScore) { bestPlatScore = score; bestPlat = plat; }
     }
 
-    // Choose between platform target and ladder
+    // ---- Score every reachable ladder ----
+    let bestLadder = null, bestLadderScore = -Infinity;
+    for (const l of a.ladders) {
+        const lx = l.x + l.w / 2;
+        const ladderBottom = l.y + l.h;
+        if (l.y >= myY - 6) continue;          // ladder must lead higher
+        const dx = Math.abs(p.x - lx);
+        // Vertical distance from us to the ladder's grab zone
+        const verticalGap = myY - ladderBottom;
+        if (verticalGap > 50) continue;        // can't reach it by jumping
+        if (dx > 200) continue;                // too far horizontally
+        const score = -dx * 0.5 - Math.max(0, verticalGap) * 1.5 + 30;
+        if (score > bestLadderScore) { bestLadderScore = score; bestLadder = l; }
+    }
+
+    // ---- Pick the better goal ----
     let goal = null;
-    if (target && nearestLadder) {
-        // Prefer ladder if target is more than 90 px up (we couldn't jump that)
-        const dyToTarget = myY - target.y;
-        if (dyToTarget > 90) goal = { kind: 'ladder', x: nearestLadder.x + nearestLadder.w / 2, y: nearestLadder.y };
-        else goal = { kind: 'platform', x: target.x + target.w / 2, y: target.y, plat: target };
-    } else if (nearestLadder) {
-        goal = { kind: 'ladder', x: nearestLadder.x + nearestLadder.w / 2, y: nearestLadder.y };
-    } else if (target) {
-        goal = { kind: 'platform', x: target.x + target.w / 2, y: target.y, plat: target };
+    if (bestPlat && bestLadder) {
+        if (bestLadderScore > bestPlatScore) {
+            goal = { kind: 'ladder', ladder: bestLadder, x: bestLadder.x + bestLadder.w / 2 };
+        } else {
+            goal = { kind: 'platform', plat: bestPlat, x: bestPlat.x + bestPlat.w / 2 };
+        }
+    } else if (bestLadder) {
+        goal = { kind: 'ladder', ladder: bestLadder, x: bestLadder.x + bestLadder.w / 2 };
+    } else if (bestPlat) {
+        goal = { kind: 'platform', plat: bestPlat, x: bestPlat.x + bestPlat.w / 2 };
     }
 
     if (!goal) {
-        // Fallback: just move toward arena center
+        // Nothing reachable — wander toward arena center & hop opportunistically
         cmd.ix = (ARENA_W / 2 - p.x) > 0 ? 1 : -1;
-        if (p.grounded && p.ai.jumpCd <= 0 && Math.random() < 0.02) {
+        if (p.grounded && p.ai.jumpCd <= 0 && Math.random() < 0.04) {
             cmd.jumpJust = true;
             p.ai.jumpCd = 0.4;
         }
         return cmd;
     }
 
-    // Walk toward goal x; sprint if there's significant horizontal distance
+    // ---- Walk toward the goal ----
     const dx = goal.x - p.x;
     if (Math.abs(dx) > 6) {
         cmd.ix = dx > 0 ? 1 : -1;
-        if (Math.abs(dx) > 90) cmd.sprint = true;
+        // Sprint always in race mode, or for any non-trivial horizontal move.
+        if (isRace || Math.abs(dx) > 70) cmd.sprint = true;
     }
 
     if (goal.kind === 'platform') {
-        // Try to jump when reasonably under the platform's x and grounded
-        const platLeft = goal.plat.x - 12;
-        const platRight = goal.plat.x + goal.plat.w + 12;
-        if (p.grounded && p.x > platLeft && p.x < platRight && p.ai.jumpCd <= 0) {
+        const plat = goal.plat;
+        // Slightly relaxed "over platform" check — gives us a buffer to nail
+        // narrow landings without overshooting.
+        const dyToPlat = p.y - plat.y;
+        const overPlatform = p.x > plat.x - 10 && p.x < plat.x + plat.w + 10;
+        if (p.grounded && overPlatform && dyToPlat > 18 && dyToPlat <= MAX_JUMP_H && p.ai.jumpCd <= 0) {
             cmd.jumpJust = true;
-            p.ai.jumpCd = 0.5;
+            p.ai.jumpCd = 0.4;
         }
     } else if (goal.kind === 'ladder') {
-        // Jump if we need to reach the bottom of the ladder
-        const ldLeft = goal.x - 24, ldRight = goal.x + 24;
-        if (p.grounded && p.x > ldLeft && p.x < ldRight) {
-            // If the ladder bottom is above us, jump up to grab
-            if (p.y - goal.y > 60 && p.ai.jumpCd <= 0) {
+        const lcx = goal.ladder.x + goal.ladder.w / 2;
+        const ladderBottom = goal.ladder.y + goal.ladder.h;
+        const dxL = Math.abs(p.x - lcx);
+        // Once we're at the ladder's column, climb (or hop up to grab it).
+        if (dxL < 16) {
+            if (p.y > ladderBottom + 6 && p.grounded && p.ai.jumpCd <= 0) {
                 cmd.jumpJust = true;
                 p.ai.jumpCd = 0.4;
             } else {
-                cmd.upHeld = true; // step into the ladder
+                cmd.upHeld = true;
             }
         }
     }
 
-    // Anti-stuck: if we haven't moved much in 1.5s, do a random jump
-    if (Math.abs(p.y - p.ai.lastY) < 12 && p.ai.stuckTimer > 1.5) {
-        cmd.jumpJust = p.grounded && p.ai.jumpCd <= 0;
-        if (cmd.jumpJust) p.ai.jumpCd = 0.5;
+    // ---- Anti-stuck: if we've barely moved in y for 1.2s, force a hop ----
+    if (Math.abs(p.y - (p.ai.lastY || p.y)) < 10 && p.ai.stuckTimer > 1.2) {
+        // Mix in a different horizontal direction + a jump
+        cmd.ix = (Math.random() < 0.5 ? -1 : 1);
+        cmd.sprint = true;
+        if (p.grounded && p.ai.jumpCd <= 0) {
+            cmd.jumpJust = true;
+            p.ai.jumpCd = 0.5;
+        }
         p.ai.stuckTimer = 0;
+        p.ai.lastY = p.y;
+    } else if (p.ai.stuckTimer > 0.4) {
+        p.ai.lastY = p.y;
     }
-    if (p.ai.stuckTimer > 0.5) p.ai.lastY = p.y;
+
     return cmd;
 }
 
