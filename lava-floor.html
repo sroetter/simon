@@ -825,6 +825,11 @@ function aiCommand(p, dt) {
     // ---- Score every reachable platform above us ----
     // JUMP_V=620, GRAVITY=1450 -> max jump height ~132 px.
     const MAX_JUMP_H = 130;
+    // Lava urgency: 0 when comfortably above the lava, ramps up to 1 when
+    // we're right on top of it. Used to reward climbing fast.
+    const lavaDist = state.lavaY - myY;
+    const urgency = Math.max(0, Math.min(1, (500 - lavaDist) / 500));
+
     let bestPlat = null, bestPlatScore = -Infinity;
     for (const plat of a.platforms) {
         if (plat.alive === false) continue;
@@ -835,18 +840,22 @@ function aiCommand(p, dt) {
         const dx = Math.abs(p.x - cx);
         if (dy > MAX_JUMP_H) continue;       // out of vertical range
         if (dx > 280) continue;              // too far horizontally even with sprint
-        let score = -dy * 0.5 - dx * 0.35 + plat.w * 0.06;
-        // Strong preference for trampolines — landing on one nets you ~1.7x
-        // jump height for free. Worth detouring for.
-        if (plat.type === 'bounce') score += 70;
+        // HEIGHT-FIRST scoring: prefer platforms that are HIGHER (bigger dy).
+        // Was previously biased toward closer ones, which let bots dawdle on
+        // the same tier and just ride the lava up.
+        let score = dy * 0.6 - dx * 0.35 + plat.w * 0.05;
+        // Trampolines: huge height gain — heavily favored
+        if (plat.type === 'bounce') score += 90;
         // Top platform = ultimate goal in race mode
-        if (plat.type === 'top') score += 200;
+        if (plat.type === 'top') score += 300;
         // Avoid pressure platforms whose timer is dangerously low
         if (plat.type === 'pressure' && plat.pressureStart !== undefined) {
             const remaining = 3 - (state.time - plat.pressureStart);
             if (remaining < 1.2) score -= 150;
             else if (remaining < 2.0) score -= 40;
         }
+        // When the lava is breathing down our neck, weight height even harder
+        score += urgency * dy * 0.6;
         if (score > bestPlatScore) { bestPlatScore = score; bestPlat = plat; }
     }
 
@@ -893,29 +902,27 @@ function aiCommand(p, dt) {
     const dx = goal.x - p.x;
     if (Math.abs(dx) > 6) {
         cmd.ix = dx > 0 ? 1 : -1;
-        // Sprint always in race mode, or for any non-trivial horizontal move.
-        if (isRace || Math.abs(dx) > 70) cmd.sprint = true;
+        // Sprint always in race mode, when lava is close, or for any
+        // non-trivial horizontal move.
+        if (isRace || urgency > 0.2 || Math.abs(dx) > 60) cmd.sprint = true;
     }
 
     if (goal.kind === 'platform') {
         const plat = goal.plat;
-        // Slightly relaxed "over platform" check — gives us a buffer to nail
-        // narrow landings without overshooting.
         const dyToPlat = p.y - plat.y;
         const overPlatform = p.x > plat.x - 10 && p.x < plat.x + plat.w + 10;
         if (p.grounded && overPlatform && dyToPlat > 18 && dyToPlat <= MAX_JUMP_H && p.ai.jumpCd <= 0) {
             cmd.jumpJust = true;
-            p.ai.jumpCd = 0.4;
+            p.ai.jumpCd = 0.15;     // shorter so we chain jumps quickly
         }
     } else if (goal.kind === 'ladder') {
         const lcx = goal.ladder.x + goal.ladder.w / 2;
         const ladderBottom = goal.ladder.y + goal.ladder.h;
         const dxL = Math.abs(p.x - lcx);
-        // Once we're at the ladder's column, climb (or hop up to grab it).
         if (dxL < 16) {
             if (p.y > ladderBottom + 6 && p.grounded && p.ai.jumpCd <= 0) {
                 cmd.jumpJust = true;
-                p.ai.jumpCd = 0.4;
+                p.ai.jumpCd = 0.15;
             } else {
                 cmd.upHeld = true;
             }
@@ -954,7 +961,8 @@ function updateLava(dt) {
 // nothing falls off.
 function updateCamera(dt) {
     const humans = state.players.filter(p => !p.isBot && p.alive);
-    // The "tracked" range: from the highest alive human (smallest y) to the lava
+    // The "tracked" range: from a generous buffer ABOVE the highest alive
+    // human (so you can see a few tiers ahead) down to the lava.
     let topY, bottomY;
     if (humans.length > 0) {
         let minY = Infinity;
@@ -963,7 +971,7 @@ function updateCamera(dt) {
             if (h.y < minY) minY = h.y;
             if (h.y > maxY) maxY = h.y;
         }
-        topY = minY - 80;
+        topY = minY - 240;       // ~2-3 tiers visible above the player
         bottomY = state.lavaY + 80;
     } else {
         // No humans — show lava and the lowest alive bot, or just lava
@@ -1008,9 +1016,9 @@ function updateCamera(dt) {
             for (const h of humans) if (h.y < minY) minY = h.y;
             playerY = minY;
         } else {
-            playerY = topY + 80;
+            playerY = topY + 240;
         }
-        camY = playerY - visH * 0.45; // place player at ~45% from top
+        camY = playerY - visH * 0.65; // player at ~65% down so you see ahead
     } else {
         // Both fit — center on the tracked range
         const midY = (topY + bottomY) / 2;
