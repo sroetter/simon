@@ -108,7 +108,8 @@ h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 12px; 
         <div class="controls">
             <b>Controls:</b> A/D or ←/→ to move &middot; W/Space/↑ to jump &middot; Hold <b>Shift</b> to sprint<br>
             Hold jump for a high leap, tap for a short hop. W or ↑ on a ladder to climb.<br>
-            <b>Platforms:</b> 🟢 trampoline (super-bounce), 🟡 yellow pressure (yellow→orange→red→break, 3 sec, then respawns), 💰 coins.
+            <b>Platforms:</b> 🟢 trampoline (super-bounce), 🟡 yellow pressure (yellow→orange→red→break, 3 sec, then respawns).<br>
+            <b>💰 Coins:</b> grab them off platforms; press <b>R</b> (P2: <b>/</b>) to spend 10 coins for a 🚀 <b>rocket boost</b> (mega jump).
         </div>
 
         <div class="label">Your color:</div>
@@ -176,6 +177,10 @@ const MOVE_V = 200;          // less sensitive walk speed (was 230)
 const SPRINT_MULT = 1.45;    // tamer sprint (was 1.55)
 const CLIMB_V = 200;
 const COYOTE_TIME = 0.10;
+
+// ===== Coin-spend power-up =====
+const ROCKET_COST = 10;        // R: spend coins for an instant super-jump
+const ROCKET_BOOST = 1.8;      // multiplier on JUMP_V
 const LADDER_GRAB_TOP_PAD = 8; // can grab from slightly above
 
 let W = 0, H = 0;
@@ -513,7 +518,11 @@ function inputForHuman(p, dt) {
         jumpHeld = codes['ArrowUp'] || codes['Enter'];
         sprint = codes['ShiftRight'];
     }
-    return { ix, upHeld, downHeld, jumpJust, jumpHeld, sprint };
+    // Rocket boost: R for P1, /  for P2 (consumes coins, mega jump)
+    let rocket = false;
+    if (p.idx === 0 && consumeJust('KeyR')) rocket = true;
+    if (p.idx === 1 && consumeJust('Slash')) rocket = true;
+    return { ix, upHeld, downHeld, jumpJust, jumpHeld, sprint, rocket };
 }
 
 // ===== Update player =====
@@ -604,6 +613,32 @@ function updatePlayer(p, dt) {
         // the skill input.
         if (!cmd.jumpHeld && p.vy < JUMP_CUT_V) {
             p.vy = JUMP_CUT_V;
+        }
+
+        // Rocket boost — spend coins for a much higher jump anywhere
+        if (cmd.rocket && (p.coins || 0) >= ROCKET_COST) {
+            p.coins -= ROCKET_COST;
+            p.vy = -JUMP_V * ROCKET_BOOST;
+            p.grounded = false;
+            // Audio + particles
+            tone(420, 0.05, 'square', 0.10);
+            setTimeout(() => tone(660, 0.06, 'square', 0.10), 40);
+            setTimeout(() => tone(990, 0.08, 'square', 0.10), 80);
+            for (let i = 0; i < 18; i++) {
+                state.particles.push({
+                    x: p.x + (Math.random() - 0.5) * 12,
+                    y: p.y + PLAYER_H / 2,
+                    vx: (Math.random() - 0.5) * 80,
+                    vy: 80 + Math.random() * 80,
+                    life: 0.5, maxLife: 0.5,
+                    size: 2 + Math.random() * 2,
+                    color: Math.random() < 0.5 ? '#ffd54f' : '#ff7043',
+                });
+            }
+            state.particles.push({
+                x: p.x, y: p.y - 30, vx: 0, vy: -30, life: 1.0, maxLife: 1.0,
+                size: 0, color: '#ffd54f', isText: true, text: '🚀 ROCKET!',
+            });
         }
     }
 
@@ -1779,12 +1814,16 @@ function drawHUD() {
     ctx.fillStyle = '#ffab40';
     const speed = state.cfg.lavaBase + state.cfg.lavaAccel * state.time;
     ctx.fillText(`Lava: ${speed.toFixed(0)}px/s`, W - 16, 32);
-    // Coin counter
+    // Coin counter + rocket-boost prompt
     const me = state.players.find(p => !p.isBot);
     if (me) {
         ctx.fillStyle = '#ffd54f';
         ctx.font = 'bold 16px Segoe UI';
         ctx.fillText(`💰 ${me.coins || 0}`, W - 16, 56);
+        const canRocket = (me.coins || 0) >= ROCKET_COST;
+        ctx.fillStyle = canRocket ? '#7cffa3' : 'rgba(255,255,255,0.4)';
+        ctx.font = 'bold 13px Segoe UI';
+        ctx.fillText(`[R] 🚀 ROCKET — ${ROCKET_COST}💰`, W - 16, 76);
     }
 
     // If the lava is off the bottom of the screen, show a "lava below" bar
