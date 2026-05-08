@@ -168,14 +168,14 @@ const gameOverScreen = document.getElementById('gameOverScreen');
 const ARENA_W = 1200;     // wider arena — more room to navigate
 const ARENA_H = 7000;
 const PLAYER_W = 22, PLAYER_H = 32;
-const GRAVITY = 1450;        // base gravity (rising)
-const FALL_GRAVITY = 2100;   // heavier when falling — snappy platformer feel
-const JUMP_V = 640;          // ~141 px max jump height (clears a tier with margin)
-const JUMP_CUT_V = -200;     // velocity cap when you release jump early
-const MOVE_V = 230;
-const SPRINT_MULT = 1.55;    // hold Shift to run faster
-const CLIMB_V = 220;
-const COYOTE_TIME = 0.10;    // can still jump for this long after walking off a ledge
+const GRAVITY = 1450;
+const FALL_GRAVITY = 2100;
+const JUMP_V = 600;          // slightly tamer (~125 px max jump height)
+const JUMP_CUT_V = -200;
+const MOVE_V = 200;          // less sensitive walk speed (was 230)
+const SPRINT_MULT = 1.45;    // tamer sprint (was 1.55)
+const CLIMB_V = 200;
+const COYOTE_TIME = 0.10;
 const LADDER_GRAB_TOP_PAD = 8; // can grab from slightly above
 
 let W = 0, H = 0;
@@ -636,6 +636,9 @@ function updatePlayer(p, dt) {
                     // Trampoline: launch UP with extra power
                     p.vy = -JUMP_V * 1.7;
                     p.grounded = false;
+                    // No-input bounce shouldn't carry sideways momentum — kill
+                    // any residual vx so the player doesn't slide off mid-air.
+                    if (cmd.ix === 0) p.vx = 0;
                     tone(440, 0.06, 'square', 0.10);
                     setTimeout(() => tone(720, 0.08, 'square', 0.10), 50);
                     // Bounce particles
