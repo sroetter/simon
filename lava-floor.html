@@ -249,10 +249,12 @@ function generateArena() {
     // put it 140 px up which was just out of jump range)
     const tierY = (i) => ARENA_H - 30 - i * tierHeight;
 
+    let prevTierPlatforms = []; // used to guarantee a reachable horizontal pair
     for (let t = 1; t <= numTiers; t++) {
         const y = tierY(t);
-        // 2-4 platforms per tier (occasionally 1 for variety)
-        const n = (Math.random() < 0.08 ? 1 : (2 + Math.floor(Math.random() * 3)));
+        // Always at least 2 platforms per tier so there's no isolated single-platform
+        // dead end. (Was occasionally 1 — that caused a lot of stuck moments.)
+        const n = 2 + Math.floor(Math.random() * 3);
         const tierPlatforms = [];
         for (let i = 0; i < n; i++) {
             // Occasional narrow tightrope (15% of platforms) for variety
@@ -277,13 +279,40 @@ function generateArena() {
             tierPlatforms.push(plat);
             platforms.push(plat);
         }
-        // Ladder spawn ~50% — fair vertical paths
-        if (Math.random() < 0.5) {
+        // Ladder spawn rate raised to 75% — fewer dead ends to climb out of.
+        if (Math.random() < 0.75) {
             const target = tierPlatforms[Math.floor(Math.random() * tierPlatforms.length)];
             const ladderX = target.x + target.w / 2 - 8;
             const yTop = y - tierHeight;
             ladders.push({ x: ladderX, y: yTop, w: 16, h: y - yTop + 4 });
         }
+
+        // Connectivity check: ensure at least one platform on this tier is
+        // within horizontal jumping range (~220 px) of a platform on the
+        // previous tier. If not, add a small bridge platform between them.
+        if (prevTierPlatforms.length > 0) {
+            let bestPair = Infinity;
+            for (const prev of prevTierPlatforms) {
+                const prevCx = prev.x + prev.w / 2;
+                for (const cur of tierPlatforms) {
+                    const curCx = cur.x + cur.w / 2;
+                    const dx = Math.abs(prevCx - curCx);
+                    if (dx < bestPair) bestPair = dx;
+                }
+            }
+            if (bestPair > 220) {
+                // Insert a bridge platform between an arbitrary prev/cur pair
+                const prev = prevTierPlatforms[0];
+                const prevCx = prev.x + prev.w / 2;
+                const bridgeY = y;
+                const bw = 90;
+                const bx = prevCx - bw / 2;
+                const bridge = { x: Math.max(10, Math.min(ARENA_W - bw - 10, bx)), y: bridgeY, w: bw, h: 12, type: 'stone', alive: true };
+                tierPlatforms.push(bridge);
+                platforms.push(bridge);
+            }
+        }
+        prevTierPlatforms = tierPlatforms;
     }
 
     // Top safe lip
@@ -958,18 +987,37 @@ function updateCamera(dt) {
     // Height fit (so both topY and bottomY are visible)
     const verticalNeeded = bottomY - topY;
     const heightScale = H / Math.max(H, verticalNeeded);
-    // Final zoom = min of both, but never too tiny
-    const targetZoom = Math.max(0.35, Math.min(widthScale, heightScale, 1.2));
+    // Cap the zoom-out: when you're way ahead, don't shrink the world to a
+    // postage stamp. We instead let the lava fall off the bottom of the screen
+    // and just keep the player visible.
+    const MIN_ZOOM = 0.75;
+    const idealZoom = Math.min(widthScale, heightScale, 1.2);
+    const targetZoom = Math.max(MIN_ZOOM, idealZoom);
     state.zoom += (targetZoom - state.zoom) * 4 * dt;
 
-    // Camera Y: place tracked range centered vertically in the viewport
+    // Camera Y
     const scale = state.zoom;
     const visH = H / scale;
-    const midY = (topY + bottomY) / 2;
-    let camY = midY - visH / 2;
-    // Hard guarantee: lava is visible — clamp camY so bottomY stays on screen
-    if (camY + visH < state.lavaY + 40) camY = state.lavaY + 40 - visH;
-    // Don't scroll below the world floor too far
+    let camY;
+    if (idealZoom < MIN_ZOOM) {
+        // Gap is too big to fit both — lock onto the highest alive player
+        // and keep them in view. Lava goes off the bottom of the screen.
+        let playerY;
+        if (humans.length > 0) {
+            let minY = Infinity;
+            for (const h of humans) if (h.y < minY) minY = h.y;
+            playerY = minY;
+        } else {
+            playerY = topY + 80;
+        }
+        camY = playerY - visH * 0.45; // place player at ~45% from top
+    } else {
+        // Both fit — center on the tracked range
+        const midY = (topY + bottomY) / 2;
+        camY = midY - visH / 2;
+        // Hard guarantee: lava visible
+        if (camY + visH < state.lavaY + 40) camY = state.lavaY + 40 - visH;
+    }
     const maxCam = ARENA_H - visH + 300;
     if (camY > maxCam) camY = maxCam;
 
@@ -1726,6 +1774,20 @@ function drawHUD() {
         ctx.fillStyle = '#ffd54f';
         ctx.font = 'bold 16px Segoe UI';
         ctx.fillText(`💰 ${me.coins || 0}`, W - 16, 56);
+    }
+
+    // If the lava is off the bottom of the screen, show a "lava below" bar
+    const lavaScreenY = (state.lavaY - state.cameraY) * cameraScale();
+    if (lavaScreenY > H + 4) {
+        const distBelow = Math.round((lavaScreenY - H) / cameraScale());
+        // Pulsing red bar across the bottom edge
+        const pulse = 0.5 + Math.sin(state.time * 4) * 0.5;
+        ctx.fillStyle = `rgba(255,87,34,${0.5 + pulse * 0.3})`;
+        ctx.fillRect(0, H - 6, W, 6);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 14px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText(`▼ LAVA ${distBelow}px BELOW ▼`, W / 2, H - 12);
     }
 
     // Lava warning indicator (if lava is close to a human)
