@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Capture the Flag - Simon's Game Gallery</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #0d1d12;
+    min-height: 100vh; overflow: hidden;
+    color: white;
+    -webkit-user-select: none; user-select: none;
+}
+canvas { display: block; position: absolute; top: 0; left: 0; cursor: default; }
+
+.back-btn {
+    position: fixed; top: 14px; left: 14px;
+    text-decoration: none; color: #b0e0a0;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(176,224,160,0.55);
+    padding: 8px 14px; border-radius: 8px;
+    font-size: 14px; z-index: 100;
+}
+.back-btn:hover { background: rgba(176,224,160,0.18); }
+
+#overlay {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50; background: rgba(0,0,0,0.78);
+}
+#overlay.hidden { display: none; }
+
+.box {
+    background: linear-gradient(135deg, #1f3d1c, #0f1f0e);
+    border: 3px solid #b0e0a0;
+    border-radius: 18px;
+    padding: 26px 34px; text-align: center;
+    width: 92%; max-width: 620px;
+    box-shadow: 0 16px 60px rgba(0,0,0,0.7), 0 0 50px rgba(176,224,160,0.18);
+}
+h1 {
+    font-size: 44px; margin-bottom: 4px;
+    color: #fff; letter-spacing: 2px;
+    text-shadow: 0 0 18px rgba(176,224,160,0.55), 2px 2px 0 #0f1f0e;
+}
+h2 { font-size: 18px; color: #d6e6c5; font-weight: normal; margin-bottom: 14px; }
+
+.controls { background: rgba(0,0,0,0.32); padding: 12px; border-radius: 8px;
+    text-align: left; line-height: 1.55; font-size: 14px; color: #e9f4d8; margin: 10px 0; }
+.controls b { color: #ffd54f; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; }
+.btn {
+    background: linear-gradient(135deg, #66bb6a, #2e7d32);
+    color: white; border: 2px solid #c8e6c9;
+    padding: 12px 26px; font-size: 17px; font-weight: bold;
+    border-radius: 10px; cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: 0 4px 0 #1b5e20;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #1b5e20; }
+.btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #1b5e20; }
+.btn.diff { padding: 8px 18px; font-size: 14px; min-width: 90px; background: linear-gradient(135deg, #455a64, #263238); border-color: #b0bec5; box-shadow: 0 4px 0 #1a232a; }
+.btn.diff.bots { padding: 6px 12px; min-width: 0; }
+.btn.diff.active { background: linear-gradient(135deg, #ff7f50, #d63300); border-color: #ffd9c2; box-shadow: 0 4px 0 #771c00; }
+.label { font-size: 13px; color: #d6e6c5; margin: 8px 0 4px; }
+.winner { font-size: 30px; font-weight: bold; margin: 12px 0; }
+.winner.red { color: #ff7070; text-shadow: 0 0 16px rgba(255,80,80,0.55); }
+.winner.blue { color: #6aa9ff; text-shadow: 0 0 16px rgba(80,160,255,0.55); }
+.footer-link {
+    position: fixed; bottom: 8px; left: 0; right: 0;
+    text-align: center; font-size: 12px;
+    color: rgba(255,255,255,0.4); z-index: 60; pointer-events: none;
+}
+.footer-link a { color: rgba(255,255,255,0.65); text-decoration: underline; pointer-events: auto; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+
+<div id="overlay">
+    <div class="box" id="startScreen">
+        <h1>🚩 CAPTURE THE FLAG 🚩</h1>
+        <h2>Steal the enemy flag &middot; bring it home &middot; first to 3 wins</h2>
+        <div class="controls">
+            <b>Controls (P1, Red):</b> WASD move &middot; Hold Shift to sprint<br>
+            <b>Controls (P2, Blue, 2P only):</b> Arrow keys move &middot; Right-Shift sprint<br>
+            <br>
+            <b>Rules:</b><br>
+            • You're <b>safe</b> on your own half. Cross the dotted line and enemies can <b>tag</b> you.<br>
+            • Tag = touch an enemy on YOUR half. They drop any flag and respawn at base.<br>
+            • Grab the enemy flag (touch it), run it back across the line to YOUR base.<br>
+            • Your own flag must be at base when you score, or it doesn't count.<br>
+            • If a flag is dropped, your team can return it (touch) or the enemy can pick it up.
+        </div>
+
+        <div class="label">Players per team:</div>
+        <div class="row">
+            <button class="btn diff bots" data-bots="2">2v2</button>
+            <button class="btn diff bots active" data-bots="3">3v3</button>
+            <button class="btn diff bots" data-bots="4">4v4</button>
+            <button class="btn diff bots" data-bots="5">5v5</button>
+        </div>
+
+        <div class="label">Bot difficulty:</div>
+        <div class="row">
+            <button class="btn diff" data-diff="easy">Easy</button>
+            <button class="btn diff active" data-diff="medium">Medium</button>
+            <button class="btn diff" data-diff="hard">Hard</button>
+        </div>
+
+        <div class="row">
+            <button class="btn" id="start1PBtn">1 Player</button>
+            <button class="btn" id="start2PBtn">2 Players</button>
+        </div>
+    </div>
+
+    <div class="box" id="gameOverScreen" style="display:none;">
+        <h1>GAME OVER</h1>
+        <div class="winner" id="winnerText"></div>
+        <div id="scoreText" style="font-size:18px;color:#e9f4d8;margin-bottom:10px;"></div>
+        <div class="row">
+            <button class="btn" id="rematchBtn">Rematch</button>
+            <button class="btn" id="menuBtn" style="background: linear-gradient(135deg, #455a64, #263238); border-color: #b0bec5; box-shadow: 0 4px 0 #1a232a;">Main Menu</button>
+        </div>
+    </div>
+</div>
+
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<script>
+(() => {
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startScreen = document.getElementById('startScreen');
+const gameOverScreen = document.getElementById('gameOverScreen');
+
+let W = 0, H = 0;
+let state = null;
+function resize() {
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W; canvas.height = H;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ===== Audio =====
+let audioCtx = null;
+function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+function tone(freq, dur, type = 'sine', vol = 0.15) {
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+}
+function tagSound() { tone(220, 0.1, 'sawtooth', 0.14); setTimeout(() => tone(140, 0.15, 'sawtooth', 0.1), 60); }
+function pickupSound() { tone(660, 0.07, 'sine', 0.12); setTimeout(() => tone(880, 0.09, 'sine', 0.1), 50); }
+function captureSound() {
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.18, 'square', 0.14), i * 100));
+}
+function flagReturnSound() { tone(440, 0.08, 'triangle', 0.12); setTimeout(() => tone(660, 0.1, 'triangle', 0.1), 80); }
+
+// ===== Constants =====
+const PLAYER_R = 16;
+const PLAYER_SPEED = 150;        // slower across the board
+const SPRINT_MULT = 1.45;
+const WIN_SCORE = 3;
+const TAG_RANGE = PLAYER_R * 2 - 4;
+const FLAG_PICKUP_RANGE = PLAYER_R + 14;
+const TAG_RESPAWN_TIME = 10;     // long timeout — bigger penalty for being tagged
+const FLAG_RETURN_TIME = 12;     // dropped flag returns to base after 12s
+const VISION_R = 240;            // humans see things only within this radius
+
+const DIFF = {
+    easy:   { reactSpeed: 0.70, predict: 0.4,  baseChase: 0.45, label: 'Easy' },
+    medium: { reactSpeed: 0.95, predict: 0.7,  baseChase: 0.7,  label: 'Medium' },
+    hard:   { reactSpeed: 1.10, predict: 1.0,  baseChase: 0.95, label: 'Hard' },
+};
+
+let teamSize = 3; // bots per team (excluding humans)
+let currentDifficulty = 'medium';
+
+// ===== State =====
+function makeState(humans, bots) {
+    const cfg = DIFF[currentDifficulty];
+    const arena = computeArena();
+    // Two teams: red on left, blue on right.
+    // 1P mode: human is on red. Bots split: bots-1 on red side, bots on blue.
+    // 2P mode: P1 red, P2 blue. Each team has bots additional.
+    const teamCounts = humans === 2
+        ? { red: 1 + bots, blue: 1 + bots }
+        : { red: 1 + Math.max(0, bots - 1), blue: bots };
+
+    const players = [];
+    let nextIdx = 0;
+    function spawn(team, isBot, slot, slotsTotal) {
+        const cx = team === 'red' ? arena.x + 80 : arena.x + arena.w - 80;
+        const cy = arena.y + arena.h * (slot + 1) / (slotsTotal + 1);
+        players.push({
+            idx: nextIdx++,
+            team,
+            isBot,
+            x: cx, y: cy,
+            spawnX: cx, spawnY: cy,
+            vx: 0, vy: 0,
+            facing: team === 'red' ? 0 : Math.PI,
+            alive: true,
+            respawnTimer: 0,
+            hasFlag: null,        // 'red'|'blue'|null — what flag they're carrying
+            tagFlash: 0,
+            invuln: 0,            // brief invuln on respawn
+            animTime: 0,
+            ai: { decision: 0, target: null, role: 'attack', jukeT: 0, jukeDir: 1 },
+            color: team === 'red' ? '#d8463c' : '#3d6fc8',
+            dark:  team === 'red' ? '#9a2c25' : '#264a8a',
+            label: team === 'red' ? '#ff7070' : '#6aa9ff',
+            captures: 0,
+            tags: 0,
+            sprint: false,
+        });
+    }
+    let slot = 0;
+    spawn('red', humans < 1, slot, teamCounts.red);  // P1 / first red
+    for (let i = 1; i < teamCounts.red; i++) spawn('red', true, ++slot, teamCounts.red);
+    slot = 0;
+    spawn('blue', humans < 2, slot, teamCounts.blue); // P2 / first blue
+    for (let i = 1; i < teamCounts.blue; i++) spawn('blue', true, ++slot, teamCounts.blue);
+
+    // Flags
+    const redFlagX = arena.x + 60, blueFlagX = arena.x + arena.w - 60;
+    const flagY = arena.y + arena.h / 2;
+    const flags = {
+        red:  { team: 'red',  baseX: redFlagX,  baseY: flagY, x: redFlagX,  y: flagY, carriedBy: null, atBase: true, returnTimer: 0 },
+        blue: { team: 'blue', baseX: blueFlagX, baseY: flagY, x: blueFlagX, y: flagY, carriedBy: null, atBase: true, returnTimer: 0 },
+    };
+
+    return {
+        cfg, humans, players, flags, arena,
+        score: { red: 0, blue: 0 },
+        time: 0,
+        gameEnded: false, winner: null, endTimer: 0, running: true,
+        humanDiedTimer: 0, // not used here, kept for parity
+        particles: [],
+        announceText: '', announceTimer: 0,
+        camX: arena.x + arena.w / 2,
+        camY: arena.y + arena.h / 2,
+        zoom: 1,
+        cooldownLineDash: 0,
+    };
+}
+
+function computeArena() {
+    const margin = 40;
+    const w = Math.max(1300, W * 0.95);
+    const h = Math.max(700, Math.min(W * 0.55, H - margin * 2 - 80));
+    return { x: -w / 2, y: -h / 2 + 20, w, h };
+}
+
+// ===== Input =====
+const keys = {};
+const codes = {};
+const justPressed = {};
+window.addEventListener('keydown', e => {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    if (!codes[e.code]) justPressed[e.code] = true;
+    codes[e.code] = true;
+    keys[e.key.toLowerCase()] = true;
+});
+window.addEventListener('keyup', e => { codes[e.code] = false; keys[e.key.toLowerCase()] = false; });
+function consumeJust(code) { if (justPressed[code]) { justPressed[code] = false; return true; } return false; }
+
+// ===== Game flow =====
+function startGame(humans) {
+    initAudio();
+    state = makeState(humans, teamSize);
+    overlay.classList.add('hidden');
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = 'none';
+    announce('CAPTURE THE FLAG!', 1.6);
+}
+function announce(txt, dur) {
+    state.announceText = txt;
+    state.announceTimer = dur || 1.6;
+}
+function endGame(team) {
+    if (state.gameEnded) return;
+    state.gameEnded = true;
+    state.winner = team;
+    state.endTimer = 2.0;
+    captureSound();
+}
+function showGameOver() {
+    state.running = false;
+    const winnerEl = document.getElementById('winnerText');
+    if (state.winner === 'red') {
+        winnerEl.textContent = state.humans === 2 ? '🔴 RED TEAM WINS!' : 'YOUR TEAM (RED) WINS!';
+        winnerEl.className = 'winner red';
+    } else if (state.winner === 'blue') {
+        winnerEl.textContent = state.humans === 2 ? '🔵 BLUE TEAM WINS!' : 'BLUE TEAM WINS';
+        winnerEl.className = 'winner blue';
+    } else {
+        winnerEl.textContent = 'Stalemate';
+        winnerEl.className = 'winner';
+    }
+    document.getElementById('scoreText').textContent = `Final score: Red ${state.score.red} — Blue ${state.score.blue}`;
+    overlay.classList.remove('hidden');
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = '';
+}
+
+document.querySelectorAll('.btn.diff').forEach(b => {
+    b.addEventListener('click', () => {
+        const isBots = b.classList.contains('bots');
+        const sel = isBots ? '.btn.diff.bots' : '.btn.diff:not(.bots)';
+        document.querySelectorAll(sel).forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        if (isBots) teamSize = parseInt(b.dataset.bots, 10);
+        else currentDifficulty = b.dataset.diff;
+    });
+});
+document.getElementById('start1PBtn').addEventListener('click', () => startGame(1));
+document.getElementById('start2PBtn').addEventListener('click', () => startGame(2));
+document.getElementById('rematchBtn').addEventListener('click', () => startGame(state ? state.humans : 1));
+document.getElementById('menuBtn').addEventListener('click', () => {
+    state = null;
+    overlay.classList.remove('hidden');
+    startScreen.style.display = '';
+    gameOverScreen.style.display = 'none';
+});
+
+// ===== Helpers =====
+function clampToArena(p, r) {
+    const a = state.arena;
+    if (p.x < a.x + r) p.x = a.x + r;
+    if (p.x > a.x + a.w - r) p.x = a.x + a.w - r;
+    if (p.y < a.y + r) p.y = a.y + r;
+    if (p.y > a.y + a.h - r) p.y = a.y + a.h - r;
+}
+function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+function isOnOwnHalf(p) {
+    const cx = state.arena.x + state.arena.w / 2;
+    return p.team === 'red' ? p.x < cx : p.x > cx;
+}
+
+// ===== Update =====
+function dropFlag(p) {
+    if (!p.hasFlag) return;
+    const f = state.flags[p.hasFlag];
+    f.x = p.x; f.y = p.y;
+    f.carriedBy = null;
+    f.atBase = false;
+    f.returnTimer = FLAG_RETURN_TIME;
+    p.hasFlag = null;
+}
+
+function tagPlayer(p, byTeam) {
+    if (!p.alive || p.invuln > 0) return;
+    if (p.hasFlag) dropFlag(p);
+    p.alive = false;
+    p.respawnTimer = TAG_RESPAWN_TIME;
+    p.tagFlash = 0.4;
+    tagSound();
+    // tag burst
+    for (let i = 0; i < 16; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 60 + Math.random() * 160;
+        state.particles.push({
+            x: p.x, y: p.y,
+            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30,
+            life: 0.6, maxLife: 0.6,
+            size: 1.5 + Math.random() * 2,
+            color: byTeam === 'red' ? '#ff7070' : '#6aa9ff',
+        });
+    }
+    state.particles.push({
+        x: p.x, y: p.y - 28, vx: 0, vy: -30,
+        life: 1.0, maxLife: 1.0, size: 0,
+        color: byTeam === 'red' ? '#ff7070' : '#6aa9ff',
+        isText: true, text: 'TAGGED!',
+    });
+}
+
+function respawnPlayer(p) {
+    p.alive = true;
+    p.x = p.spawnX; p.y = p.spawnY;
+    p.vx = 0; p.vy = 0;
+    p.invuln = 1.5;
+}
+
+function captureFlag(team) {
+    state.score[team]++;
+    captureSound();
+    announce(`${team === 'red' ? 'RED' : 'BLUE'} CAPTURES! ${state.score.red} — ${state.score.blue}`, 2.0);
+    // Reset both flags to bases
+    for (const k of ['red', 'blue']) {
+        const f = state.flags[k];
+        if (f.carriedBy !== null) {
+            const carrier = state.players[f.carriedBy];
+            if (carrier) carrier.hasFlag = null;
+        }
+        f.x = f.baseX; f.y = f.baseY;
+        f.carriedBy = null; f.atBase = true; f.returnTimer = 0;
+    }
+    // Win check
+    if (state.score[team] >= WIN_SCORE) {
+        endGame(team);
+    }
+}
+
+function returnFlag(team) {
+    const f = state.flags[team];
+    f.x = f.baseX; f.y = f.baseY;
+    f.carriedBy = null; f.atBase = true; f.returnTimer = 0;
+    flagReturnSound();
+}
+
+function updatePlayer(p, dt) {
+    if (!p.alive) {
+        p.respawnTimer -= dt;
+        if (p.respawnTimer <= 0) respawnPlayer(p);
+        return;
+    }
+    p.tagFlash = Math.max(0, p.tagFlash - dt);
+    p.invuln = Math.max(0, p.invuln - dt);
+
+    let cmd;
+    if (p.isBot) cmd = botCommand(p, dt);
+    else cmd = humanCommand(p, dt);
+
+    let mx = cmd.ix, my = cmd.iy;
+    const len = Math.hypot(mx, my);
+    if (len > 0) { mx /= len; my /= len; }
+    const speed = PLAYER_SPEED * (cmd.sprint ? SPRINT_MULT : 1);
+    p.vx = mx * speed;
+    p.vy = my * speed;
+    if (mx !== 0 || my !== 0) { p.facing = Math.atan2(my, mx); p.animTime += dt * 6; }
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    clampToArena(p, PLAYER_R);
+
+    // Carry flag stays at player's position
+    if (p.hasFlag) {
+        const f = state.flags[p.hasFlag];
+        f.x = p.x; f.y = p.y;
+    }
+
+    // Tag check: if I'm on my own half, I can tag enemies on it
+    if (isOnOwnHalf(p)) {
+        for (const q of state.players) {
+            if (q === p || !q.alive || q.team === p.team || q.invuln > 0) continue;
+            // Only tag if THEY are on YOUR half (i.e., enemies in your territory)
+            if (isOnOwnHalf(p) && !isOnOwnHalf(q)) {
+                if (dist(p.x, p.y, q.x, q.y) < TAG_RANGE) {
+                    tagPlayer(q, p.team);
+                    p.tags++;
+                }
+            }
+        }
+    }
+
+    // Flag pickup: only an enemy can grab it
+    for (const teamKey of ['red', 'blue']) {
+        const f = state.flags[teamKey];
+        if (f.carriedBy !== null) continue;
+        if (teamKey === p.team) {
+            // Your own flag — if it's not at base, touching it returns it
+            if (!f.atBase && dist(p.x, p.y, f.x, f.y) < FLAG_PICKUP_RANGE) {
+                returnFlag(teamKey);
+            }
+            continue;
+        }
+        // Enemy flag — grab it
+        if (dist(p.x, p.y, f.x, f.y) < FLAG_PICKUP_RANGE) {
+            f.carriedBy = p.idx;
+            f.atBase = false;
+            f.returnTimer = 0;
+            p.hasFlag = teamKey;
+            pickupSound();
+            announce(`${p.team === 'red' ? 'Red' : 'Blue'} grabs the flag!`, 1.0);
+        }
+    }
+
+    // Capture check: carrying enemy flag, on YOUR base, with YOUR flag at base
+    if (p.hasFlag) {
+        const ownFlag = state.flags[p.team];
+        const ownBase = { x: ownFlag.baseX, y: ownFlag.baseY };
+        if (dist(p.x, p.y, ownBase.x, ownBase.y) < FLAG_PICKUP_RANGE * 1.4) {
+            if (ownFlag.atBase) {
+                p.captures++;
+                captureFlag(p.team);
+            }
+        }
+    }
+}
+
+function humanCommand(p, dt) {
+    const cmd = { ix: 0, iy: 0, sprint: false };
+    if (p.idx === 0) { // P1 = Red
+        if (codes['KeyA'] || (state.humans === 1 && codes['ArrowLeft'])) cmd.ix -= 1;
+        if (codes['KeyD'] || (state.humans === 1 && codes['ArrowRight'])) cmd.ix += 1;
+        if (codes['KeyW'] || (state.humans === 1 && codes['ArrowUp'])) cmd.iy -= 1;
+        if (codes['KeyS'] || (state.humans === 1 && codes['ArrowDown'])) cmd.iy += 1;
+        cmd.sprint = codes['ShiftLeft'] || (state.humans === 1 && codes['ShiftRight']);
+    } else { // P2 = Blue
+        if (codes['ArrowLeft']) cmd.ix -= 1;
+        if (codes['ArrowRight']) cmd.ix += 1;
+        if (codes['ArrowUp']) cmd.iy -= 1;
+        if (codes['ArrowDown']) cmd.iy += 1;
+        cmd.sprint = codes['ShiftRight'];
+    }
+    return cmd;
+}
+
+function botCommand(p, dt) {
+    const cmd = { ix: 0, iy: 0, sprint: false };
+    const cfg = state.cfg;
+    p.ai.decision = Math.max(0, p.ai.decision - dt);
+    p.ai.jukeT = Math.max(0, p.ai.jukeT - dt);
+    const enemyTeam = p.team === 'red' ? 'blue' : 'red';
+    const myFlag = state.flags[p.team];
+    const enemyFlag = state.flags[enemyTeam];
+
+    // Decide a role periodically
+    if (p.ai.decision <= 0) {
+        p.ai.decision = 1.5 + Math.random() * 1.5;
+        // Defenders if our flag is taken or near base
+        const flagAtRisk = !myFlag.atBase;
+        const teammates = state.players.filter(q => q.alive && q.team === p.team && q !== p);
+        const attackingMates = teammates.filter(q => q.ai && q.ai.role === 'attack').length;
+        const defendingMates = teammates.filter(q => q.ai && q.ai.role === 'defend').length;
+        const totalTeam = teammates.length + 1;
+        if (flagAtRisk) {
+            p.ai.role = 'recover';
+        } else if (defendingMates / totalTeam < 0.35 || Math.random() < cfg.baseChase * 0.3) {
+            p.ai.role = 'defend';
+        } else {
+            p.ai.role = 'attack';
+        }
+    }
+
+    let goalX, goalY;
+    let attacking = false;
+    if (p.hasFlag) {
+        // RUN HOME
+        goalX = myFlag.baseX; goalY = myFlag.baseY;
+        cmd.sprint = true;
+    } else if (p.ai.role === 'recover' && !myFlag.atBase) {
+        // Get our flag back: if it's on ground, touch to return; if carried, chase carrier
+        if (myFlag.carriedBy !== null) {
+            const c = state.players[myFlag.carriedBy];
+            if (c) { goalX = c.x; goalY = c.y; }
+            else { goalX = myFlag.x; goalY = myFlag.y; }
+        } else {
+            goalX = myFlag.x; goalY = myFlag.y;
+        }
+        cmd.sprint = true;
+    } else if (p.ai.role === 'defend') {
+        // Patrol around our base. If enemy is on our half, chase them.
+        let intruder = null, intruderD = Infinity;
+        for (const q of state.players) {
+            if (!q.alive || q.team === p.team) continue;
+            // Is this enemy on OUR half?
+            const onOurHalf = (p.team === 'red') ? (q.x < state.arena.x + state.arena.w / 2) : (q.x > state.arena.x + state.arena.w / 2);
+            if (!onOurHalf) continue;
+            const d = dist(p.x, p.y, q.x, q.y);
+            if (d < intruderD) { intruderD = d; intruder = q; }
+        }
+        if (intruder) {
+            // Predictive chase
+            const tt = intruderD / (PLAYER_SPEED * 1.2);
+            goalX = intruder.x + (intruder.vx || 0) * tt * cfg.predict;
+            goalY = intruder.y + (intruder.vy || 0) * tt * cfg.predict;
+            cmd.sprint = true;
+            attacking = true;
+        } else {
+            // Patrol around the flag base
+            const r = 110;
+            goalX = myFlag.baseX + Math.cos(state.time * 0.6 + p.idx) * r;
+            goalY = myFlag.baseY + Math.sin(state.time * 0.6 + p.idx) * r;
+        }
+    } else {
+        // ATTACK: head to the enemy flag (or pick up if dropped on enemy turf)
+        if (enemyFlag.carriedBy !== null) {
+            // It's already taken — convert to defender
+            p.ai.role = 'defend';
+            return botCommand(p, dt);
+        } else {
+            goalX = enemyFlag.x; goalY = enemyFlag.y;
+        }
+        cmd.sprint = true;
+    }
+
+    // Avoid getting tagged: if an enemy is close AND on their own half (so they
+    // can tag us when we're on their half), juke perpendicular.
+    let danger = null, dangerD = Infinity;
+    if (!isOnOwnHalf(p) && !p.hasFlag) {
+        for (const q of state.players) {
+            if (!q.alive || q.team === p.team || q.invuln > 0) continue;
+            const enemyOnHisOwn = (q.team === 'red') ? (q.x < state.arena.x + state.arena.w / 2) : (q.x > state.arena.x + state.arena.w / 2);
+            if (!enemyOnHisOwn) continue; // they can only tag us if they're on their half
+            const d = dist(p.x, p.y, q.x, q.y);
+            if (d < 110 && d < dangerD) { dangerD = d; danger = q; }
+        }
+    }
+    let dx = goalX - p.x, dy = goalY - p.y;
+    let d = Math.hypot(dx, dy) || 1;
+    let ix = (dx / d) * cfg.reactSpeed, iy = (dy / d) * cfg.reactSpeed;
+    if (danger) {
+        const dpx = p.x - danger.x, dpy = p.y - danger.y;
+        const dpd = Math.hypot(dpx, dpy) || 1;
+        // Mix in repulsion
+        ix += (dpx / dpd) * 0.7;
+        iy += (dpy / dpd) * 0.7;
+        cmd.sprint = true;
+    }
+    cmd.ix = ix; cmd.iy = iy;
+    return cmd;
+}
+
+function updateFlags(dt) {
+    for (const teamKey of ['red', 'blue']) {
+        const f = state.flags[teamKey];
+        if (f.carriedBy === null && !f.atBase) {
+            f.returnTimer -= dt;
+            if (f.returnTimer <= 0) {
+                returnFlag(teamKey);
+                announce(`${teamKey === 'red' ? 'Red' : 'Blue'} flag returned`, 1.0);
+            }
+        }
+    }
+}
+
+function updateParticles(dt) {
+    state.particles.forEach(p => {
+        if (!p.isText) { p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt; }
+        else if (p.vy) p.y += p.vy * dt;
+        p.life -= dt;
+    });
+    state.particles = state.particles.filter(p => p.life > 0);
+}
+
+function updateCamera(dt) {
+    let tx, ty;
+    const humans = state.players.filter(p => !p.isBot);
+    if (humans.length > 0) {
+        let sx = 0, sy = 0;
+        for (const h of humans) { sx += h.x; sy += h.y; }
+        tx = sx / humans.length; ty = sy / humans.length;
+    } else {
+        tx = state.arena.x + state.arena.w / 2;
+        ty = state.arena.y + state.arena.h / 2;
+    }
+    state.camX += (tx - state.camX) * 4 * dt;
+    state.camY += (ty - state.camY) * 4 * dt;
+    // Compute zoom so the whole arena fits
+    const zw = W / (state.arena.w + 60);
+    const zh = (H - 80) / (state.arena.h + 60);
+    state.zoom = Math.min(zw, zh, 1.4);
+}
+
+function update(dt) {
+    state.time += dt;
+    state.announceTimer = Math.max(0, state.announceTimer - dt);
+    if (!state.gameEnded) {
+        state.players.forEach(p => updatePlayer(p, dt));
+        updateFlags(dt);
+        updateParticles(dt);
+        updateCamera(dt);
+    } else if (state.endTimer > 0) {
+        state.endTimer -= dt;
+        updateParticles(dt);
+        updateCamera(dt);
+        if (state.endTimer <= 0) showGameOver();
+    }
+}
+
+// ===== Render =====
+function w2sX(x) { return W / 2 + (x - state.camX) * state.zoom; }
+function w2sY(y) { return H / 2 + (y - state.camY) * state.zoom; }
+
+function drawBackground() {
+    ctx.fillStyle = '#0d1d12';
+    ctx.fillRect(0, 0, W, H);
+}
+function drawArena() {
+    const a = state.arena;
+    const sx = w2sX(a.x), sy = w2sY(a.y), sw = a.w * state.zoom, sh = a.h * state.zoom;
+    // Field
+    const grad = ctx.createLinearGradient(0, sy, 0, sy + sh);
+    grad.addColorStop(0, '#2e6e3a');
+    grad.addColorStop(1, '#23552c');
+    ctx.fillStyle = grad;
+    ctx.fillRect(sx, sy, sw, sh);
+    // Halves tint
+    ctx.fillStyle = 'rgba(216,70,60,0.07)';
+    ctx.fillRect(sx, sy, sw / 2, sh);
+    ctx.fillStyle = 'rgba(61,111,200,0.07)';
+    ctx.fillRect(sx + sw / 2, sy, sw / 2, sh);
+    // Center line dotted
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(sx + sw / 2, sy);
+    ctx.lineTo(sx + sw / 2, sy + sh);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Center circle
+    ctx.beginPath();
+    ctx.arc(sx + sw / 2, sy + sh / 2, 60 * state.zoom, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Grass texture
+    ctx.fillStyle = 'rgba(70,130,70,0.35)';
+    for (let i = 0; i < 800; i++) {
+        const x = sx + ((i * 73) % sw);
+        const y = sy + ((i * 131) % sh);
+        ctx.fillRect(x, y, 1, 1);
+    }
+
+    // Border
+    ctx.strokeStyle = '#0d1d12';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(sx, sy, sw, sh);
+
+    // Bases (circular zones around flag posts)
+    ['red', 'blue'].forEach(key => {
+        const f = state.flags[key];
+        const bx = w2sX(f.baseX), by = w2sY(f.baseY);
+        const baseColor = key === 'red' ? 'rgba(216,70,60,0.4)' : 'rgba(61,111,200,0.4)';
+        const ringColor = key === 'red' ? '#ff7070' : '#6aa9ff';
+        const baseR = 50 * state.zoom;
+        ctx.fillStyle = baseColor;
+        ctx.beginPath(); ctx.arc(bx, by, baseR, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = ringColor;
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(bx, by, baseR, 0, Math.PI * 2); ctx.stroke();
+        // Pulsing inner ring
+        const pulse = 0.5 + Math.sin(state.time * 3) * 0.5;
+        ctx.strokeStyle = `rgba(255,255,255,${0.2 + pulse * 0.3})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(bx, by, baseR * 0.6, 0, Math.PI * 2); ctx.stroke();
+    });
+}
+
+// A flag is "seen" by the human team when:
+//   (1) it's at its base (always visible), OR
+//   (2) any teammate (human or bot) is within VISION_R of it.
+// Otherwise it's hidden — players have to scout to find a stolen/dropped flag.
+function flagVisibleToHumans(f) {
+    if (f.atBase) return true;
+    if (f.carriedBy !== null) {
+        const c = state.players[f.carriedBy];
+        if (c && !c.isBot) return true;
+    }
+    const fx = f.carriedBy !== null ? state.players[f.carriedBy].x : f.x;
+    const fy = f.carriedBy !== null ? state.players[f.carriedBy].y : f.y;
+    // Any human teammate within vision radius makes it visible to them
+    for (const p of state.players) {
+        if (p.isBot) continue;
+        if (dist(p.x, p.y, fx, fy) < VISION_R) return true;
+    }
+    // Also: if a teammate (bot or human) of the flag's team is near it, the
+    // friendly side can still see their own flag (mostly so allied bots
+    // appear sensible). We just always reveal it to the *enemy* if a friend
+    // is on it, which is fine because the enemy doesn't get a UI advantage.
+    return false;
+}
+
+function drawFlag(f) {
+    if (f.carriedBy !== null) return; // drawn at carrier's position
+    const sx = w2sX(f.x), sy = w2sY(f.y);
+    if (!flagVisibleToHumans(f)) {
+        // Show a faint "?" marker only if the flag's team is the human's team
+        // (so they know it's missing) — actually skip entirely for stealth.
+        return;
+    }
+    drawFlagAt(sx, sy, f.team);
+    // If on ground, show return countdown
+    if (!f.atBase) {
+        const t = Math.max(0, f.returnTimer);
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.beginPath(); ctx.arc(sx, sy - 32, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(t.toFixed(1), sx, sy - 32);
+        ctx.textBaseline = 'alphabetic';
+    }
+}
+
+function drawFlagAt(sx, sy, team) {
+    const color = team === 'red' ? '#ff5252' : '#42a5f5';
+    const dark = team === 'red' ? '#a01b1b' : '#193e8a';
+    // Pole
+    ctx.fillStyle = '#5d4037';
+    ctx.fillRect(sx - 1, sy - 32, 2, 36);
+    // Flag (waving)
+    const wave = Math.sin(state.time * 5) * 2;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - 30);
+    ctx.lineTo(sx + 22 + wave, sy - 26);
+    ctx.lineTo(sx + 16 + wave, sy - 18);
+    ctx.lineTo(sx + 22 + wave, sy - 10);
+    ctx.lineTo(sx, sy - 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Base nub
+    ctx.fillStyle = '#3a2c20';
+    ctx.fillRect(sx - 4, sy + 2, 8, 4);
+}
+
+function drawPlayer(p) {
+    const sx = w2sX(p.x), sy = w2sY(p.y);
+    if (!p.alive) {
+        // Faded marker showing they're respawning
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(sx, sy, PLAYER_R * 0.5, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+        // Respawn timer
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${p.respawnTimer.toFixed(1)}s`, sx, sy + 4);
+        return;
+    }
+    const w = PLAYER_R * state.zoom;
+    const h = PLAYER_R * state.zoom * 1.05;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(sx + 3, sy + h - 2, w * 0.95, w * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Invuln blink
+    let alpha = 1;
+    if (p.invuln > 0) alpha = (Math.sin(state.time * 18) > 0 ? 1 : 0.55);
+    ctx.globalAlpha = alpha;
+
+    // Body
+    const flash = p.tagFlash > 0;
+    ctx.fillStyle = flash ? '#fff' : p.color;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 2, w, h, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = flash ? '#ddd' : p.dark;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 6, w * 0.85, h * 0.45, 0, 0, Math.PI);
+    ctx.fill();
+    if (!flash) {
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.beginPath();
+        ctx.ellipse(sx - w * 0.35, sy, w * 0.25, h * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    // Head
+    ctx.fillStyle = flash ? '#fff' : '#f0c6a3';
+    ctx.beginPath();
+    ctx.arc(sx, sy - h * 0.7, w * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+    // Headband (team color)
+    ctx.fillStyle = p.color;
+    ctx.fillRect(sx - w * 0.6, sy - h * 0.8, w * 1.2, 4);
+    // Eyes look toward facing
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(sx - 3, sy - h * 0.7, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx + 3, sy - h * 0.7, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#222';
+    const eyeOff = Math.cos(p.facing) * 0.7;
+    ctx.beginPath(); ctx.arc(sx - 3 + eyeOff, sy - h * 0.7 + Math.sin(p.facing) * 0.7, 1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx + 3 + eyeOff, sy - h * 0.7 + Math.sin(p.facing) * 0.7, 1, 0, Math.PI * 2); ctx.fill();
+
+    // P-tag
+    ctx.fillStyle = p.label;
+    ctx.font = `bold ${Math.round(11 * state.zoom)}px Segoe UI`;
+    ctx.textAlign = 'center';
+    ctx.fillText(p.isBot ? 'B' + (p.idx + 1) : (p.team === 'red' ? 'P1' : 'P2'), sx, sy - h * 1.3);
+
+    ctx.globalAlpha = 1;
+
+    // Carried flag floats above (hidden by fog of war if no human teammate
+    // is in vision range)
+    if (p.hasFlag) {
+        const fakeF = { atBase: false, carriedBy: p.idx, x: p.x, y: p.y, team: p.hasFlag };
+        if (flagVisibleToHumans(fakeF)) {
+            drawFlagAt(sx, sy - 6, p.hasFlag);
+        }
+    }
+}
+
+function drawParticles() {
+    state.particles.forEach(p => {
+        const a = Math.max(0, p.life / p.maxLife);
+        ctx.globalAlpha = a;
+        if (p.isText) {
+            ctx.fillStyle = p.color;
+            ctx.font = 'bold 16px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText(p.text, w2sX(p.x), w2sY(p.y));
+        } else {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(w2sX(p.x), w2sY(p.y), p.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+    ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+    // Score
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(W / 2 - 140, 8, 280, 50);
+    ctx.font = 'bold 26px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff7070';
+    ctx.fillText(`RED ${state.score.red}`, W / 2 - 70, 38);
+    ctx.fillStyle = '#fff';
+    ctx.fillText('—', W / 2, 38);
+    ctx.fillStyle = '#6aa9ff';
+    ctx.fillText(`${state.score.blue} BLUE`, W / 2 + 70, 38);
+    ctx.fillStyle = '#ffd54f';
+    ctx.font = '12px Segoe UI';
+    ctx.fillText(`First to ${WIN_SCORE}`, W / 2, 56);
+
+    // Flag status indicators — exact location is hidden by fog of war
+    ['red', 'blue'].forEach((key, i) => {
+        const f = state.flags[key];
+        const x = i === 0 ? 24 : W - 24;
+        const y = 24;
+        ctx.textAlign = i === 0 ? 'left' : 'right';
+        ctx.fillStyle = key === 'red' ? '#ff7070' : '#6aa9ff';
+        ctx.font = 'bold 14px Segoe UI';
+        const visible = flagVisibleToHumans(f);
+        let status;
+        if (f.atBase) status = '🚩 At base';
+        else if (f.carriedBy !== null) {
+            status = visible ? '🏃 Stolen — visible' : '❓ Stolen — find them!';
+        } else {
+            status = visible
+                ? `📍 Dropped — ${f.returnTimer.toFixed(1)}s`
+                : '❓ Dropped — somewhere!';
+        }
+        ctx.fillText(`${key.toUpperCase()} flag: ${status}`, x, y);
+    });
+
+    // Roster strip below the score
+    const all = state.players;
+    const stripW = Math.min(W - 80, all.length * 60);
+    const stripX = (W - stripW) / 2;
+    const stripY = 70;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(stripX, stripY, stripW, 28);
+    const slotW = stripW / all.length;
+    all.forEach((p, i) => {
+        const cx = stripX + i * slotW + slotW / 2;
+        const cy = stripY + 16;
+        ctx.fillStyle = p.alive ? p.color : '#444';
+        ctx.beginPath(); ctx.arc(cx - 14, cy, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = p.alive ? '#fff' : 'rgba(255,255,255,0.4)';
+        ctx.font = 'bold 11px Segoe UI';
+        ctx.textAlign = 'left';
+        ctx.fillText(p.isBot ? `B${p.idx + 1}` : (p.team === 'red' ? 'P1' : 'P2'), cx - 6, cy + 4);
+    });
+
+    // Announcement
+    if (state.announceTimer > 0) {
+        const a = Math.min(1, state.announceTimer / 0.3);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(0, H * 0.32, W, 60);
+        ctx.fillStyle = '#ffd54f';
+        ctx.font = 'bold 36px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText(state.announceText, W / 2, H * 0.32 + 42);
+        ctx.globalAlpha = 1;
+    }
+}
+
+function drawWinnerOverlay() {
+    if (!state.gameEnded) return;
+    const t = 1 - Math.max(0, state.endTimer) / 2.0;
+    ctx.fillStyle = `rgba(0,0,0,${0.5 * t})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.font = 'bold 48px Segoe UI';
+    ctx.textAlign = 'center';
+    if (state.winner === 'red') {
+        ctx.fillStyle = '#ff7070';
+        ctx.fillText('RED WINS!', W / 2, H / 2);
+    } else if (state.winner === 'blue') {
+        ctx.fillStyle = '#6aa9ff';
+        ctx.fillText('BLUE WINS!', W / 2, H / 2);
+    } else {
+        ctx.fillStyle = '#fff';
+        ctx.fillText('STALEMATE', W / 2, H / 2);
+    }
+}
+
+let lastTime = 0;
+function loop(ts) {
+    const dt = lastTime ? Math.min((ts - lastTime) / 1000, 0.033) : 0.016;
+    lastTime = ts;
+    if (!state) {
+        ctx.fillStyle = '#0d1d12';
+        ctx.fillRect(0, 0, W, H);
+    } else {
+        update(dt);
+        if (state) {
+            drawBackground();
+            drawArena();
+            // Draw flags + players sorted by y for depth
+            const draw = [];
+            ['red', 'blue'].forEach(k => {
+                const f = state.flags[k];
+                if (f.carriedBy === null) draw.push({ y: f.y + 20, fn: () => drawFlag(f) });
+            });
+            state.players.forEach(p => draw.push({ y: p.y, fn: () => drawPlayer(p) }));
+            draw.sort((a, b) => a.y - b.y);
+            draw.forEach(d => d.fn());
+            drawParticles();
+            drawHUD();
+            drawWinnerOverlay();
+        }
+    }
+    requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

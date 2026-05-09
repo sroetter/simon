@@ -228,7 +228,7 @@ const SNOWBALL_R = 7;
 const FORT_W = 50, FORT_H = 18;
 const MAX_AMMO = 8;
 const START_AMMO = 5;
-const PLAYER_HP = 6;
+const PLAYER_HP = 5;
 const FORT_HP = 4;
 const SNOW_PILE_R = 22;
 const PLAYER_SPEED = 150;
@@ -366,6 +366,7 @@ function makeState(mode, difficulty, bots) {
         mode, difficulty,
         bots,
         arena,
+        revenge: revengeEnabled,
         running: true,
         gameEnded: false,
         winner: -1,
@@ -516,6 +517,7 @@ function showGameOver() {
 }
 
 let currentDifficulty = 'medium';
+let revengeEnabled = true;  // toggle on title screen
 document.querySelectorAll('.btn.diff').forEach(b => {
     b.addEventListener('click', () => {
         // Difficulty buttons and bot-count buttons are mutually exclusive groups
@@ -979,10 +981,10 @@ function updateSnowballs(dt) {
                     // Remember who got us — used by the revenge mechanic below
                     p.killedByIdx = s.owner;
 
-                    // REVENGE: any player p had previously KO'd comes back to
-                    // life now that p is down. Their old forts are destroyed
-                    // (clean slate — they have to rebuild their base).
-                    state.players.forEach(victim => {
+                    // REVENGE (when enabled): any player p had previously KO'd
+                    // comes back to life now that p is down. Their old forts
+                    // are destroyed (clean slate — they have to rebuild).
+                    if (state.revenge) state.players.forEach(victim => {
                         if (victim.alive) return;
                         if (victim.killedByIdx !== p.idx) return;
                         victim.alive = true;
