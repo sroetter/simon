@@ -234,11 +234,13 @@ const SPEED_BOOST_DURATION = 5;
 const SPEED_BOOST_MULT = 1.45;
 const FREEZE_RAY_DURATION = 5;     // freeze touch when held
 const FREEZE_DURATION = 1.5;
-const POWERUP_KINDS = ['speed', 'freeze', 'shield'];
+const POWERUP_KINDS = ['speed', 'freeze', 'shield', 'cleanse', 'swap'];
 const POWERUP_COLORS = {
-    speed:  { core: '#42a5f5', edge: '#bbdefb', glow: 'rgba(80,160,240,0.55)' },
-    freeze: { core: '#80deea', edge: '#e0f7fa', glow: 'rgba(180,230,240,0.55)' },
-    shield: { core: '#9c27b0', edge: '#e1bee7', glow: 'rgba(180,100,200,0.55)' },
+    speed:   { core: '#42a5f5', edge: '#bbdefb', glow: 'rgba(80,160,240,0.55)' },
+    freeze:  { core: '#80deea', edge: '#e0f7fa', glow: 'rgba(180,230,240,0.55)' },
+    shield:  { core: '#9c27b0', edge: '#e1bee7', glow: 'rgba(180,100,200,0.55)' },
+    cleanse: { core: '#43a047', edge: '#c8e6c9', glow: 'rgba(120,220,150,0.55)' }, // cures infection
+    swap:    { core: '#ff7043', edge: '#ffd180', glow: 'rgba(255,130,80,0.55)'  }, // swap roles with random opposite
 };
 const DASH_DURATION = 0.32;
 const DASH_COOLDOWN = 1.5;
@@ -384,6 +386,9 @@ function makeState(mode, difficulty, bots) {
     // Initial camera: arena center
     const camX0 = arena.x + arena.w / 2;
     const camY0 = arena.y + arena.h / 2;
+    // Time limit per difficulty: easy 60s, medium 180s, hard 270s
+    const timeLimitMap = { easy: 60, medium: 180, hard: 270 };
+    const timeLimit = timeLimitMap[difficulty] || 180;
     return {
         mode, difficulty, bots,
         arena,
@@ -392,6 +397,8 @@ function makeState(mode, difficulty, bots) {
         gameEnded: false,
         winner: -1,
         time: 0,
+        timeLeft: timeLimit,
+        timeLimit,
         bushes, rocks, logs, decorations, leaves,
         players,
         powerups: [],
@@ -857,6 +864,43 @@ function applyPowerup(p, pu) {
         p.freezeRayTimer = Math.max(p.freezeRayTimer, FREEZE_RAY_DURATION);
     } else if (pu.kind === 'shield') {
         p.shieldActive = true;
+    } else if (pu.kind === 'cleanse') {
+        // Cures infection. Big comeback for an infected player.
+        if (p.isIt) {
+            p.isIt = false;
+            p.tagbackTimer = TAGBACK_IMMUNITY * 1.4;
+            // Original-tagger flag never gets cleared on its own; only by cleanse.
+            p.isOriginalIt = false;
+            state.particles.push({
+                x: p.x, y: p.y - 35, vx: 0, vy: -30, life: 1.4, maxLife: 1.4,
+                size: 0, color: '#7cffa3', isText: true, text: 'CLEANSED!',
+            });
+            for (let i = 0; i < 30; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const sp = 80 + Math.random() * 200;
+                state.particles.push({
+                    x: p.x, y: p.y - 8,
+                    vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30,
+                    life: 0.6, maxLife: 0.6,
+                    size: 2 + Math.random() * 2, color: '#7cffa3',
+                });
+            }
+        }
+    } else if (pu.kind === 'swap') {
+        // Swap roles: if you're infected you become clean; if you're clean
+        // you become infected (and then start hunting). Big chaos.
+        if (p.isIt) {
+            p.isIt = false;
+            p.isOriginalIt = false;
+            p.tagbackTimer = TAGBACK_IMMUNITY * 1.4;
+        } else {
+            p.isIt = true;
+            p.tagbackTimer = TAGBACK_IMMUNITY;
+        }
+        state.particles.push({
+            x: p.x, y: p.y - 35, vx: 0, vy: -30, life: 1.4, maxLife: 1.4,
+            size: 0, color: '#ff7043', isText: true, text: 'SWAPPED!',
+        });
     }
     powerupSound();
     const c = POWERUP_COLORS[pu.kind].core;
@@ -903,11 +947,21 @@ function processFreezeTouches() {
     }
 }
 
-// Game ends when only one (or zero) clean players remain.
+// Game ends when only one (or zero) clean players remain — OR when the
+// per-difficulty time limit expires (anyone still clean wins; if everyone's
+// infected, the original tagger wins).
 function checkWinCondition() {
     if (state.gameEnded) return;
+    state.timeLeft = Math.max(0, state.timeLeft - state.lastDt);
     const clean = state.players.filter(p => !p.isIt);
     if (clean.length <= 1) {
+        const winner = clean[0];
+        if (winner) endGame(winner.idx);
+        else endGame(-1);
+        return;
+    }
+    if (state.timeLeft <= 0) {
+        // Time up — first remaining clean player wins
         const winner = clean[0];
         if (winner) endGame(winner.idx);
         else endGame(-1);
@@ -1729,6 +1783,15 @@ function drawHUD() {
     ctx.textAlign = 'center';
     ctx.fillStyle = runners <= 1 ? '#ff5252' : '#ffe082';
     ctx.fillText(`${runners} runners left`, W / 2, 50);
+    // Time remaining
+    if (state.timeLeft !== undefined) {
+        const t = Math.max(0, state.timeLeft);
+        const mins = Math.floor(t / 60);
+        const secs = Math.floor(t % 60).toString().padStart(2, '0');
+        ctx.font = 'bold 18px Segoe UI';
+        ctx.fillStyle = t < 15 ? '#ff5252' : (t < 30 ? '#ffd54f' : '#cce0c1');
+        ctx.fillText(`⏱ ${mins}:${secs}`, W / 2, 76);
+    }
     // Original-tagger speed ramp (1% per sec of round time)
     const origSpeed = PLAYER_SPEED * IT_SPEED_BOOST * (1 + state.time * IT_RAMP_PER_SEC);
     const runnerSpeed = PLAYER_SPEED;
@@ -1925,6 +1988,7 @@ function loop(ts) {
         state.announceTimer = Math.max(0, state.announceTimer - dt);
 
         if (state.running && !state.gameEnded) {
+            state.lastDt = dt; // available to checkWinCondition for the timer
             state.players.forEach(p => updatePlayer(p, dt));
             processFreezeTouches();
             updatePowerups(dt);
