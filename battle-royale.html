@@ -106,7 +106,8 @@ h2 { font-size: 18px; color: #d1c4e9; font-weight: normal; margin-bottom: 14px; 
         <h2>Last archer standing wins the kingdom!</h2>
         <div class="controls">
             <b>Controls:</b> WASD to move &middot; Mouse to aim &middot; Click to fire &middot; <b>Hold Shift</b> to sprint<br>
-            Find better weapons in the field: 🏹 Shortbow → 🎯 Crossbow → 🏹 Longbow. Grab 🩹 health potions for HP.<br>
+            6 weapons in the armory: 🏹 Shortbow · 🎯 Crossbow · 🏹 Longbow · 🗡️ Throwing Daggers · 🪄 Magic Staff · 🔥 Fire Bow.<br>
+            Grab 🩹 health potions for HP. Hide behind 🌳 trees, 🪨 rocks, and 🏰 ruins.<br>
             The <b style="color:#7e57c2;">poison fog</b> closes in every ~22 sec — get to safety!
         </div>
 
@@ -186,10 +187,12 @@ function noise(dur, vol, hp = 1500) {
     src.start(); src.stop(audioCtx.currentTime + dur);
 }
 function shootSound(weapon) {
-    // All weapons are bows — twang variations
     if (weapon === 'bow') { tone(380, 0.12, 'triangle', 0.10); tone(220, 0.08, 'sawtooth', 0.05); }
     else if (weapon === 'crossbow') { tone(520, 0.05, 'triangle', 0.12); noise(0.04, 0.06, 1200); }
     else if (weapon === 'longbow') { tone(180, 0.25, 'triangle', 0.14); tone(110, 0.18, 'sawtooth', 0.08); }
+    else if (weapon === 'daggers') { tone(900, 0.04, 'square', 0.07); noise(0.03, 0.05, 2000); }
+    else if (weapon === 'staff') { tone(660, 0.18, 'sine', 0.08); tone(880, 0.12, 'sine', 0.06); }
+    else if (weapon === 'firebow') { tone(280, 0.15, 'triangle', 0.10); noise(0.1, 0.1, 800); }
 }
 function hitSound() { tone(160, 0.06, 'sawtooth', 0.12); }
 function pickupSound() {
@@ -211,9 +214,12 @@ const BULLET_SPEED = 720;
 const BULLET_LIFE = 0.9;
 
 const WEAPONS = {
-    bow:      { name: 'Shortbow', icon: '🏹', cooldown: 0.55, damage: 14, pellets: 1, spread: 0.05, range: 520, color: '#c9a36b' },
-    crossbow: { name: 'Crossbow', icon: '🎯', cooldown: 0.30, damage: 10, pellets: 1, spread: 0.07, range: 620, color: '#ffd54f' },
-    longbow:  { name: 'Longbow',  icon: '🏹', cooldown: 1.30, damage: 45, pellets: 1, spread: 0.0,  range: 1100, color: '#80deea' },
+    bow:      { name: 'Shortbow',     icon: '🏹', cooldown: 0.55, damage: 11, pellets: 1, spread: 0.05, range: 520, color: '#c9a36b' },
+    crossbow: { name: 'Crossbow',     icon: '🎯', cooldown: 0.30, damage: 8,  pellets: 1, spread: 0.07, range: 620, color: '#ffd54f' },
+    longbow:  { name: 'Longbow',      icon: '🏹', cooldown: 1.30, damage: 35, pellets: 1, spread: 0.0,  range: 1100, color: '#80deea' },
+    daggers:  { name: 'Throwing Daggers', icon: '🗡️', cooldown: 0.45, damage: 5, pellets: 3, spread: 0.30, range: 360, color: '#bdbdbd' },
+    staff:    { name: 'Magic Staff',  icon: '🪄', cooldown: 0.35, damage: 12, pellets: 1, spread: 0.02, range: 620, color: '#b39ddb' },
+    firebow:  { name: 'Fire Bow',     icon: '🔥', cooldown: 0.70, damage: 14, pellets: 1, spread: 0.04, range: 580, color: '#ff7043' },
 };
 
 const ARENA_R = 1100;
@@ -240,9 +246,9 @@ const PLAYER_PALETTE = [
 ];
 
 const DIFF = {
-    easy:   { aim: 0.30, react: 0.4, accuracy: 0.35, label: 'Easy' },
-    medium: { aim: 0.60, react: 0.75, accuracy: 0.62, label: 'Medium' },
-    hard:   { aim: 0.95, react: 1.0,  accuracy: 0.85, label: 'Hard' },
+    easy:   { aim: 0.20, react: 0.35, accuracy: 0.25, label: 'Easy' },
+    medium: { aim: 0.45, react: 0.65, accuracy: 0.50, label: 'Medium' },
+    hard:   { aim: 0.85, react: 1.0,  accuracy: 0.78, label: 'Hard' },
 };
 
 let p1ColorIdx = 0;
@@ -569,11 +575,14 @@ function spawnRandomPickup() {
     if (isHealth) {
         spawnPickup(x, y, 'health');
     } else {
-        // Weighted weapon roll: crossbow common, longbow rare
+        // Weighted weapon roll across the medieval armory
         const r2 = Math.random();
         let weapon;
-        if (r2 < 0.6) weapon = 'crossbow';
-        else if (r2 < 0.9) weapon = 'bow';
+        if (r2 < 0.30) weapon = 'crossbow';
+        else if (r2 < 0.50) weapon = 'daggers';
+        else if (r2 < 0.68) weapon = 'staff';
+        else if (r2 < 0.84) weapon = 'firebow';
+        else if (r2 < 0.95) weapon = 'bow';
         else weapon = 'longbow';
         spawnPickup(x, y, 'weapon', weapon);
     }
