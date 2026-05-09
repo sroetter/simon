@@ -211,20 +211,20 @@ const BULLET_SPEED = 720;
 const BULLET_LIFE = 0.9;
 
 const WEAPONS = {
-    bow:      { name: 'Shortbow', icon: '🏹', cooldown: 0.55, damage: 22, pellets: 1, spread: 0.05, range: 520, color: '#c9a36b' },
-    crossbow: { name: 'Crossbow', icon: '🎯', cooldown: 0.30, damage: 16, pellets: 1, spread: 0.07, range: 620, color: '#ffd54f' },
-    longbow:  { name: 'Longbow',  icon: '🏹', cooldown: 1.30, damage: 70, pellets: 1, spread: 0.0,  range: 1100, color: '#80deea' },
+    bow:      { name: 'Shortbow', icon: '🏹', cooldown: 0.55, damage: 14, pellets: 1, spread: 0.05, range: 520, color: '#c9a36b' },
+    crossbow: { name: 'Crossbow', icon: '🎯', cooldown: 0.30, damage: 10, pellets: 1, spread: 0.07, range: 620, color: '#ffd54f' },
+    longbow:  { name: 'Longbow',  icon: '🏹', cooldown: 1.30, damage: 45, pellets: 1, spread: 0.0,  range: 1100, color: '#80deea' },
 };
 
 const ARENA_R = 1100;
 const STORM_INITIAL_R = 1100;
-const STORM_SHRINK_INTERVAL = 22;
-const STORM_SHRINK_FACTOR = 0.66;
-const STORM_DAMAGE_PER_SEC = 6;
-const STORM_MIN_R = 80;
+const STORM_SHRINK_INTERVAL = 32;     // more breathing room between shrinks
+const STORM_SHRINK_FACTOR = 0.70;     // gentler shrinks
+const STORM_DAMAGE_PER_SEC = 3;       // less punishing
+const STORM_MIN_R = 100;
 
-const PICKUP_SPAWN_INTERVAL = [3.5, 6];
-const MAX_PICKUPS = 8;
+const PICKUP_SPAWN_INTERVAL = [2.0, 3.8]; // pickups arrive often
+const MAX_PICKUPS = 10;
 
 const PLAYER_PALETTE = [
     { coat: '#d8463c', dark: '#9a2c25', label: '#ff5d5d' },
@@ -240,14 +240,55 @@ const PLAYER_PALETTE = [
 ];
 
 const DIFF = {
-    easy:   { aim: 0.45, react: 0.5, accuracy: 0.55, label: 'Easy' },
-    medium: { aim: 0.75, react: 0.85, accuracy: 0.78, label: 'Medium' },
-    hard:   { aim: 1.10, react: 1.0, accuracy: 0.92, label: 'Hard' },
+    easy:   { aim: 0.30, react: 0.4, accuracy: 0.35, label: 'Easy' },
+    medium: { aim: 0.60, react: 0.75, accuracy: 0.62, label: 'Medium' },
+    hard:   { aim: 0.95, react: 1.0,  accuracy: 0.85, label: 'Hard' },
 };
 
 let p1ColorIdx = 0;
 let botCount = 4;
 let currentDifficulty = 'medium';
+
+// ===== Map cover (trees, rocks, central ruin) =====
+function generateMap() {
+    const trees = [];
+    const rocks = [];
+    const ruins = [];
+    // A central stone ruin for landmark + cover
+    ruins.push({ x: -40, y: -40, w: 80, h: 80, kind: 'ruinCorner' });
+    ruins.push({ x: 80, y: -50, w: 60, h: 30,  kind: 'ruinWallH' });
+    ruins.push({ x: -120, y: 60, w: 30, h: 70, kind: 'ruinWallV' });
+    // ~22 trees scattered around (avoid the very center + edge)
+    for (let i = 0; i < 22; i++) {
+        let x, y, ok;
+        for (let tries = 0; tries < 30; tries++) {
+            const ang = Math.random() * Math.PI * 2;
+            const r = 120 + Math.random() * (ARENA_R - 200);
+            x = Math.cos(ang) * r;
+            y = Math.sin(ang) * r;
+            ok = true;
+            for (const t of trees) if (Math.hypot(x - t.x, y - t.y) < 80) { ok = false; break; }
+            if (ok) break;
+        }
+        if (ok) trees.push({ x, y, r: 24 + Math.random() * 8, kind: Math.random() < 0.6 ? 'pine' : 'oak', sway: Math.random() * Math.PI * 2 });
+    }
+    // ~10 boulders
+    for (let i = 0; i < 10; i++) {
+        let x, y, ok;
+        for (let tries = 0; tries < 30; tries++) {
+            const ang = Math.random() * Math.PI * 2;
+            const r = 80 + Math.random() * (ARENA_R - 150);
+            x = Math.cos(ang) * r;
+            y = Math.sin(ang) * r;
+            ok = true;
+            for (const r2 of rocks) if (Math.hypot(x - r2.x, y - r2.y) < 100) { ok = false; break; }
+            for (const t of trees)  if (Math.hypot(x - t.x, y - t.y) < 70) { ok = false; break; }
+            if (ok) break;
+        }
+        if (ok) rocks.push({ x, y, rx: 28 + Math.random() * 14, ry: 18 + Math.random() * 10, seed: Math.random() });
+    }
+    return { trees, rocks, ruins };
+}
 
 // ===== State =====
 function makeState(bots) {
@@ -283,6 +324,7 @@ function makeState(bots) {
             ai: { decision: 0, target: null, jukeT: 0, jukeDir: 1 },
         });
     }
+    const map = generateMap();
     // Kill log entries (recent kills shown briefly)
     return {
         cfg,
@@ -291,6 +333,9 @@ function makeState(bots) {
         pickups: [],
         particles: [],
         floaters: [],
+        trees: map.trees,
+        rocks: map.rocks,
+        ruins: map.ruins,
         time: 0,
         cameraX: 0, cameraY: 0,
         zoom: 1,
@@ -520,7 +565,7 @@ function spawnRandomPickup() {
     const r = Math.random() * Math.max(40, state.stormR - 60);
     const x = state.stormCx + Math.cos(ang) * r;
     const y = state.stormCy + Math.sin(ang) * r;
-    const isHealth = Math.random() < 0.35;
+    const isHealth = Math.random() < 0.55;  // health potions are common
     if (isHealth) {
         spawnPickup(x, y, 'health');
     } else {
@@ -555,8 +600,42 @@ function updatePlayer(p, dt) {
     const speed = PLAYER_SPEED * (cmd.sprint ? SPRINT_MULT : 1);
     p.vx = mx * speed;
     p.vy = my * speed;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
+    let nx = p.x + p.vx * dt;
+    let ny = p.y + p.vy * dt;
+    // Push out of trees and rocks
+    for (const t of state.trees) {
+        const dx = nx - t.x, dy = ny - t.y;
+        const minD = PLAYER_R + t.r * 0.55;
+        if (dx * dx + dy * dy < minD * minD) {
+            const d = Math.hypot(dx, dy) || 1;
+            nx = t.x + (dx / d) * minD;
+            ny = t.y + (dy / d) * minD;
+        }
+    }
+    for (const r of state.rocks) {
+        const ex = r.rx + PLAYER_R - 4;
+        const ey = r.ry + PLAYER_R - 4;
+        const dx = nx - r.x, dy = ny - r.y;
+        const v = (dx * dx) / (ex * ex) + (dy * dy) / (ey * ey);
+        if (v < 1) {
+            const k = 1 / Math.sqrt(v) || 1;
+            nx = r.x + dx * k;
+            ny = r.y + dy * k;
+        }
+    }
+    for (const u of state.ruins) {
+        const halfW = u.w / 2 + PLAYER_R - 4;
+        const halfH = u.h / 2 + PLAYER_R - 4;
+        const cxr = u.x + u.w / 2, cyr = u.y + u.h / 2;
+        const dx = nx - cxr, dy = ny - cyr;
+        if (Math.abs(dx) < halfW && Math.abs(dy) < halfH) {
+            const overlapX = halfW - Math.abs(dx);
+            const overlapY = halfH - Math.abs(dy);
+            if (overlapX < overlapY) nx = cxr + Math.sign(dx) * halfW;
+            else ny = cyr + Math.sign(dy) * halfH;
+        }
+    }
+    p.x = nx; p.y = ny;
     const c = clampInArena(p.x, p.y);
     p.x = c.x; p.y = c.y;
 
@@ -730,6 +809,36 @@ function updateBullets(dt) {
         if (b.traveled > b.range) { b.life = 0; continue; }
         // Out of arena
         if (Math.hypot(b.x, b.y) > ARENA_R + 20) { b.life = 0; continue; }
+        // Blocked by trees / rocks / ruins
+        let blocked = false;
+        for (const t of state.trees) {
+            if (Math.hypot(b.x - t.x, b.y - t.y) < t.r * 0.55) { blocked = true; break; }
+        }
+        if (!blocked) {
+            for (const r of state.rocks) {
+                const dx = b.x - r.x, dy = b.y - r.y;
+                if ((dx * dx) / (r.rx * r.rx) + (dy * dy) / (r.ry * r.ry) < 1) { blocked = true; break; }
+            }
+        }
+        if (!blocked) {
+            for (const u of state.ruins) {
+                if (b.x > u.x && b.x < u.x + u.w && b.y > u.y && b.y < u.y + u.h) { blocked = true; break; }
+            }
+        }
+        if (blocked) {
+            b.life = 0;
+            // Tiny dust burst at the impact
+            for (let i = 0; i < 4; i++) {
+                state.particles.push({
+                    x: b.x, y: b.y,
+                    vx: -b.vx * 0.05 + (Math.random() - 0.5) * 60,
+                    vy: -b.vy * 0.05 + (Math.random() - 0.5) * 60,
+                    life: 0.3, maxLife: 0.3,
+                    size: 1.5, color: '#bdbdbd',
+                });
+            }
+            continue;
+        }
         // Hit any player
         for (const p of state.players) {
             if (!p.alive || p.idx === b.owner) continue;
@@ -896,6 +1005,85 @@ function drawArena() {
     ctx.strokeStyle = '#1a2a1f';
     ctx.lineWidth = 4;
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+}
+
+function drawCover() {
+    // Draw ruins (medieval stone walls), rocks, then trees (above for layering)
+    state.ruins.forEach(u => {
+        const sx = w2sX(u.x), sy = w2sY(u.y);
+        const sw = u.w * state.zoom, sh = u.h * state.zoom;
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(sx + 4, sy + 6, sw, sh);
+        // Stone wall
+        ctx.fillStyle = '#7a6a5a';
+        ctx.fillRect(sx, sy, sw, sh);
+        ctx.fillStyle = '#9a8a7a';
+        ctx.fillRect(sx, sy, sw, 4);
+        ctx.fillStyle = '#3a2c20';
+        ctx.fillRect(sx, sy + sh - 3, sw, 3);
+        // Brick lines
+        ctx.strokeStyle = 'rgba(40,30,20,0.4)';
+        ctx.lineWidth = 1;
+        for (let by = 8; by < sh; by += 14) {
+            ctx.beginPath(); ctx.moveTo(sx, sy + by); ctx.lineTo(sx + sw, sy + by); ctx.stroke();
+            const stagger = (by / 14 % 2 === 0) ? 0 : 18;
+            for (let bx = stagger; bx < sw; bx += 36) {
+                ctx.beginPath(); ctx.moveTo(sx + bx, sy + by); ctx.lineTo(sx + bx, sy + by + 14); ctx.stroke();
+            }
+        }
+        // Outline
+        ctx.strokeStyle = '#3a2c20';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(sx, sy, sw, sh);
+    });
+    state.rocks.forEach(r => {
+        const sx = w2sX(r.x), sy = w2sY(r.y);
+        const rx = r.rx * state.zoom, ry = r.ry * state.zoom;
+        ctx.fillStyle = 'rgba(0,0,0,0.42)';
+        ctx.beginPath(); ctx.ellipse(sx + 4, sy + ry * 0.5, rx, ry * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+        const grad = ctx.createRadialGradient(sx - rx * 0.3, sy - ry * 0.5, 4, sx, sy, rx);
+        grad.addColorStop(0, '#a4a4a4');
+        grad.addColorStop(0.55, '#6e6e6e');
+        grad.addColorStop(1, '#3a3a3a');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(80,140,55,0.4)';
+        ctx.beginPath(); ctx.ellipse(sx - rx * 0.2, sy - ry * 0.55, rx * 0.4, ry * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#1f1f1f';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+    });
+    state.trees.forEach(t => {
+        const sx = w2sX(t.x), sy = w2sY(t.y);
+        const r = t.r * state.zoom;
+        const sway = Math.sin(state.time * 1.2 + t.sway) * 1.4;
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath(); ctx.ellipse(sx + 4, sy + r * 0.7, r * 1.1, r * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+        // Trunk
+        ctx.fillStyle = '#5a3a1f';
+        ctx.fillRect(sx - 4, sy, 8, r * 0.7);
+        if (t.kind === 'pine') {
+            // Stacked triangles
+            for (let i = 0; i < 3; i++) {
+                const layerY = sy - i * (r * 0.4);
+                const layerW = r * (1.1 - i * 0.18) + sway * (0.2 + i * 0.1);
+                ctx.fillStyle = i === 0 ? '#2c6a3c' : i === 1 ? '#34804a' : '#3d8d52';
+                ctx.beginPath();
+                ctx.moveTo(sx - layerW + sway, layerY);
+                ctx.lineTo(sx + layerW + sway, layerY);
+                ctx.lineTo(sx + sway, layerY - r * 0.85);
+                ctx.closePath(); ctx.fill();
+            }
+        } else {
+            // Round oak
+            ctx.fillStyle = '#3d8546';
+            ctx.beginPath(); ctx.arc(sx + sway, sy - r * 0.4, r * 0.95, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#4ea05a';
+            ctx.beginPath(); ctx.arc(sx + sway - r * 0.3, sy - r * 0.6, r * 0.5, 0, Math.PI * 2); ctx.fill();
+        }
+    });
 }
 
 function drawStorm() {
@@ -1224,6 +1412,7 @@ function loop(ts) {
         if (state) {
             drawBackground();
             drawArena();
+            drawCover();
             drawPickups();
             drawPlayers();
             drawBullets();
