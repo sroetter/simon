@@ -150,6 +150,11 @@ h2 { font-size: 18px; color: #b3d9ff; font-weight: normal; margin-bottom: 18px; 
             <button class="btn diff active" data-diff="medium">Medium</button>
             <button class="btn diff" data-diff="hard">Hard</button>
         </div>
+        <div class="label">Revenge mode:</div>
+        <div class="row">
+            <button class="btn diff revenge active" data-revenge="on">ON (KO their killer to come back)</button>
+            <button class="btn diff revenge" data-revenge="off">OFF (death is permanent)</button>
+        </div>
         <div class="row">
             <button class="btn" id="start1P">1 Human + Bots</button>
             <button class="btn" id="start2P">2 Humans + Bots</button>
@@ -520,12 +525,17 @@ let currentDifficulty = 'medium';
 let revengeEnabled = true;  // toggle on title screen
 document.querySelectorAll('.btn.diff').forEach(b => {
     b.addEventListener('click', () => {
-        // Difficulty buttons and bot-count buttons are mutually exclusive groups
+        // Mutually exclusive groups: bots vs difficulty vs revenge
         const isBots = b.classList.contains('bots');
-        const selector = isBots ? '.btn.diff.bots' : '.btn.diff:not(.bots)';
+        const isRevenge = b.classList.contains('revenge');
+        let selector;
+        if (isBots) selector = '.btn.diff.bots';
+        else if (isRevenge) selector = '.btn.diff.revenge';
+        else selector = '.btn.diff:not(.bots):not(.revenge)';
         document.querySelectorAll(selector).forEach(x => x.classList.remove('active'));
         b.classList.add('active');
         if (isBots) botCount = parseInt(b.dataset.bots, 10);
+        else if (isRevenge) revengeEnabled = (b.dataset.revenge === 'on');
         else currentDifficulty = b.dataset.diff;
     });
 });
@@ -1022,11 +1032,13 @@ function updateSnowballs(dt) {
                         setTimeout(() => tone(880, 0.15, 'square', 0.14), 200);
                     });
 
-                    // If the last human just got knocked out, schedule a return
-                    // to the main menu after the snowman fall animation finishes.
-                    // (Re-check after revenge revives — a revived human cancels.)
+                    // If the last human just got knocked out:
+                    //   - In NON-revenge mode: schedule a return-to-menu after
+                    //     the snowman fall animation finishes (death is final).
+                    //   - In revenge mode: stay as a snowman so the player can
+                    //     wait for their killer to die and respawn back in.
                     const humansAlive = state.players.some(pp => !pp.isBot && pp.alive);
-                    if (!humansAlive && !state.humanDiedTimer) {
+                    if (!humansAlive && !state.humanDiedTimer && !state.revenge) {
                         state.humanDiedTimer = 2.0;
                     } else if (humansAlive && state.humanDiedTimer) {
                         state.humanDiedTimer = 0;
