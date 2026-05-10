@@ -103,13 +103,14 @@ h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 14px; 
 <div id="overlay">
     <div class="box" id="startScreen">
         <h1>🔥 LAVA TRAILS 🔥</h1>
-        <h2>Tag with a twist — It leaves lava behind!</h2>
+        <h2>Everyone leaves a trail — don't touch the wrong one!</h2>
         <div class="controls">
             <b>Rules:</b><br>
-            • One player is <b>It</b> (on fire 🔥) and leaves a glowing lava trail behind them.<br>
-            • Touch the trail (or It directly) and you're <b>OUT</b>.<br>
-            • The trail fades after about 7 seconds.<br>
-            • <b>Last runner standing wins.</b><br>
+            • <b>Every player</b> leaves a glowing trail in their own color as they move.<br>
+            • You're <b>immune to your own trail</b>. Step on anyone <b>else's</b> trail and you're out.<br>
+            • Trails fade after about 7 seconds, so the arena doesn't fill up.<br>
+            • The arena is bigger than the screen — the camera follows you.<br>
+            • <b>Last player alive wins.</b><br>
             <br>
             <b>Controls:</b> WASD or arrows to move &middot; Hold Shift to sprint
         </div>
@@ -198,12 +199,12 @@ function winSound() {
 const PLAYER_R = 16;
 const PLAYER_SPEED = 200;
 const SPRINT_MULT = 1.45;
-const TAG_RANGE = PLAYER_R * 2 - 4;
 const TRAIL_INTERVAL = 0.04;     // drop a segment every N seconds
 const TRAIL_LIFETIME = 7.0;      // seconds before a segment fades
 const TRAIL_W = 22;              // visual + collision width
 const TRAIL_DAMAGE_RANGE = TRAIL_W / 2 + PLAYER_R - 4;
-const ARENA_W = 1100, ARENA_H = 750;
+// World is much bigger than the viewport — camera scrolls.
+const ARENA_W = 2600, ARENA_H = 1800;
 const SAFE_ZONE_AT_START = 1.2;  // brief no-trail buffer after game starts
 
 const PLAYER_PALETTE = [
@@ -256,12 +257,9 @@ function makeState(bots) {
             trailTimer: 0,
         });
     }
-    // Pick a random initial It from bots so the human isn't always It
-    const botIdx = [];
-    for (let i = 0; i < total; i++) if (players[i].isBot) botIdx.push(i);
-    const itIdx = botIdx.length > 0
-        ? botIdx[Math.floor(Math.random() * botIdx.length)]
-        : Math.floor(Math.random() * total);
+    // Pick one designated tagger (It) uniformly at random from EVERYONE
+    // — the human can also roll into being It.
+    const itIdx = Math.floor(Math.random() * total);
     players[itIdx].isIt = true;
 
     return {
@@ -415,35 +413,42 @@ function updatePlayer(p, dt) {
         if (p.stepTimer <= 0) { stepSound(); p.stepTimer = 0.3; }
     }
 
-    // It drops trail segments
-    if (p.isIt && state.startGrace <= 0) {
+    // Every player drops their own trail in their color
+    if (state.startGrace <= 0) {
         p.trailTimer = (p.trailTimer || 0) - dt;
         if (p.trailTimer <= 0) {
-            state.trail.push({ x: p.x, y: p.y, life: TRAIL_LIFETIME, maxLife: TRAIL_LIFETIME });
+            state.trail.push({
+                x: p.x, y: p.y,
+                life: TRAIL_LIFETIME, maxLife: TRAIL_LIFETIME,
+                owner: p.idx,
+                color: p.color,
+                dark: p.dark,
+            });
             p.trailTimer = TRAIL_INTERVAL;
         }
     }
 
-    // Direct tag from It onto a runner
-    if (p.isIt) {
-        for (const q of state.players) {
-            if (!q.alive || q.isIt || q === p) continue;
-            if (dist(p.x, p.y, q.x, q.y) < TAG_RANGE) {
-                eliminatePlayer(q, 'tag');
-            }
-        }
-    }
-
-    // Runner stepping into trail
-    if (!p.isIt && p.alive) {
+    // Step into someone else's trail = OUT (immune to own trail)
+    if (p.alive) {
         for (const seg of state.trail) {
             if (seg.life <= 0) continue;
+            if (seg.owner === p.idx) continue;
             const fade = seg.life / seg.maxLife;
-            // Only damaging while it still glows brightly (drop hitbox once faded out)
             if (fade < 0.12) continue;
             if (dist(p.x, p.y, seg.x, seg.y) < TRAIL_DAMAGE_RANGE) {
                 eliminatePlayer(p, 'trail');
                 break;
+            }
+        }
+    }
+
+    // The It also tags on direct contact with non-It runners.
+    if (p.isIt && p.alive) {
+        const TAG_R = PLAYER_R * 2 - 4;
+        for (const q of state.players) {
+            if (!q.alive || q.isIt || q === p) continue;
+            if (dist(p.x, p.y, q.x, q.y) < TAG_R) {
+                eliminatePlayer(q, 'tag');
             }
         }
     }
@@ -460,70 +465,59 @@ function humanCommand(p, dt) {
 }
 
 function aiCommand(p, dt) {
+    // Every bot's job: roam the field while avoiding all OTHERS' trails
+    // (their own is safe). Slight pull toward the arena center so they
+    // don't hug walls and corner themselves.
     const cmd = { ix: 0, iy: 0, sprint: false };
     const cfg = state.cfg;
     p.ai.decisionT = Math.max(0, p.ai.decisionT - dt);
     p.ai.jukeT = Math.max(0, p.ai.jukeT - dt);
-    if (p.isIt) {
-        // It: chase the nearest runner, predict their movement
-        let target = null, bestD = Infinity;
-        for (const q of state.players) {
-            if (!q.alive || q.isIt) continue;
-            const d = dist(p.x, p.y, q.x, q.y);
-            if (d < bestD) { bestD = d; target = q; }
+
+    let goX = 0, goY = 0;
+    let danger = 0;
+
+    // Avoid any other player's trail within ~120 px
+    for (const seg of state.trail) {
+        if (seg.life <= 0 || seg.owner === p.idx) continue;
+        const dx = p.x - seg.x, dy = p.y - seg.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 130 && d > 0.1) {
+            const w = (130 - d) / 130;
+            goX += (dx / d) * 1.4 * w;
+            goY += (dy / d) * 1.4 * w;
+            danger = Math.max(danger, w);
         }
-        if (!target) return cmd;
-        const tt = bestD / (PLAYER_SPEED * SPRINT_MULT);
-        const tx = target.x + (target.vx || 0) * tt * cfg.predict;
-        const ty = target.y + (target.vy || 0) * tt * cfg.predict;
-        const dx = tx - p.x, dy = ty - p.y;
-        const d = Math.hypot(dx, dy) || 1;
-        cmd.ix = (dx / d) * cfg.reactSpeed;
-        cmd.iy = (dy / d) * cfg.reactSpeed;
-        cmd.sprint = true;
-        return cmd;
-    } else {
-        // Runner: flee from It and ALSO from nearby trail segments
-        const it = state.players.find(q => q.isIt && q.alive);
-        let fleeX = 0, fleeY = 0;
-        if (it) {
-            const dx = p.x - it.x, dy = p.y - it.y;
-            const d = Math.hypot(dx, dy) || 1;
-            const w = Math.max(0, (cfg.fleeFear - d)) / cfg.fleeFear;
-            fleeX += (dx / d) * 1.4 * w;
-            fleeY += (dy / d) * 1.4 * w;
-        }
-        // Avoid trail
-        for (const seg of state.trail) {
-            if (seg.life <= 0) continue;
-            const dx = p.x - seg.x, dy = p.y - seg.y;
-            const d = Math.hypot(dx, dy);
-            if (d < 80 && d > 0.1) {
-                const w = (80 - d) / 80;
-                fleeX += (dx / d) * 1.0 * w;
-                fleeY += (dy / d) * 1.0 * w;
-            }
-        }
-        // Slight pull toward arena center to avoid corners
-        const cx = -p.x / Math.max(80, Math.hypot(p.x, p.y));
-        const cy = -p.y / Math.max(80, Math.hypot(p.x, p.y));
-        fleeX += cx * 0.25;
-        fleeY += cy * 0.25;
-        // If we're not in any danger and have no input, wander toward center
-        if (Math.hypot(fleeX, fleeY) < 0.05) {
-            if (p.ai.jukeT <= 0) {
-                p.ai.jukeDir = Math.random() * Math.PI * 2;
-                p.ai.jukeT = 1.0 + Math.random() * 1.5;
-            }
-            fleeX = Math.cos(p.ai.jukeDir);
-            fleeY = Math.sin(p.ai.jukeDir);
-        }
-        const fl = Math.hypot(fleeX, fleeY) || 1;
-        cmd.ix = (fleeX / fl) * cfg.reactSpeed;
-        cmd.iy = (fleeY / fl) * cfg.reactSpeed;
-        cmd.sprint = it && dist(p.x, p.y, it.x, it.y) < 240;
-        return cmd;
     }
+    // Avoid other living players (head-on collisions are deadly here)
+    for (const q of state.players) {
+        if (!q.alive || q === p) continue;
+        const dx = p.x - q.x, dy = p.y - q.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 100 && d > 0.1) {
+            const w = (100 - d) / 100;
+            goX += (dx / d) * 0.8 * w;
+            goY += (dy / d) * 0.8 * w;
+        }
+    }
+    // Center pull (gentle)
+    const cd = Math.hypot(p.x, p.y) || 1;
+    goX += (-p.x / cd) * 0.25;
+    goY += (-p.y / cd) * 0.25;
+
+    // If nothing pulls us strongly, wander in a steady direction
+    if (Math.hypot(goX, goY) < 0.06) {
+        if (p.ai.jukeT <= 0) {
+            p.ai.jukeDir = Math.random() * Math.PI * 2;
+            p.ai.jukeT = 1.5 + Math.random() * 2.0;
+        }
+        goX = Math.cos(p.ai.jukeDir);
+        goY = Math.sin(p.ai.jukeDir);
+    }
+    const len = Math.hypot(goX, goY) || 1;
+    cmd.ix = (goX / len) * cfg.reactSpeed;
+    cmd.iy = (goY / len) * cfg.reactSpeed;
+    cmd.sprint = danger > 0.4;
+    return cmd;
 }
 
 function updateTrail(dt) {
@@ -546,9 +540,20 @@ function updateCamera(dt) {
     const me = state.players.find(p => !p.isBot);
     let tx, ty;
     if (me && me.alive) { tx = me.x; ty = me.y; }
-    else { tx = 0; ty = 0; }
-    state.cameraX += (tx - state.cameraX) * 4 * dt;
-    state.cameraY += (ty - state.cameraY) * 4 * dt;
+    else {
+        const a = state.players.find(p => p.alive);
+        tx = a ? a.x : 0; ty = a ? a.y : 0;
+    }
+    // Clamp so we don't show way past the arena edges
+    const halfW = ARENA_W / 2, halfH = ARENA_H / 2;
+    const viewHalfW = W / 2 + 80;
+    const viewHalfH = H / 2 + 80;
+    if (tx < -halfW + viewHalfW - 200) tx = -halfW + viewHalfW - 200;
+    if (tx > halfW - viewHalfW + 200) tx = halfW - viewHalfW + 200;
+    if (ty < -halfH + viewHalfH - 200) ty = -halfH + viewHalfH - 200;
+    if (ty > halfH - viewHalfH + 200) ty = halfH - viewHalfH + 200;
+    state.cameraX += (tx - state.cameraX) * 5 * dt;
+    state.cameraY += (ty - state.cameraY) * 5 * dt;
 }
 
 function update(dt) {
@@ -643,45 +648,39 @@ function drawArena() {
     ctx.strokeRect(ax + 3, ay + 3, ARENA_W - 6, ARENA_H - 6);
 }
 
+function hexToRgba(hex, alpha) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!m) return `rgba(255,87,34,${alpha})`;
+    const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function drawTrail() {
-    // Draw trail segments — older fade out; brighter, wider when fresh.
     state.trail.forEach(seg => {
         const fade = seg.life / seg.maxLife;
         if (fade < 0.02) return;
         const sx = w2sX(seg.x), sy = w2sY(seg.y);
         const r = TRAIL_W / 2 * (0.5 + fade * 0.5);
-        // Halo
+        // Halo in the segment's color
         const haloR = r * 1.8;
         const grad = ctx.createRadialGradient(sx, sy, 1, sx, sy, haloR);
-        grad.addColorStop(0, `rgba(255,213,79,${0.5 * fade})`);
-        grad.addColorStop(0.4, `rgba(255,87,34,${0.3 * fade})`);
-        grad.addColorStop(1, 'rgba(255,87,34,0)');
+        grad.addColorStop(0, hexToRgba(seg.color, 0.55 * fade));
+        grad.addColorStop(0.5, hexToRgba(seg.color, 0.25 * fade));
+        grad.addColorStop(1, hexToRgba(seg.color, 0));
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(sx, sy, haloR, 0, Math.PI * 2);
         ctx.fill();
-        // Core
+        // Bright core: inner white-yellow on top of the player's color
         const grad2 = ctx.createRadialGradient(sx, sy, 1, sx, sy, r);
-        grad2.addColorStop(0, `rgba(255,255,200,${0.95 * fade})`);
-        grad2.addColorStop(0.5, `rgba(255,140,40,${0.85 * fade})`);
-        grad2.addColorStop(1, `rgba(180,50,20,${0.6 * fade})`);
+        grad2.addColorStop(0, `rgba(255,255,255,${0.95 * fade})`);
+        grad2.addColorStop(0.5, hexToRgba(seg.color, 0.9 * fade));
+        grad2.addColorStop(1, hexToRgba(seg.dark, 0.7 * fade));
         ctx.fillStyle = grad2;
         ctx.beginPath();
         ctx.arc(sx, sy, r, 0, Math.PI * 2);
         ctx.fill();
     });
-    // Spit a flame particle on top of the freshest trail segments
-    if (Math.random() < 0.25 && state.trail.length > 0) {
-        const seg = state.trail[state.trail.length - 1];
-        state.particles.push({
-            x: seg.x + (Math.random() - 0.5) * 8,
-            y: seg.y + (Math.random() - 0.5) * 8,
-            vx: (Math.random() - 0.5) * 30,
-            vy: -30 - Math.random() * 40,
-            life: 0.4, maxLife: 0.4,
-            size: 2, color: Math.random() < 0.5 ? '#ffd54f' : '#ff7043',
-        });
-    }
 }
 
 function drawPlayer(p) {
