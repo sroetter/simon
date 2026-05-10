@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lava Trails - Simon's Game Gallery</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #1a0a02;
+    min-height: 100vh; overflow: hidden;
+    color: white;
+    -webkit-user-select: none; user-select: none;
+}
+canvas { display: block; position: absolute; top: 0; left: 0; cursor: default; }
+
+.back-btn {
+    position: fixed; top: 14px; left: 14px;
+    text-decoration: none; color: #ffab40;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,171,64,0.6);
+    padding: 8px 14px; border-radius: 8px;
+    font-size: 14px; z-index: 100;
+}
+.back-btn:hover { background: rgba(255,171,64,0.18); }
+
+#overlay {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50; background: rgba(0,0,0,0.78);
+}
+#overlay.hidden { display: none; }
+
+.box {
+    background: linear-gradient(135deg, #6d2510, #2a0d04);
+    border: 3px solid #ff5722;
+    border-radius: 18px;
+    padding: 26px 34px; text-align: center;
+    width: 92%; max-width: 600px;
+    box-shadow: 0 16px 60px rgba(0,0,0,0.7), 0 0 50px rgba(255,87,34,0.25);
+}
+h1 {
+    font-size: 50px; margin-bottom: 4px;
+    color: #ffd54f; letter-spacing: 3px;
+    text-shadow: 0 0 18px rgba(255,87,34,0.55), 3px 3px 0 #4a1c00;
+}
+h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 14px; }
+
+.controls {
+    background: rgba(0,0,0,0.32); padding: 12px;
+    border-radius: 8px; text-align: left;
+    line-height: 1.55;
+    font-size: 14px; color: #ffe6d6;
+    margin: 10px 0;
+}
+.controls b { color: #ffd54f; }
+
+.row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; }
+.btn {
+    background: linear-gradient(135deg, #ff7043, #d63300);
+    color: white; border: 2px solid #ffd9c2;
+    padding: 12px 26px; font-size: 17px; font-weight: bold;
+    border-radius: 10px; cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: 0 4px 0 #771c00;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #771c00; }
+.btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #771c00; }
+.btn.diff { padding: 8px 18px; font-size: 14px; min-width: 90px; background: linear-gradient(135deg, #455a64, #263238); border-color: #b0bec5; box-shadow: 0 4px 0 #1a232a; }
+.btn.diff.bots { padding: 6px 12px; min-width: 0; }
+.btn.diff.active { background: linear-gradient(135deg, #ff7f50, #d63300); border-color: #ffd9c2; box-shadow: 0 4px 0 #771c00; }
+.label { font-size: 13px; color: #ffe082; margin: 8px 0 4px; }
+
+.color-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.color-swatch {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 2px solid #777; cursor: pointer;
+    padding: 0;
+    transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.color-swatch:hover { transform: scale(1.12); }
+.color-swatch.active {
+    border-color: #ffd54f;
+    box-shadow: 0 0 10px rgba(255,213,79,0.7);
+    transform: scale(1.18);
+}
+.winner { font-size: 30px; font-weight: bold; margin: 12px 0; }
+
+.footer-link {
+    position: fixed; bottom: 8px; left: 0; right: 0;
+    text-align: center; font-size: 12px;
+    color: rgba(255,255,255,0.4); z-index: 60; pointer-events: none;
+}
+.footer-link a { color: rgba(255,255,255,0.65); text-decoration: underline; pointer-events: auto; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+
+<div id="overlay">
+    <div class="box" id="startScreen">
+        <h1>🔥 LAVA TRAILS 🔥</h1>
+        <h2>Tag with a twist — It leaves lava behind!</h2>
+        <div class="controls">
+            <b>Rules:</b><br>
+            • One player is <b>It</b> (on fire 🔥) and leaves a glowing lava trail behind them.<br>
+            • Touch the trail (or It directly) and you're <b>OUT</b>.<br>
+            • The trail fades after about 7 seconds.<br>
+            • <b>Last runner standing wins.</b><br>
+            <br>
+            <b>Controls:</b> WASD or arrows to move &middot; Hold Shift to sprint
+        </div>
+
+        <div class="label">Your color:</div>
+        <div class="row color-row" id="colorPicker"></div>
+
+        <div class="label">Number of bots:</div>
+        <div class="row">
+            <button class="btn diff bots" data-bots="2">2</button>
+            <button class="btn diff bots active" data-bots="4">4</button>
+            <button class="btn diff bots" data-bots="6">6</button>
+            <button class="btn diff bots" data-bots="8">8</button>
+        </div>
+
+        <div class="label">Bot difficulty:</div>
+        <div class="row">
+            <button class="btn diff" data-diff="easy">Easy</button>
+            <button class="btn diff active" data-diff="medium">Medium</button>
+            <button class="btn diff" data-diff="hard">Hard</button>
+        </div>
+
+        <div class="row">
+            <button class="btn" id="startBtn">Run for It!</button>
+        </div>
+    </div>
+
+    <div class="box" id="gameOverScreen" style="display:none;">
+        <h1>GAME OVER</h1>
+        <div class="winner" id="winnerText"></div>
+        <div class="row">
+            <button class="btn" id="rematchBtn">Rematch</button>
+            <button class="btn" id="menuBtn" style="background: linear-gradient(135deg, #455a64, #263238); border-color: #b0bec5; box-shadow: 0 4px 0 #1a232a;">Main Menu</button>
+        </div>
+    </div>
+</div>
+
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<script>
+(() => {
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startScreen = document.getElementById('startScreen');
+const gameOverScreen = document.getElementById('gameOverScreen');
+
+let W = 0, H = 0;
+let state = null;
+function resize() {
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W; canvas.height = H;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ===== Audio =====
+let audioCtx = null;
+function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+function tone(freq, dur, type = 'sine', vol = 0.15) {
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+}
+function noise(dur, vol, hp = 800) {
+    if (!audioCtx) return;
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) * vol;
+    const src = audioCtx.createBufferSource(); src.buffer = buf;
+    const f = audioCtx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+    src.connect(f); f.connect(audioCtx.destination);
+    src.start(); src.stop(audioCtx.currentTime + dur);
+}
+function burnSound() { tone(140, 0.3, 'sawtooth', 0.16); setTimeout(() => tone(80, 0.4, 'sawtooth', 0.12), 80); noise(0.2, 0.1, 400); }
+function stepSound() { tone(220, 0.025, 'square', 0.04); }
+function winSound() {
+    [523, 659, 784, 1047, 1318].forEach((f, i) => setTimeout(() => tone(f, 0.18, 'square', 0.14), i * 130));
+}
+
+// ===== Constants =====
+const PLAYER_R = 16;
+const PLAYER_SPEED = 200;
+const SPRINT_MULT = 1.45;
+const TAG_RANGE = PLAYER_R * 2 - 4;
+const TRAIL_INTERVAL = 0.04;     // drop a segment every N seconds
+const TRAIL_LIFETIME = 7.0;      // seconds before a segment fades
+const TRAIL_W = 22;              // visual + collision width
+const TRAIL_DAMAGE_RANGE = TRAIL_W / 2 + PLAYER_R - 4;
+const ARENA_W = 1100, ARENA_H = 750;
+const SAFE_ZONE_AT_START = 1.2;  // brief no-trail buffer after game starts
+
+const PLAYER_PALETTE = [
+    { coat: '#d8463c', dark: '#9a2c25', label: '#ff5d5d' },
+    { coat: '#3d6fc8', dark: '#264a8a', label: '#5dadff' },
+    { coat: '#7e57c2', dark: '#4d2c91', label: '#b39ddb' },
+    { coat: '#43a047', dark: '#1b5e20', label: '#81c784' },
+    { coat: '#fb8c00', dark: '#bf360c', label: '#ffb74d' },
+    { coat: '#00acc1', dark: '#006064', label: '#4dd0e1' },
+    { coat: '#ec407a', dark: '#880e4f', label: '#f48fb1' },
+    { coat: '#fdd835', dark: '#a37501', label: '#fff176' },
+    { coat: '#9ccc65', dark: '#558b2f', label: '#aed581' },
+];
+
+const DIFF = {
+    easy:   { reactSpeed: 0.55, predict: 0.25, fleeFear: 200, label: 'Easy' },
+    medium: { reactSpeed: 0.85, predict: 0.55, fleeFear: 260, label: 'Medium' },
+    hard:   { reactSpeed: 1.05, predict: 0.90, fleeFear: 320, label: 'Hard' },
+};
+
+let p1ColorIdx = 0;
+let botCount = 4;
+let currentDifficulty = 'medium';
+
+function makeState(bots) {
+    const cfg = DIFF[currentDifficulty];
+    const total = 1 + bots;
+    const players = [];
+    for (let i = 0; i < total; i++) {
+        const isBot = i > 0;
+        const palIdx = i === 0 ? p1ColorIdx : ((i + p1ColorIdx + 1) % PLAYER_PALETTE.length);
+        const palette = PLAYER_PALETTE[palIdx % PLAYER_PALETTE.length];
+        const a = (i / total) * Math.PI * 2 + Math.random() * 0.2;
+        const r = Math.min(ARENA_W, ARENA_H) * 0.4;
+        players.push({
+            idx: i, isBot,
+            x: Math.cos(a) * r,
+            y: Math.sin(a) * r,
+            vx: 0, vy: 0,
+            facing: Math.atan2(-Math.sin(a), -Math.cos(a)),
+            alive: true,
+            isIt: false,
+            animTime: 0, stepTimer: 0,
+            deathTimer: 0,
+            color: palette.coat,
+            dark: palette.dark,
+            label: palette.label,
+            skin: '#f0c6a3',
+            ai: { jukeT: 0, jukeDir: 1, decisionT: 0 },
+            trailTimer: 0,
+        });
+    }
+    // Pick a random initial It from bots so the human isn't always It
+    const botIdx = [];
+    for (let i = 0; i < total; i++) if (players[i].isBot) botIdx.push(i);
+    const itIdx = botIdx.length > 0
+        ? botIdx[Math.floor(Math.random() * botIdx.length)]
+        : Math.floor(Math.random() * total);
+    players[itIdx].isIt = true;
+
+    return {
+        cfg, players,
+        trail: [],         // { x, y, life, maxLife }
+        time: 0,
+        startGrace: SAFE_ZONE_AT_START,
+        cameraX: 0, cameraY: 0,
+        gameEnded: false, winnerIdx: -1, endTimer: 0, running: true,
+        humanDiedTimer: 0,
+        particles: [],
+        announceText: '', announceTimer: 0,
+    };
+}
+
+// ===== Input =====
+const codes = {};
+window.addEventListener('keydown', e => {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    codes[e.code] = true;
+});
+window.addEventListener('keyup', e => { codes[e.code] = false; });
+
+// ===== Game flow =====
+function startGame() {
+    initAudio();
+    state = makeState(botCount);
+    overlay.classList.add('hidden');
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = 'none';
+    const it = state.players.find(p => p.isIt);
+    announce((it.isBot ? `BOT ${it.idx + 1}` : 'YOU') + ' IS IT — RUN!', 1.6);
+}
+function announce(t, dur) { state.announceText = t; state.announceTimer = dur || 1.4; }
+function endGame(winnerIdx) {
+    if (state.gameEnded) return;
+    state.gameEnded = true;
+    state.winnerIdx = winnerIdx;
+    state.endTimer = 2.0;
+    winSound();
+}
+function showGameOver() {
+    state.running = false;
+    const w = state.winnerIdx >= 0 ? state.players[state.winnerIdx] : null;
+    const wt = document.getElementById('winnerText');
+    if (w) {
+        wt.textContent = w.isBot ? `Bot ${w.idx + 1} survives!` : 'YOU survived the lava!';
+        wt.style.color = w.label;
+    } else {
+        wt.textContent = 'Everyone burned';
+        wt.style.color = '#ff5252';
+    }
+    overlay.classList.remove('hidden');
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = '';
+}
+
+// Color picker
+(function buildColorPicker() {
+    const pickerEl = document.getElementById('colorPicker');
+    PLAYER_PALETTE.forEach((pal, i) => {
+        const sw = document.createElement('button');
+        sw.className = 'color-swatch';
+        sw.style.background = `linear-gradient(135deg, ${pal.coat}, ${pal.dark})`;
+        if (i === p1ColorIdx) sw.classList.add('active');
+        sw.addEventListener('click', () => {
+            p1ColorIdx = i;
+            pickerEl.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+            sw.classList.add('active');
+        });
+        pickerEl.appendChild(sw);
+    });
+})();
+document.querySelectorAll('.btn.diff').forEach(b => {
+    b.addEventListener('click', () => {
+        const isBots = b.classList.contains('bots');
+        const sel = isBots ? '.btn.diff.bots' : '.btn.diff:not(.bots)';
+        document.querySelectorAll(sel).forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        if (isBots) botCount = parseInt(b.dataset.bots, 10);
+        else currentDifficulty = b.dataset.diff;
+    });
+});
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('rematchBtn').addEventListener('click', startGame);
+document.getElementById('menuBtn').addEventListener('click', () => {
+    state = null;
+    overlay.classList.remove('hidden');
+    startScreen.style.display = '';
+    gameOverScreen.style.display = 'none';
+});
+
+function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+function clampInside(p, r) {
+    const halfW = ARENA_W / 2 - r;
+    const halfH = ARENA_H / 2 - r;
+    if (p.x < -halfW) p.x = -halfW;
+    if (p.x > halfW) p.x = halfW;
+    if (p.y < -halfH) p.y = -halfH;
+    if (p.y > halfH) p.y = halfH;
+}
+
+function eliminatePlayer(p, cause) {
+    if (!p.alive) return;
+    p.alive = false;
+    p.deathTimer = 0;
+    burnSound();
+    // Big lava burst
+    for (let i = 0; i < 30; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 80 + Math.random() * 200;
+        state.particles.push({
+            x: p.x, y: p.y,
+            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 80,
+            life: 0.8, maxLife: 0.8,
+            size: 2 + Math.random() * 3,
+            color: Math.random() < 0.5 ? '#ff5252' : '#ffab40',
+            gravity: 600,
+        });
+    }
+    state.particles.push({
+        x: p.x, y: p.y - 50, vx: 0, vy: -30, life: 1.6, maxLife: 1.6,
+        size: 0, color: '#ff5252', isText: true,
+        text: p.isBot ? `BOT ${p.idx + 1} BURNED!` : 'YOU BURNED!',
+    });
+    // Human died — schedule menu kick after a brief delay so they see the death
+    if (!p.isBot && state.humanDiedTimer === 0) {
+        state.humanDiedTimer = 2.4;
+    }
+}
+
+function updatePlayer(p, dt) {
+    if (!p.alive) {
+        p.deathTimer += dt;
+        return;
+    }
+    let cmd;
+    if (p.isBot) cmd = aiCommand(p, dt);
+    else cmd = humanCommand(p, dt);
+    let mx = cmd.ix, my = cmd.iy;
+    const len = Math.hypot(mx, my);
+    if (len > 0) { mx /= len; my /= len; }
+    const speed = PLAYER_SPEED * (cmd.sprint ? SPRINT_MULT : 1);
+    p.vx = mx * speed; p.vy = my * speed;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    clampInside(p, PLAYER_R);
+    if (mx !== 0 || my !== 0) {
+        p.facing = Math.atan2(my, mx);
+        p.animTime += dt * 7;
+        p.stepTimer -= dt;
+        if (p.stepTimer <= 0) { stepSound(); p.stepTimer = 0.3; }
+    }
+
+    // It drops trail segments
+    if (p.isIt && state.startGrace <= 0) {
+        p.trailTimer = (p.trailTimer || 0) - dt;
+        if (p.trailTimer <= 0) {
+            state.trail.push({ x: p.x, y: p.y, life: TRAIL_LIFETIME, maxLife: TRAIL_LIFETIME });
+            p.trailTimer = TRAIL_INTERVAL;
+        }
+    }
+
+    // Direct tag from It onto a runner
+    if (p.isIt) {
+        for (const q of state.players) {
+            if (!q.alive || q.isIt || q === p) continue;
+            if (dist(p.x, p.y, q.x, q.y) < TAG_RANGE) {
+                eliminatePlayer(q, 'tag');
+            }
+        }
+    }
+
+    // Runner stepping into trail
+    if (!p.isIt && p.alive) {
+        for (const seg of state.trail) {
+            if (seg.life <= 0) continue;
+            const fade = seg.life / seg.maxLife;
+            // Only damaging while it still glows brightly (drop hitbox once faded out)
+            if (fade < 0.12) continue;
+            if (dist(p.x, p.y, seg.x, seg.y) < TRAIL_DAMAGE_RANGE) {
+                eliminatePlayer(p, 'trail');
+                break;
+            }
+        }
+    }
+}
+
+function humanCommand(p, dt) {
+    const cmd = { ix: 0, iy: 0, sprint: false };
+    if (codes['KeyA'] || codes['ArrowLeft']) cmd.ix -= 1;
+    if (codes['KeyD'] || codes['ArrowRight']) cmd.ix += 1;
+    if (codes['KeyW'] || codes['ArrowUp']) cmd.iy -= 1;
+    if (codes['KeyS'] || codes['ArrowDown']) cmd.iy += 1;
+    cmd.sprint = codes['ShiftLeft'] || codes['ShiftRight'];
+    return cmd;
+}
+
+function aiCommand(p, dt) {
+    const cmd = { ix: 0, iy: 0, sprint: false };
+    const cfg = state.cfg;
+    p.ai.decisionT = Math.max(0, p.ai.decisionT - dt);
+    p.ai.jukeT = Math.max(0, p.ai.jukeT - dt);
+    if (p.isIt) {
+        // It: chase the nearest runner, predict their movement
+        let target = null, bestD = Infinity;
+        for (const q of state.players) {
+            if (!q.alive || q.isIt) continue;
+            const d = dist(p.x, p.y, q.x, q.y);
+            if (d < bestD) { bestD = d; target = q; }
+        }
+        if (!target) return cmd;
+        const tt = bestD / (PLAYER_SPEED * SPRINT_MULT);
+        const tx = target.x + (target.vx || 0) * tt * cfg.predict;
+        const ty = target.y + (target.vy || 0) * tt * cfg.predict;
+        const dx = tx - p.x, dy = ty - p.y;
+        const d = Math.hypot(dx, dy) || 1;
+        cmd.ix = (dx / d) * cfg.reactSpeed;
+        cmd.iy = (dy / d) * cfg.reactSpeed;
+        cmd.sprint = true;
+        return cmd;
+    } else {
+        // Runner: flee from It and ALSO from nearby trail segments
+        const it = state.players.find(q => q.isIt && q.alive);
+        let fleeX = 0, fleeY = 0;
+        if (it) {
+            const dx = p.x - it.x, dy = p.y - it.y;
+            const d = Math.hypot(dx, dy) || 1;
+            const w = Math.max(0, (cfg.fleeFear - d)) / cfg.fleeFear;
+            fleeX += (dx / d) * 1.4 * w;
+            fleeY += (dy / d) * 1.4 * w;
+        }
+        // Avoid trail
+        for (const seg of state.trail) {
+            if (seg.life <= 0) continue;
+            const dx = p.x - seg.x, dy = p.y - seg.y;
+            const d = Math.hypot(dx, dy);
+            if (d < 80 && d > 0.1) {
+                const w = (80 - d) / 80;
+                fleeX += (dx / d) * 1.0 * w;
+                fleeY += (dy / d) * 1.0 * w;
+            }
+        }
+        // Slight pull toward arena center to avoid corners
+        const cx = -p.x / Math.max(80, Math.hypot(p.x, p.y));
+        const cy = -p.y / Math.max(80, Math.hypot(p.x, p.y));
+        fleeX += cx * 0.25;
+        fleeY += cy * 0.25;
+        // If we're not in any danger and have no input, wander toward center
+        if (Math.hypot(fleeX, fleeY) < 0.05) {
+            if (p.ai.jukeT <= 0) {
+                p.ai.jukeDir = Math.random() * Math.PI * 2;
+                p.ai.jukeT = 1.0 + Math.random() * 1.5;
+            }
+            fleeX = Math.cos(p.ai.jukeDir);
+            fleeY = Math.sin(p.ai.jukeDir);
+        }
+        const fl = Math.hypot(fleeX, fleeY) || 1;
+        cmd.ix = (fleeX / fl) * cfg.reactSpeed;
+        cmd.iy = (fleeY / fl) * cfg.reactSpeed;
+        cmd.sprint = it && dist(p.x, p.y, it.x, it.y) < 240;
+        return cmd;
+    }
+}
+
+function updateTrail(dt) {
+    state.trail.forEach(seg => seg.life -= dt);
+    state.trail = state.trail.filter(seg => seg.life > 0);
+}
+
+function updateParticles(dt) {
+    state.particles.forEach(p => {
+        if (!p.isText) {
+            p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt;
+            if (p.gravity) p.vy += p.gravity * dt;
+        } else if (p.vy) p.y += p.vy * dt;
+        p.life -= dt;
+    });
+    state.particles = state.particles.filter(p => p.life > 0);
+}
+
+function updateCamera(dt) {
+    const me = state.players.find(p => !p.isBot);
+    let tx, ty;
+    if (me && me.alive) { tx = me.x; ty = me.y; }
+    else { tx = 0; ty = 0; }
+    state.cameraX += (tx - state.cameraX) * 4 * dt;
+    state.cameraY += (ty - state.cameraY) * 4 * dt;
+}
+
+function update(dt) {
+    state.time += dt;
+    state.startGrace = Math.max(0, state.startGrace - dt);
+    state.announceTimer = Math.max(0, state.announceTimer - dt);
+    if (state.humanDiedTimer && state.humanDiedTimer > 0) {
+        state.humanDiedTimer -= dt;
+        if (state.humanDiedTimer <= 0) {
+            state = null;
+            overlay.classList.remove('hidden');
+            startScreen.style.display = '';
+            gameOverScreen.style.display = 'none';
+            return;
+        }
+    }
+    if (!state.gameEnded) {
+        state.players.forEach(p => updatePlayer(p, dt));
+        updateTrail(dt);
+        updateParticles(dt);
+        updateCamera(dt);
+
+        // Win check: only one runner remaining (or none)
+        const runners = state.players.filter(p => p.alive && !p.isIt);
+        if (runners.length <= 1) {
+            const w = runners[0];
+            if (w) endGame(w.idx);
+            else {
+                // No runners left — It wins by default
+                const it = state.players.find(p => p.alive && p.isIt);
+                if (it) endGame(it.idx);
+                else endGame(-1);
+            }
+        }
+    } else if (state.endTimer > 0) {
+        state.endTimer -= dt;
+        updateTrail(dt);
+        updateParticles(dt);
+        updateCamera(dt);
+        if (state.endTimer <= 0) showGameOver();
+    }
+}
+
+// ===== Render =====
+function w2sX(x) { return W / 2 + (x - state.cameraX); }
+function w2sY(y) { return H / 2 + (y - state.cameraY); }
+
+function drawBackground() {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#100604');
+    grad.addColorStop(1, '#2a0d04');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(120,60,30,0.25)';
+    for (let i = 0; i < 400; i++) {
+        const x = (i * 73) % W;
+        const y = (i * 131) % H;
+        ctx.fillRect(x, y, 1, 1);
+    }
+}
+
+function drawArena() {
+    const ax = w2sX(-ARENA_W / 2), ay = w2sY(-ARENA_H / 2);
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(ax + 8, ay + 12, ARENA_W, ARENA_H);
+    // Arena floor
+    const grad = ctx.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, Math.max(ARENA_W, ARENA_H) * 0.7);
+    grad.addColorStop(0, '#3a2a1a');
+    grad.addColorStop(0.7, '#2a1a08');
+    grad.addColorStop(1, '#150a04');
+    ctx.fillStyle = grad;
+    ctx.fillRect(ax, ay, ARENA_W, ARENA_H);
+    // Cobblestone
+    ctx.strokeStyle = 'rgba(80,50,25,0.45)';
+    ctx.lineWidth = 1;
+    const tile = 40;
+    for (let row = 0; row * tile < ARENA_H; row++) {
+        const y = ay + row * tile;
+        const offset = (row % 2 === 0) ? 0 : tile / 2;
+        ctx.beginPath(); ctx.moveTo(ax, y); ctx.lineTo(ax + ARENA_W, y); ctx.stroke();
+        for (let x = ax - tile + offset; x < ax + ARENA_W; x += tile) {
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + tile); ctx.stroke();
+        }
+    }
+    // Border
+    ctx.strokeStyle = '#3a2c20';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(ax, ay, ARENA_W, ARENA_H);
+    ctx.strokeStyle = '#7a3a10';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(ax + 3, ay + 3, ARENA_W - 6, ARENA_H - 6);
+}
+
+function drawTrail() {
+    // Draw trail segments — older fade out; brighter, wider when fresh.
+    state.trail.forEach(seg => {
+        const fade = seg.life / seg.maxLife;
+        if (fade < 0.02) return;
+        const sx = w2sX(seg.x), sy = w2sY(seg.y);
+        const r = TRAIL_W / 2 * (0.5 + fade * 0.5);
+        // Halo
+        const haloR = r * 1.8;
+        const grad = ctx.createRadialGradient(sx, sy, 1, sx, sy, haloR);
+        grad.addColorStop(0, `rgba(255,213,79,${0.5 * fade})`);
+        grad.addColorStop(0.4, `rgba(255,87,34,${0.3 * fade})`);
+        grad.addColorStop(1, 'rgba(255,87,34,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(sx, sy, haloR, 0, Math.PI * 2);
+        ctx.fill();
+        // Core
+        const grad2 = ctx.createRadialGradient(sx, sy, 1, sx, sy, r);
+        grad2.addColorStop(0, `rgba(255,255,200,${0.95 * fade})`);
+        grad2.addColorStop(0.5, `rgba(255,140,40,${0.85 * fade})`);
+        grad2.addColorStop(1, `rgba(180,50,20,${0.6 * fade})`);
+        ctx.fillStyle = grad2;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    // Spit a flame particle on top of the freshest trail segments
+    if (Math.random() < 0.25 && state.trail.length > 0) {
+        const seg = state.trail[state.trail.length - 1];
+        state.particles.push({
+            x: seg.x + (Math.random() - 0.5) * 8,
+            y: seg.y + (Math.random() - 0.5) * 8,
+            vx: (Math.random() - 0.5) * 30,
+            vy: -30 - Math.random() * 40,
+            life: 0.4, maxLife: 0.4,
+            size: 2, color: Math.random() < 0.5 ? '#ffd54f' : '#ff7043',
+        });
+    }
+}
+
+function drawPlayer(p) {
+    const sx = w2sX(p.x), sy = w2sY(p.y);
+    const w = PLAYER_R, h = PLAYER_R * 1.1;
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(sx + 3, sy + h - 2, w * 0.95, w * 0.32, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (!p.alive) {
+        // Charred remains
+        ctx.globalAlpha = Math.max(0, 1 - p.deathTimer * 0.5);
+        // Smoke puffs
+        if (Math.random() < 0.2) {
+            state.particles.push({
+                x: p.x + (Math.random() - 0.5) * 12,
+                y: p.y + (Math.random() - 0.5) * 12,
+                vx: (Math.random() - 0.5) * 30,
+                vy: -20 - Math.random() * 30,
+                life: 0.7, maxLife: 0.7,
+                size: 2 + Math.random() * 2,
+                color: 'rgba(80,80,80,0.7)',
+            });
+        }
+        ctx.fillStyle = '#222';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + 2, w * 0.7, h * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#444';
+        ctx.beginPath();
+        ctx.arc(sx, sy - 2, w * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        return;
+    }
+
+    // It-specific: fiery aura around player
+    if (p.isIt) {
+        const auraR = w * 1.6 + Math.sin(state.time * 8) * 4;
+        const grad = ctx.createRadialGradient(sx, sy, 4, sx, sy, auraR);
+        grad.addColorStop(0, 'rgba(255,87,34,0.55)');
+        grad.addColorStop(1, 'rgba(255,87,34,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(sx, sy, auraR, 0, Math.PI * 2);
+        ctx.fill();
+        // Flame puffs above head
+        if (Math.random() < 0.6) {
+            state.particles.push({
+                x: p.x + (Math.random() - 0.5) * 10,
+                y: p.y - h * 1.2,
+                vx: (Math.random() - 0.5) * 30,
+                vy: -30 - Math.random() * 50,
+                life: 0.4, maxLife: 0.4,
+                size: 2 + Math.random() * 2,
+                color: Math.random() < 0.5 ? '#ff7043' : '#ffd54f',
+            });
+        }
+    }
+
+    // Body
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 2, w * 0.85, h * 0.95, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = p.dark;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + h * 0.5, w * 0.78, h * 0.42, 0, 0, Math.PI);
+    ctx.fill();
+    // Highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(sx - w * 0.4, sy - 2, w * 0.25, h * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Legs
+    const legSwing = (p.vx || p.vy) ? Math.sin(p.animTime) * 4 : 0;
+    ctx.fillStyle = '#3b2a1f';
+    ctx.beginPath(); ctx.ellipse(sx - 5, sy + h - 1 + legSwing, 4, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(sx + 5, sy + h - 1 - legSwing, 4, 3, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Arms
+    const facingDX = Math.cos(p.facing), facingDY = Math.sin(p.facing);
+    for (let s = -1; s <= 1; s += 2) {
+        const aA = p.facing + s * 0.55;
+        const ax = sx + Math.cos(aA) * w * 0.85;
+        const ay = sy + Math.sin(aA) * w * 0.7;
+        ctx.fillStyle = p.dark;
+        ctx.beginPath(); ctx.arc(ax, ay, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#f0c6a3';
+        ctx.beginPath(); ctx.arc(ax, ay, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Head
+    ctx.fillStyle = p.skin;
+    ctx.beginPath();
+    ctx.arc(sx, sy - h * 0.7, w * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+    // Eyes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(sx - 3, sy - h * 0.7, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx + 3, sy - h * 0.7, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#222';
+    ctx.beginPath(); ctx.arc(sx - 3 + facingDX * 0.7, sy - h * 0.7 + facingDY * 0.7, 1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx + 3 + facingDX * 0.7, sy - h * 0.7 + facingDY * 0.7, 1, 0, Math.PI * 2); ctx.fill();
+
+    // It marker: 🔥 above head
+    if (p.isIt) {
+        ctx.font = '20px Segoe UI Emoji';
+        ctx.textAlign = 'center';
+        ctx.fillText('🔥', sx, sy - h * 1.4);
+    }
+
+    // P-tag
+    ctx.fillStyle = p.label;
+    ctx.font = 'bold 11px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.isBot ? 'Bot ' + (p.idx + 1) : 'YOU', sx, sy - h * 1.65);
+}
+
+function drawParticles() {
+    state.particles.forEach(p => {
+        const a = Math.max(0, p.life / p.maxLife);
+        ctx.globalAlpha = a;
+        if (p.isText) {
+            ctx.fillStyle = p.color;
+            ctx.font = 'bold 18px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText(p.text, w2sX(p.x), w2sY(p.y));
+        } else {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(w2sX(p.x), w2sY(p.y), p.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+    ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+    // Top: "N runners left"
+    const runners = state.players.filter(p => p.alive && !p.isIt).length;
+    const total = state.players.filter(p => !p.isIt).length;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(W / 2 - 130, 8, 260, 50);
+    ctx.fillStyle = runners <= 1 ? '#ff5252' : '#ffe082';
+    ctx.font = 'bold 28px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${runners} runners left`, W / 2, 38);
+    ctx.fillStyle = '#ffe082';
+    ctx.font = '12px Segoe UI';
+    ctx.fillText(`Trail fade ~${TRAIL_LIFETIME}s`, W / 2, 54);
+
+    // Roster
+    const all = state.players;
+    const stripW = Math.min(W - 80, all.length * 80);
+    const stripX = (W - stripW) / 2;
+    const stripY = 64;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(stripX, stripY, stripW, 32);
+    const slotW = stripW / all.length;
+    all.forEach((p, i) => {
+        const cx = stripX + i * slotW + slotW / 2;
+        const cy = stripY + 18;
+        ctx.fillStyle = p.alive ? p.color : '#3a3a3a';
+        ctx.beginPath(); ctx.arc(cx - 22, cy + 1, 6, 0, Math.PI * 2); ctx.fill();
+        if (p.isIt) {
+            ctx.fillStyle = '#ff7043';
+            ctx.font = '12px Segoe UI Emoji';
+            ctx.fillText('🔥', cx - 36, cy + 4);
+        }
+        ctx.fillStyle = p.alive ? '#fff' : 'rgba(255,255,255,0.4)';
+        ctx.font = 'bold 12px Segoe UI';
+        ctx.textAlign = 'left';
+        ctx.fillText(p.isBot ? `Bot ${p.idx + 1}` : 'YOU', cx - 12, cy + 4);
+        if (!p.alive) {
+            ctx.strokeStyle = 'rgba(255,80,80,0.7)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(cx - 38, cy + 12); ctx.lineTo(cx + 28, cy - 8);
+            ctx.stroke();
+        }
+    });
+
+    // Announcement
+    if (state.announceTimer > 0) {
+        const a = Math.min(1, state.announceTimer / 0.3);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(0, H * 0.35, W, 60);
+        ctx.fillStyle = '#ffd54f';
+        ctx.font = 'bold 36px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText(state.announceText, W / 2, H * 0.35 + 42);
+        ctx.globalAlpha = 1;
+    }
+
+    // Start grace timer
+    if (state.startGrace > 0) {
+        ctx.fillStyle = `rgba(255,213,79,${0.6 + Math.sin(state.time * 6) * 0.2})`;
+        ctx.font = 'bold 18px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Trail spawns in ${state.startGrace.toFixed(1)}s`, W / 2, H - 18);
+    }
+}
+
+function drawWinnerOverlay() {
+    if (!state.gameEnded) return;
+    const t = 1 - Math.max(0, state.endTimer) / 2.0;
+    ctx.fillStyle = `rgba(0,0,0,${0.5 * t})`;
+    ctx.fillRect(0, 0, W, H);
+    const w = state.winnerIdx >= 0 ? state.players[state.winnerIdx] : null;
+    ctx.font = 'bold 48px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = w ? w.label : '#ff5252';
+    const text = w ? (w.isBot ? `BOT ${w.idx + 1} WINS!` : 'YOU WIN!') : 'EVERYONE BURNED!';
+    ctx.fillText(text, W / 2, H / 2);
+}
+
+let lastTime = 0;
+function loop(ts) {
+    const dt = lastTime ? Math.min((ts - lastTime) / 1000, 0.033) : 0.016;
+    lastTime = ts;
+    if (!state) {
+        ctx.fillStyle = '#1a0a02';
+        ctx.fillRect(0, 0, W, H);
+    } else {
+        update(dt);
+        if (state) {
+            drawBackground();
+            drawArena();
+            drawTrail();
+            // Sort players by y for depth
+            const sorted = [...state.players].sort((a, b) => a.y - b.y);
+            sorted.forEach(drawPlayer);
+            drawParticles();
+            drawHUD();
+            drawWinnerOverlay();
+        }
+    }
+    requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
