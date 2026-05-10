@@ -220,9 +220,9 @@ const PLAYER_PALETTE = [
 ];
 
 const DIFF = {
-    easy:   { reactSpeed: 0.55, predict: 0.25, fleeFear: 200, label: 'Easy' },
-    medium: { reactSpeed: 0.85, predict: 0.55, fleeFear: 260, label: 'Medium' },
-    hard:   { reactSpeed: 1.05, predict: 0.90, fleeFear: 320, label: 'Hard' },
+    easy:   { reactSpeed: 0.55, predict: 0.25, fleeFear: 200, timeLimit: 90,  label: 'Easy' },
+    medium: { reactSpeed: 0.85, predict: 0.55, fleeFear: 260, timeLimit: 120, label: 'Medium' },
+    hard:   { reactSpeed: 1.05, predict: 0.90, fleeFear: 320, timeLimit: 180, label: 'Hard' },
 };
 
 let p1ColorIdx = 0;
@@ -264,8 +264,9 @@ function makeState(bots) {
 
     return {
         cfg, players,
-        trail: [],         // { x, y, life, maxLife }
+        trail: [],
         time: 0,
+        timeLeft: cfg.timeLimit,
         startGrace: SAFE_ZONE_AT_START,
         cameraX: 0, cameraY: 0,
         gameEnded: false, winnerIdx: -1, endTimer: 0, running: true,
@@ -465,58 +466,73 @@ function humanCommand(p, dt) {
 }
 
 function aiCommand(p, dt) {
-    // Every bot's job: roam the field while avoiding all OTHERS' trails
-    // (their own is safe). Slight pull toward the arena center so they
-    // don't hug walls and corner themselves.
     const cmd = { ix: 0, iy: 0, sprint: false };
     const cfg = state.cfg;
     p.ai.decisionT = Math.max(0, p.ai.decisionT - dt);
     p.ai.jukeT = Math.max(0, p.ai.jukeT - dt);
 
-    let goX = 0, goY = 0;
-    let danger = 0;
+    // ---- It (the tagger): always chase the nearest runner ----
+    if (p.isIt) {
+        let target = null, bestD = Infinity;
+        for (const q of state.players) {
+            if (!q.alive || q.isIt) continue;
+            const d = dist(p.x, p.y, q.x, q.y);
+            if (d < bestD) { bestD = d; target = q; }
+        }
+        if (target) {
+            const tt = bestD / (PLAYER_SPEED * SPRINT_MULT);
+            const tx = target.x + (target.vx || 0) * tt * cfg.predict;
+            const ty = target.y + (target.vy || 0) * tt * cfg.predict;
+            const dx = tx - p.x, dy = ty - p.y;
+            const d = Math.hypot(dx, dy) || 1;
+            cmd.ix = (dx / d) * cfg.reactSpeed;
+            cmd.iy = (dy / d) * cfg.reactSpeed;
+            cmd.sprint = true;
+        }
+        return cmd;
+    }
 
-    // Avoid any other player's trail within ~120 px
-    for (const seg of state.trail) {
-        if (seg.life <= 0 || seg.owner === p.idx) continue;
-        const dx = p.x - seg.x, dy = p.y - seg.y;
-        const d = Math.hypot(dx, dy);
-        if (d < 130 && d > 0.1) {
-            const w = (130 - d) / 130;
-            goX += (dx / d) * 1.4 * w;
-            goY += (dy / d) * 1.4 * w;
-            danger = Math.max(danger, w);
+    // ---- Runner: stand still until something is dangerously close ----
+    // Then flee. No more constant wandering.
+    let goX = 0, goY = 0;
+    let urgency = 0;
+    const it = state.players.find(q => q.isIt && q.alive);
+    if (it) {
+        const dx = p.x - it.x, dy = p.y - it.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (d < cfg.fleeFear) {
+            const w = (cfg.fleeFear - d) / cfg.fleeFear;
+            goX += (dx / d) * 1.6 * w;
+            goY += (dy / d) * 1.6 * w;
+            urgency = Math.max(urgency, w);
         }
     }
-    // Avoid other living players (head-on collisions are deadly here)
-    for (const q of state.players) {
-        if (!q.alive || q === p) continue;
-        const dx = p.x - q.x, dy = p.y - q.y;
+    // Avoid hot trail segments within 100 px
+    for (const seg of state.trail) {
+        if (seg.life <= 0) continue;
+        const dx = p.x - seg.x, dy = p.y - seg.y;
         const d = Math.hypot(dx, dy);
         if (d < 100 && d > 0.1) {
             const w = (100 - d) / 100;
-            goX += (dx / d) * 0.8 * w;
-            goY += (dy / d) * 0.8 * w;
+            goX += (dx / d) * 1.4 * w;
+            goY += (dy / d) * 1.4 * w;
+            urgency = Math.max(urgency, w);
         }
     }
-    // Center pull (gentle)
-    const cd = Math.hypot(p.x, p.y) || 1;
-    goX += (-p.x / cd) * 0.25;
-    goY += (-p.y / cd) * 0.25;
-
-    // If nothing pulls us strongly, wander in a steady direction
-    if (Math.hypot(goX, goY) < 0.06) {
-        if (p.ai.jukeT <= 0) {
-            p.ai.jukeDir = Math.random() * Math.PI * 2;
-            p.ai.jukeT = 1.5 + Math.random() * 2.0;
-        }
-        goX = Math.cos(p.ai.jukeDir);
-        goY = Math.sin(p.ai.jukeDir);
+    if (urgency < 0.1) {
+        // Nothing to flee from — just hold position
+        return cmd;
     }
+    // Stay inside arena (steer away from edges)
+    const halfW = ARENA_W / 2 - 60, halfH = ARENA_H / 2 - 60;
+    if (p.x < -halfW) goX += 0.5;
+    if (p.x > halfW)  goX -= 0.5;
+    if (p.y < -halfH) goY += 0.5;
+    if (p.y > halfH)  goY -= 0.5;
     const len = Math.hypot(goX, goY) || 1;
     cmd.ix = (goX / len) * cfg.reactSpeed;
     cmd.iy = (goY / len) * cfg.reactSpeed;
-    cmd.sprint = danger > 0.4;
+    cmd.sprint = urgency > 0.4;
     return cmd;
 }
 
@@ -575,6 +591,8 @@ function update(dt) {
         updateTrail(dt);
         updateParticles(dt);
         updateCamera(dt);
+        // Per-difficulty round timer: easy 1.5min, medium 2min, hard 3min
+        state.timeLeft = Math.max(0, state.timeLeft - dt);
 
         // Win check: only one runner remaining (or none)
         const runners = state.players.filter(p => p.alive && !p.isIt);
@@ -582,11 +600,15 @@ function update(dt) {
             const w = runners[0];
             if (w) endGame(w.idx);
             else {
-                // No runners left — It wins by default
                 const it = state.players.find(p => p.alive && p.isIt);
                 if (it) endGame(it.idx);
                 else endGame(-1);
             }
+        } else if (state.timeLeft <= 0) {
+            // Time's up — any surviving runner wins (first one in the list).
+            // The It loses if any runner survived.
+            const winner = runners[0];
+            endGame(winner ? winner.idx : -1);
         }
     } else if (state.endTimer > 0) {
         state.endTimer -= dt;
@@ -832,9 +854,15 @@ function drawHUD() {
     ctx.font = 'bold 28px Segoe UI';
     ctx.textAlign = 'center';
     ctx.fillText(`${runners} runners left`, W / 2, 38);
-    ctx.fillStyle = '#ffe082';
-    ctx.font = '12px Segoe UI';
-    ctx.fillText(`Trail fade ~${TRAIL_LIFETIME}s`, W / 2, 54);
+    // Per-difficulty time limit countdown
+    if (state.timeLeft !== undefined) {
+        const t = Math.max(0, state.timeLeft);
+        const mins = Math.floor(t / 60);
+        const secs = Math.floor(t % 60).toString().padStart(2, '0');
+        ctx.fillStyle = t < 15 ? '#ff5252' : (t < 30 ? '#ffd54f' : '#ffe082');
+        ctx.font = 'bold 18px Segoe UI';
+        ctx.fillText(`⏱ ${mins}:${secs}`, W / 2, 60);
+    }
 
     // Roster
     const all = state.players;
