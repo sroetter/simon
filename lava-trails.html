@@ -103,14 +103,14 @@ h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 14px; 
 <div id="overlay">
     <div class="box" id="startScreen">
         <h1>🔥 LAVA TRAILS 🔥</h1>
-        <h2>Everyone leaves a trail — don't touch the wrong one!</h2>
+        <h2>One tagger leaves a fiery trail — don't get burned!</h2>
         <div class="controls">
             <b>Rules:</b><br>
-            • <b>Every player</b> leaves a glowing trail in their own color as they move.<br>
-            • You're <b>immune to your own trail</b>. Step on anyone <b>else's</b> trail and you're out.<br>
-            • Trails fade after about 7 seconds, so the arena doesn't fill up.<br>
+            • One player is <b>It</b> (on fire 🔥) and leaves a glowing lava trail behind them.<br>
+            • Everyone else has to dodge it. Touch the trail or It directly = <b>OUT</b>.<br>
+            • The It is picked at random — could be you!<br>
             • The arena is bigger than the screen — the camera follows you.<br>
-            • <b>Last player alive wins.</b><br>
+            • Trail fades after ~7 seconds. <b>Last runner alive wins.</b><br>
             <br>
             <b>Controls:</b> WASD or arrows to move &middot; Hold Shift to sprint
         </div>
@@ -413,8 +413,8 @@ function updatePlayer(p, dt) {
         if (p.stepTimer <= 0) { stepSound(); p.stepTimer = 0.3; }
     }
 
-    // Every player drops their own trail in their color
-    if (state.startGrace <= 0) {
+    // Only the It leaves a trail.
+    if (p.isIt && state.startGrace <= 0) {
         p.trailTimer = (p.trailTimer || 0) - dt;
         if (p.trailTimer <= 0) {
             state.trail.push({
