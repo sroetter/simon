@@ -917,6 +917,72 @@ function drawHUD() {
     }
 }
 
+// Bottom-right corner overview map — visible to everyone.
+function drawMinimap() {
+    const mmW = 220;
+    const mmH = mmW * (ARENA_H / ARENA_W);
+    const mmX = W - mmW - 16;
+    const mmY = H - mmH - 18;
+
+    // Frame + title
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(mmX - 6, mmY - 22, mmW + 12, mmH + 32);
+    ctx.fillStyle = '#ffd54f';
+    ctx.font = 'bold 12px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('🗺 MAP', mmX + mmW / 2, mmY - 7);
+    // Map background
+    ctx.fillStyle = 'rgba(60,40,20,0.55)';
+    ctx.fillRect(mmX, mmY, mmW, mmH);
+    ctx.strokeStyle = '#ff7043';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(mmX, mmY, mmW, mmH);
+
+    // Trail as faint orange dots
+    state.trail.forEach(seg => {
+        if (seg.life <= 0) return;
+        const fade = seg.life / seg.maxLife;
+        if (fade < 0.1) return;
+        const px = mmX + (seg.x + ARENA_W / 2) / ARENA_W * mmW;
+        const py = mmY + (seg.y + ARENA_H / 2) / ARENA_H * mmH;
+        ctx.fillStyle = `rgba(255,140,40,${fade * 0.7})`;
+        ctx.beginPath();
+        ctx.arc(px, py, 1.4, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // Players as colored dots (the It gets a pulsing orange halo)
+    state.players.forEach(p => {
+        if (!p.alive) return;
+        const px = mmX + (p.x + ARENA_W / 2) / ARENA_W * mmW;
+        const py = mmY + (p.y + ARENA_H / 2) / ARENA_H * mmH;
+        if (p.isIt) {
+            const pulse = 0.5 + Math.sin(state.time * 6) * 0.5;
+            ctx.fillStyle = `rgba(255,87,34,${0.5 + pulse * 0.25})`;
+            ctx.beginPath();
+            ctx.arc(px, py, 7 + pulse * 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(px, py, p.isBot ? 3 : 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = p.isBot ? 'rgba(0,0,0,0.6)' : '#fff';
+        ctx.lineWidth = p.isBot ? 1 : 1.6;
+        ctx.stroke();
+    });
+
+    // Camera viewport rectangle (white outline)
+    const vw = (W / mmW) * (mmW / ARENA_W) * mmW; // = W * mmW / ARENA_W
+    const cw = (W / ARENA_W) * mmW;
+    const ch = (H / ARENA_H) * mmH;
+    const cvx = mmX + (state.cameraX + ARENA_W / 2) / ARENA_W * mmW - cw / 2;
+    const cvy = mmY + (state.cameraY + ARENA_H / 2) / ARENA_H * mmH - ch / 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cvx, cvy, cw, ch);
+}
+
 function drawWinnerOverlay() {
     if (!state.gameEnded) return;
     const t = 1 - Math.max(0, state.endTimer) / 2.0;
@@ -948,6 +1014,7 @@ function loop(ts) {
             sorted.forEach(drawPlayer);
             drawParticles();
             drawHUD();
+            drawMinimap();
             drawWinnerOverlay();
         }
     }
