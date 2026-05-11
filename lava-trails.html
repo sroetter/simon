@@ -471,22 +471,72 @@ function aiCommand(p, dt) {
     p.ai.decisionT = Math.max(0, p.ai.decisionT - dt);
     p.ai.jukeT = Math.max(0, p.ai.jukeT - dt);
 
-    // ---- It (the tagger): always chase the nearest runner ----
+    // ---- It (the tagger): use the trail as a weapon ----
+    // Smart strategy:
+    //   1. Pick the easiest target — prefer runners who are already near a
+    //      wall (less room to escape).
+    //   2. Aim at a STRONGLY predicted lead point (1.5x base prediction)
+    //      so the trail naturally lands across their flight path.
+    //   3. When approaching from afar: offset the aim point toward the
+    //      runner's NEAREST WALL so we approach from the center side and
+    //      push them outward into a corner.
+    //   4. When close (< 110 px): mix in a perpendicular vector to circle
+    //      the runner — drops trail around them and tightens the noose.
     if (p.isIt) {
-        let target = null, bestD = Infinity;
+        // Score each runner. Prefer near-wall and near-us targets.
+        let target = null, bestScore = -Infinity, bestD = Infinity;
         for (const q of state.players) {
             if (!q.alive || q.isIt) continue;
             const d = dist(p.x, p.y, q.x, q.y);
-            if (d < bestD) { bestD = d; target = q; }
+            // Distance to nearest wall (smaller = more trapped)
+            const wd = Math.min(
+                ARENA_W / 2 - Math.abs(q.x),
+                ARENA_H / 2 - Math.abs(q.y)
+            );
+            const score = -d * 0.7 - wd * 0.4;
+            if (score > bestScore) { bestScore = score; target = q; bestD = d; }
         }
         if (target) {
             const tt = bestD / (PLAYER_SPEED * SPRINT_MULT);
-            const tx = target.x + (target.vx || 0) * tt * cfg.predict;
-            const ty = target.y + (target.vy || 0) * tt * cfg.predict;
-            const dx = tx - p.x, dy = ty - p.y;
-            const d = Math.hypot(dx, dy) || 1;
-            cmd.ix = (dx / d) * cfg.reactSpeed;
-            cmd.iy = (dy / d) * cfg.reactSpeed;
+            // Strong prediction
+            const leadX = target.x + (target.vx || 0) * tt * (cfg.predict * 1.5 + 0.4);
+            const leadY = target.y + (target.vy || 0) * tt * (cfg.predict * 1.5 + 0.4);
+            // Wall-herding offset: figure out which wall is closest to the
+            // runner, then aim at a point biased AWAY from that wall on our
+            // side so we approach from the open side.
+            const wxDist = ARENA_W / 2 - Math.abs(target.x);
+            const wyDist = ARENA_H / 2 - Math.abs(target.y);
+            let offX = 0, offY = 0;
+            if (wxDist < wyDist) {
+                // The X-wall is closer to the runner. We want to be on the
+                // opposite side from the wall (the center side).
+                offX = -Math.sign(target.x) * 70;
+            } else {
+                offY = -Math.sign(target.y) * 70;
+            }
+            // When far, give the offset full weight (herding). When close,
+            // ignore the offset (direct pursuit) and add a perpendicular
+            // circling vector to wrap trail around the runner.
+            let aimX, aimY;
+            if (bestD > 220) {
+                aimX = leadX + offX;
+                aimY = leadY + offY;
+            } else if (bestD > 110) {
+                aimX = leadX;
+                aimY = leadY;
+            } else {
+                // Close range — circle them clockwise to lay trail around
+                const tdx = target.x - p.x, tdy = target.y - p.y;
+                const td = Math.hypot(tdx, tdy) || 1;
+                // Perpendicular (clockwise)
+                const perpX = -tdy / td, perpY = tdx / td;
+                aimX = target.x + perpX * 40;
+                aimY = target.y + perpY * 40;
+            }
+            const adx = aimX - p.x, ady = aimY - p.y;
+            const ad = Math.hypot(adx, ady) || 1;
+            cmd.ix = (adx / ad) * cfg.reactSpeed;
+            cmd.iy = (ady / ad) * cfg.reactSpeed;
             cmd.sprint = true;
         }
         return cmd;
