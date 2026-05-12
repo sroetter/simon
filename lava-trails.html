@@ -471,24 +471,18 @@ function aiCommand(p, dt) {
     p.ai.decisionT = Math.max(0, p.ai.decisionT - dt);
     p.ai.jukeT = Math.max(0, p.ai.jukeT - dt);
 
-    // ---- It (the tagger): use the trail as a weapon ----
-    // Smart strategy:
-    //   1. Pick the easiest target — prefer runners who are already near a
-    //      wall (less room to escape).
-    //   2. Aim at a STRONGLY predicted lead point (1.5x base prediction)
-    //      so the trail naturally lands across their flight path.
-    //   3. When approaching from afar: offset the aim point toward the
-    //      runner's NEAREST WALL so we approach from the center side and
-    //      push them outward into a corner.
-    //   4. When close (< 110 px): mix in a perpendicular vector to circle
-    //      the runner — drops trail around them and tightens the noose.
+    // ---- It (the tagger): play with the trail, not just charge ----
+    // Strategy: the It almost never walks straight at the runner. Instead it
+    // approaches on a SIDE (left or right) and flips that side periodically,
+    // sweeping back and forth. The trail it lays behind it forms a long
+    // S-curve that progressively blocks off arena area.
     if (p.isIt) {
-        // Score each runner. Prefer near-wall and near-us targets.
+        // Score-based target selection — prefer the closer + more-cornered
+        // runner so we finish off trapped ones.
         let target = null, bestScore = -Infinity, bestD = Infinity;
         for (const q of state.players) {
             if (!q.alive || q.isIt) continue;
             const d = dist(p.x, p.y, q.x, q.y);
-            // Distance to nearest wall (smaller = more trapped)
             const wd = Math.min(
                 ARENA_W / 2 - Math.abs(q.x),
                 ARENA_H / 2 - Math.abs(q.y)
@@ -497,41 +491,42 @@ function aiCommand(p, dt) {
             if (score > bestScore) { bestScore = score; target = q; bestD = d; }
         }
         if (target) {
-            const tt = bestD / (PLAYER_SPEED * SPRINT_MULT);
-            // Strong prediction
-            const leadX = target.x + (target.vx || 0) * tt * (cfg.predict * 1.5 + 0.4);
-            const leadY = target.y + (target.vy || 0) * tt * (cfg.predict * 1.5 + 0.4);
-            // Wall-herding offset: figure out which wall is closest to the
-            // runner, then aim at a point biased AWAY from that wall on our
-            // side so we approach from the open side.
-            const wxDist = ARENA_W / 2 - Math.abs(target.x);
-            const wyDist = ARENA_H / 2 - Math.abs(target.y);
-            let offX = 0, offY = 0;
-            if (wxDist < wyDist) {
-                // The X-wall is closer to the runner. We want to be on the
-                // opposite side from the wall (the center side).
-                offX = -Math.sign(target.x) * 70;
-            } else {
-                offY = -Math.sign(target.y) * 70;
+            // Maintain a side preference (left/right) that flips every ~3s.
+            // This makes the It zig-zag across the arena, laying trail walls
+            // on alternating sides of the runner — sealing off areas.
+            if (!p.ai.curveDir) p.ai.curveDir = Math.random() < 0.5 ? -1 : 1;
+            p.ai.curveT = (p.ai.curveT || 0) - dt;
+            if (p.ai.curveT <= 0) {
+                p.ai.curveDir = -p.ai.curveDir;
+                p.ai.curveT = 2.5 + Math.random() * 2;
             }
-            // When far, give the offset full weight (herding). When close,
-            // ignore the offset (direct pursuit) and add a perpendicular
-            // circling vector to wrap trail around the runner.
+            const tt = bestD / (PLAYER_SPEED * SPRINT_MULT);
+            // Strong lead prediction
+            const leadX = target.x + (target.vx || 0) * tt * (cfg.predict * 1.6 + 0.5);
+            const leadY = target.y + (target.vy || 0) * tt * (cfg.predict * 1.6 + 0.5);
+            // Perpendicular offset: the side we're sweeping toward, scaled
+            // by distance so the curve is fattest at long range (more area
+            // denial) and tightens to a noose up close.
+            const tdx = target.x - p.x, tdy = target.y - p.y;
+            const td = Math.hypot(tdx, tdy) || 1;
+            const perpX = -tdy / td * p.ai.curveDir;
+            const perpY =  tdx / td * p.ai.curveDir;
             let aimX, aimY;
-            if (bestD > 220) {
-                aimX = leadX + offX;
-                aimY = leadY + offY;
+            if (bestD > 260) {
+                // FAR — wide sweep. Lay a long curved wall.
+                const mag = Math.min(180, bestD * 0.42);
+                aimX = leadX + perpX * mag;
+                aimY = leadY + perpY * mag;
             } else if (bestD > 110) {
-                aimX = leadX;
-                aimY = leadY;
+                // MID — moderate curve. Land trail across their flight path.
+                const mag = 70;
+                aimX = leadX + perpX * mag;
+                aimY = leadY + perpY * mag;
             } else {
-                // Close range — circle them clockwise to lay trail around
-                const tdx = target.x - p.x, tdy = target.y - p.y;
-                const td = Math.hypot(tdx, tdy) || 1;
-                // Perpendicular (clockwise)
-                const perpX = -tdy / td, perpY = tdx / td;
-                aimX = target.x + perpX * 40;
-                aimY = target.y + perpY * 40;
+                // CLOSE — tighten the noose. Circle around the runner so
+                // trail wraps them rather than slamming straight in.
+                aimX = target.x + perpX * 38;
+                aimY = target.y + perpY * 38;
             }
             const adx = aimX - p.x, ady = aimY - p.y;
             const ad = Math.hypot(adx, ady) || 1;
