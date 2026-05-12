@@ -570,7 +570,24 @@ function aiCommand(p, dt) {
         }
     }
     if (urgency < 0.1) {
-        // Nothing to flee from — just hold position
+        // No immediate threat — slow patrol. Pick a direction for 2-4 sec
+        // at a time, biased toward the arena center if we're hugging a wall.
+        if (p.ai.jukeT <= 0) {
+            const wallDist = Math.min(
+                ARENA_W / 2 - Math.abs(p.x),
+                ARENA_H / 2 - Math.abs(p.y)
+            );
+            if (wallDist < 180) {
+                // Near a wall — head roughly toward the center
+                p.ai.jukeDir = Math.atan2(-p.y, -p.x) + (Math.random() - 0.5) * Math.PI * 0.7;
+            } else {
+                p.ai.jukeDir = Math.random() * Math.PI * 2;
+            }
+            p.ai.jukeT = 2.0 + Math.random() * 2.0;
+        }
+        cmd.ix = Math.cos(p.ai.jukeDir) * 0.45 * cfg.reactSpeed;
+        cmd.iy = Math.sin(p.ai.jukeDir) * 0.45 * cfg.reactSpeed;
+        cmd.sprint = false;
         return cmd;
     }
     // Stay inside arena (steer away from edges)
