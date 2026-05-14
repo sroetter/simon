@@ -304,23 +304,40 @@ function startGame() {
     announce((it.isBot ? `BOT ${it.idx + 1}` : 'YOU') + ' IS IT — RUN!', 1.6);
 }
 function announce(t, dur) { state.announceText = t; state.announceTimer = dur || 1.4; }
-function endGame(winnerIdx) {
+function endGame(winnerOrWinners) {
     if (state.gameEnded) return;
     state.gameEnded = true;
-    state.winnerIdx = winnerIdx;
+    // Accept either a single index or an array of indices
+    if (Array.isArray(winnerOrWinners)) {
+        state.winners = winnerOrWinners.filter(i => i >= 0);
+    } else if (winnerOrWinners >= 0) {
+        state.winners = [winnerOrWinners];
+    } else {
+        state.winners = [];
+    }
+    // Preserve back-compat
+    state.winnerIdx = state.winners[0] !== undefined ? state.winners[0] : -1;
     state.endTimer = 2.0;
     winSound();
 }
 function showGameOver() {
     state.running = false;
-    const w = state.winnerIdx >= 0 ? state.players[state.winnerIdx] : null;
+    const wins = (state.winners || []).map(i => state.players[i]).filter(Boolean);
     const wt = document.getElementById('winnerText');
-    if (w) {
+    if (wins.length === 0) {
+        wt.textContent = 'Everyone burned';
+        wt.style.color = '#ff5252';
+    } else if (wins.length === 1) {
+        const w = wins[0];
         wt.textContent = w.isBot ? `Bot ${w.idx + 1} survives!` : 'YOU survived the lava!';
         wt.style.color = w.label;
     } else {
-        wt.textContent = 'Everyone burned';
-        wt.style.color = '#ff5252';
+        // Multiple winners — list them all in their colors
+        wt.innerHTML = wins.map(w => {
+            const name = w.isBot ? `Bot ${w.idx + 1}` : 'YOU';
+            return `<span style="color:${w.label}">${name}</span>`;
+        }).join('  &middot;  ') + '  <span style="color:#ffe082;">all survive!</span>';
+        wt.style.color = '';  // colors come from spans
     }
     overlay.classList.remove('hidden');
     startScreen.style.display = 'none';
@@ -738,10 +755,9 @@ function update(dt) {
                 else endGame(-1);
             }
         } else if (state.timeLeft <= 0) {
-            // Time's up — any surviving runner wins (first one in the list).
-            // The It loses if any runner survived.
-            const winner = runners[0];
-            endGame(winner ? winner.idx : -1);
+            // Time's up — EVERY surviving runner wins. The It loses.
+            if (runners.length > 0) endGame(runners.map(r => r.idx));
+            else endGame(-1);
         }
     } else if (state.endTimer > 0) {
         state.endTimer -= dt;
@@ -1210,12 +1226,37 @@ function drawWinnerOverlay() {
     const t = 1 - Math.max(0, state.endTimer) / 2.0;
     ctx.fillStyle = `rgba(0,0,0,${0.5 * t})`;
     ctx.fillRect(0, 0, W, H);
-    const w = state.winnerIdx >= 0 ? state.players[state.winnerIdx] : null;
-    ctx.font = 'bold 48px Segoe UI';
+    const wins = (state.winners || []).map(i => state.players[i]).filter(Boolean);
     ctx.textAlign = 'center';
-    ctx.fillStyle = w ? w.label : '#ff5252';
-    const text = w ? (w.isBot ? `BOT ${w.idx + 1} WINS!` : 'YOU WIN!') : 'EVERYONE BURNED!';
-    ctx.fillText(text, W / 2, H / 2);
+    if (wins.length === 0) {
+        ctx.font = 'bold 48px Segoe UI';
+        ctx.fillStyle = '#ff5252';
+        ctx.fillText('EVERYONE BURNED!', W / 2, H / 2);
+    } else if (wins.length === 1) {
+        const w = wins[0];
+        ctx.font = 'bold 48px Segoe UI';
+        ctx.fillStyle = w.label;
+        ctx.fillText(w.isBot ? `BOT ${w.idx + 1} WINS!` : 'YOU WIN!', W / 2, H / 2);
+    } else {
+        // Multi-winner banner
+        ctx.font = 'bold 42px Segoe UI';
+        ctx.fillStyle = '#ffe082';
+        ctx.fillText(`${wins.length} SURVIVORS!`, W / 2, H / 2 - 24);
+        ctx.font = 'bold 22px Segoe UI';
+        // Layout names in a centered row, each in their own color
+        const names = wins.map(w => w.isBot ? `BOT ${w.idx + 1}` : 'YOU');
+        const widths = names.map(n => { ctx.font = 'bold 22px Segoe UI'; return ctx.measureText(n).width; });
+        const gapW = 28;
+        const totalW = widths.reduce((a, b) => a + b, 0) + gapW * (wins.length - 1);
+        let x = W / 2 - totalW / 2;
+        wins.forEach((w, i) => {
+            ctx.fillStyle = w.label;
+            ctx.textAlign = 'left';
+            ctx.fillText(names[i], x, H / 2 + 16);
+            x += widths[i] + gapW;
+        });
+        ctx.textAlign = 'center';
+    }
 }
 
 let lastTime = 0;
