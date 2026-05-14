@@ -206,6 +206,11 @@ const TRAIL_DAMAGE_RANGE = TRAIL_W / 2 + PLAYER_R - 4;
 // World is much bigger than the viewport — camera scrolls.
 const ARENA_W = 2600, ARENA_H = 1800;
 const SAFE_ZONE_AT_START = 1.2;  // brief no-trail buffer after game starts
+// Random lava pools that periodically erupt across the arena.
+const LAVA_CIRCLE_INTERVAL = 6;
+const LAVA_CIRCLE_WARN = 1.6;      // seconds of warning before it goes hot
+const LAVA_CIRCLE_ACTIVE = 4.0;    // seconds it's deadly
+const LAVA_CIRCLE_FADE = 1.0;      // seconds of cooldown after that
 
 const PLAYER_PALETTE = [
     { coat: '#d8463c', dark: '#9a2c25', label: '#ff5d5d' },
@@ -265,6 +270,8 @@ function makeState(bots) {
     return {
         cfg, players,
         trail: [],
+        lavaCircles: [],
+        lavaCircleSpawnT: LAVA_CIRCLE_INTERVAL * 0.6, // first one a bit sooner
         time: 0,
         timeLeft: cfg.timeLimit,
         startGrace: SAFE_ZONE_AT_START,
@@ -564,6 +571,19 @@ function aiCommand(p, dt) {
             urgency = Math.max(urgency, w);
         }
     }
+    // Avoid active or about-to-activate lava pools
+    for (const lc of state.lavaCircles) {
+        if (lc.phase !== 'active' && lc.phase !== 'warn') continue;
+        const dx = p.x - lc.x, dy = p.y - lc.y;
+        const d = Math.hypot(dx, dy);
+        const danger = lc.r + 30;
+        if (d < danger && d > 0.1) {
+            const w = (danger - d) / danger;
+            goX += (dx / d) * 1.5 * w;
+            goY += (dy / d) * 1.5 * w;
+            urgency = Math.max(urgency, w * (lc.phase === 'active' ? 1.2 : 0.8));
+        }
+    }
     if (urgency < 0.1) {
         // No immediate threat — slow patrol. Pick a direction for 2-4 sec
         // at a time, biased toward the arena center if we're hugging a wall.
@@ -601,6 +621,47 @@ function aiCommand(p, dt) {
 function updateTrail(dt) {
     state.trail.forEach(seg => seg.life -= dt);
     state.trail = state.trail.filter(seg => seg.life > 0);
+}
+
+function spawnLavaCircle() {
+    const margin = 80;
+    const x = -ARENA_W / 2 + margin + Math.random() * (ARENA_W - margin * 2);
+    const y = -ARENA_H / 2 + margin + Math.random() * (ARENA_H - margin * 2);
+    state.lavaCircles.push({
+        x, y,
+        r: 55 + Math.random() * 35,
+        phase: 'warn',
+        timer: LAVA_CIRCLE_WARN,
+    });
+}
+
+function updateLavaCircles(dt) {
+    state.lavaCircleSpawnT -= dt;
+    if (state.lavaCircleSpawnT <= 0 && state.startGrace <= 0) {
+        spawnLavaCircle();
+        state.lavaCircleSpawnT = LAVA_CIRCLE_INTERVAL;
+    }
+    state.lavaCircles.forEach(lc => {
+        lc.timer -= dt;
+        if (lc.timer <= 0) {
+            if (lc.phase === 'warn') { lc.phase = 'active'; lc.timer = LAVA_CIRCLE_ACTIVE; }
+            else if (lc.phase === 'active') { lc.phase = 'fade'; lc.timer = LAVA_CIRCLE_FADE; }
+            else if (lc.phase === 'fade') { lc.phase = 'done'; }
+        }
+    });
+    state.lavaCircles = state.lavaCircles.filter(lc => lc.phase !== 'done');
+
+    // Active lava pools cook anyone (including the It) standing in them.
+    state.lavaCircles.forEach(lc => {
+        if (lc.phase !== 'active') return;
+        for (const p of state.players) {
+            if (!p.alive) continue;
+            const d = dist(p.x, p.y, lc.x, lc.y);
+            if (d < lc.r + PLAYER_R - 6) {
+                eliminatePlayer(p, 'pool');
+            }
+        }
+    });
 }
 
 function updateParticles(dt) {
@@ -651,6 +712,7 @@ function update(dt) {
     if (!state.gameEnded) {
         state.players.forEach(p => updatePlayer(p, dt));
         updateTrail(dt);
+        updateLavaCircles(dt);
         updateParticles(dt);
         updateCamera(dt);
         // Per-difficulty round timer: easy 1.5min, medium 2min, hard 3min
@@ -737,6 +799,77 @@ function hexToRgba(hex, alpha) {
     if (!m) return `rgba(255,87,34,${alpha})`;
     const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
     return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function drawLavaCircles() {
+    state.lavaCircles.forEach(lc => {
+        const sx = w2sX(lc.x), sy = w2sY(lc.y);
+        const r = lc.r;
+        if (lc.phase === 'warn') {
+            // Pulsing red outline that fills up as the timer counts down.
+            const t = 1 - lc.timer / LAVA_CIRCLE_WARN;       // 0 -> 1
+            const pulse = 0.5 + Math.sin(state.time * 12) * 0.5;
+            // Outer red glow
+            ctx.fillStyle = `rgba(255,82,82,${0.18 + pulse * 0.12})`;
+            ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+            // Filling red wedge sweeping clockwise from top
+            ctx.fillStyle = `rgba(255,140,40,${0.35 + 0.4 * t})`;
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.arc(sx, sy, r, -Math.PI / 2, -Math.PI / 2 + t * Math.PI * 2);
+            ctx.closePath();
+            ctx.fill();
+            // Red border
+            ctx.strokeStyle = '#ff5252';
+            ctx.lineWidth = 3 + pulse;
+            ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.stroke();
+            // Warning ! exclamation
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${Math.round(r * 0.7)}px Segoe UI`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('!', sx, sy);
+            ctx.textBaseline = 'alphabetic';
+        } else if (lc.phase === 'active') {
+            // Full lava pool — bright orange core with halo
+            const haloR = r * 1.4 + Math.sin(state.time * 4) * 3;
+            const halo = ctx.createRadialGradient(sx, sy, 4, sx, sy, haloR);
+            halo.addColorStop(0, 'rgba(255,140,40,0.55)');
+            halo.addColorStop(1, 'rgba(255,87,34,0)');
+            ctx.fillStyle = halo;
+            ctx.beginPath(); ctx.arc(sx, sy, haloR, 0, Math.PI * 2); ctx.fill();
+            const grad = ctx.createRadialGradient(sx, sy, 4, sx, sy, r);
+            grad.addColorStop(0, '#fff176');
+            grad.addColorStop(0.4, '#ff6f00');
+            grad.addColorStop(1, '#5a0000');
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+            // Foam ring
+            ctx.strokeStyle = '#ffe57f';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(sx, sy, r - 1, 0, Math.PI * 2); ctx.stroke();
+            // Bubbles
+            for (let i = 0; i < 5; i++) {
+                const a = state.time * 1.5 + i * 1.3;
+                const br = (1 + Math.sin(a) * 0.5) * (r * 0.35);
+                const bx = sx + Math.cos(a) * br;
+                const by = sy + Math.sin(a) * br;
+                ctx.fillStyle = 'rgba(255,213,79,0.85)';
+                ctx.beginPath(); ctx.arc(bx, by, 3 + Math.sin(a * 2) * 1, 0, Math.PI * 2); ctx.fill();
+            }
+        } else if (lc.phase === 'fade') {
+            const fade = lc.timer / LAVA_CIRCLE_FADE;
+            ctx.fillStyle = `rgba(120,40,20,${fade * 0.45})`;
+            ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = `rgba(60,30,20,${fade * 0.6})`;
+            for (let i = 0; i < 8; i++) {
+                const a = (i / 8) * Math.PI * 2;
+                ctx.beginPath();
+                ctx.arc(sx + Math.cos(a) * r * 0.5, sy + Math.sin(a) * r * 0.5, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    });
 }
 
 function drawTrail() {
@@ -1013,6 +1146,24 @@ function drawMinimap() {
         ctx.fill();
     });
 
+    // Lava pools — red rings (warn) or filled orange (active)
+    state.lavaCircles.forEach(lc => {
+        const px = mmX + (lc.x + ARENA_W / 2) / ARENA_W * mmW;
+        const py = mmY + (lc.y + ARENA_H / 2) / ARENA_H * mmH;
+        const rr = (lc.r / ARENA_W) * mmW;
+        if (lc.phase === 'warn') {
+            ctx.strokeStyle = '#ff5252';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(px, py, rr, 0, Math.PI * 2); ctx.stroke();
+        } else if (lc.phase === 'active') {
+            ctx.fillStyle = 'rgba(255,140,40,0.85)';
+            ctx.beginPath(); ctx.arc(px, py, rr, 0, Math.PI * 2); ctx.fill();
+        } else {
+            ctx.fillStyle = 'rgba(80,40,20,0.6)';
+            ctx.beginPath(); ctx.arc(px, py, rr, 0, Math.PI * 2); ctx.fill();
+        }
+    });
+
     // Players as colored dots (the It gets a pulsing orange halo)
     state.players.forEach(p => {
         if (!p.alive) return;
@@ -1070,6 +1221,7 @@ function loop(ts) {
         if (state) {
             drawBackground();
             drawArena();
+            drawLavaCircles();
             drawTrail();
             // Sort players by y for depth
             const sorted = [...state.players].sort((a, b) => a.y - b.y);
