@@ -110,7 +110,7 @@ h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 14px; 
             • Everyone else has to dodge it. Touch the trail or It directly = <b>OUT</b>.<br>
             • The It is picked at random — could be you!<br>
             • The arena is bigger than the screen — the camera follows you.<br>
-            • Trail fades after ~7 seconds. <b>Last runner alive wins.</b><br>
+            • Trail fades after ~10 seconds. <b>Last runner alive wins.</b><br>
             <br>
             <b>Controls:</b> WASD or arrow keys to move. Everyone moves at the same steady pace.
         </div>
@@ -202,7 +202,7 @@ const PLAYER_R = 16;
 const PLAYER_SPEED = 290;
 const SPRINT_MULT = 1.0;
 const TRAIL_INTERVAL = 0.04;     // drop a segment every N seconds
-const TRAIL_LIFETIME = 7.0;      // seconds before a segment fades
+const TRAIL_LIFETIME = 10.0;     // seconds before a segment fades
 const TRAIL_W = 22;              // visual + collision width
 const TRAIL_DAMAGE_RANGE = TRAIL_W / 2 + PLAYER_R - 4;
 // World is much bigger than the viewport — camera scrolls.
