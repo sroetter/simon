@@ -636,10 +636,15 @@ function spawnLavaCircle() {
 }
 
 function updateLavaCircles(dt) {
+    // Keep three pools running at all times. Stagger spawns with a short
+    // cooldown so they don't all warn in unison.
+    const TARGET_COUNT = 3;
     state.lavaCircleSpawnT -= dt;
-    if (state.lavaCircleSpawnT <= 0 && state.startGrace <= 0) {
+    if (state.startGrace <= 0
+        && state.lavaCircles.length < TARGET_COUNT
+        && state.lavaCircleSpawnT <= 0) {
         spawnLavaCircle();
-        state.lavaCircleSpawnT = LAVA_CIRCLE_INTERVAL;
+        state.lavaCircleSpawnT = 1.5;  // cooldown between staggered spawns
     }
     state.lavaCircles.forEach(lc => {
         lc.timer -= dt;
@@ -651,11 +656,13 @@ function updateLavaCircles(dt) {
     });
     state.lavaCircles = state.lavaCircles.filter(lc => lc.phase !== 'done');
 
-    // Active lava pools cook anyone (including the It) standing in them.
+    // Active lava pools cook RUNNERS who step in. The It is immune to the
+    // pools (they're the lava-master themselves).
     state.lavaCircles.forEach(lc => {
         if (lc.phase !== 'active') return;
         for (const p of state.players) {
             if (!p.alive) continue;
+            if (p.isIt) continue;
             const d = dist(p.x, p.y, lc.x, lc.y);
             if (d < lc.r + PLAYER_R - 6) {
                 eliminatePlayer(p, 'pool');
