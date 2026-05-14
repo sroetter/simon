@@ -112,7 +112,7 @@ h2 { font-size: 18px; color: #ffe082; font-weight: normal; margin-bottom: 14px; 
             • The arena is bigger than the screen — the camera follows you.<br>
             • Trail fades after ~7 seconds. <b>Last runner alive wins.</b><br>
             <br>
-            <b>Controls:</b> WASD or arrows to move &middot; Hold Shift to sprint
+            <b>Controls:</b> WASD or arrow keys to move. Everyone moves at the same steady pace.
         </div>
 
         <div class="label">Your color:</div>
@@ -410,7 +410,7 @@ function updatePlayer(p, dt) {
     let mx = cmd.ix, my = cmd.iy;
     const len = Math.hypot(mx, my);
     if (len > 0) { mx /= len; my /= len; }
-    const speed = PLAYER_SPEED * (cmd.sprint ? SPRINT_MULT : 1);
+    const speed = PLAYER_SPEED;  // no sprint — everyone moves at the same pace
     p.vx = mx * speed; p.vy = my * speed;
     p.x += p.vx * dt; p.y += p.vy * dt;
     clampInside(p, PLAYER_R);
@@ -507,7 +507,7 @@ function aiCommand(p, dt) {
                 p.ai.curveDir = -p.ai.curveDir;
                 p.ai.curveT = 2.5 + Math.random() * 2;
             }
-            const tt = bestD / (PLAYER_SPEED * SPRINT_MULT);
+            const tt = bestD / PLAYER_SPEED;
             // Strong lead prediction
             const leadX = target.x + (target.vx || 0) * tt * (cfg.predict * 1.6 + 0.5);
             const leadY = target.y + (target.vy || 0) * tt * (cfg.predict * 1.6 + 0.5);
