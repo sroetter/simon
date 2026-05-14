@@ -197,8 +197,10 @@ function winSound() {
 
 // ===== Constants =====
 const PLAYER_R = 16;
-const PLAYER_SPEED = 200;
-const SPRINT_MULT = 1.45;
+// Old base was 200 + sprint x1.45 = 290. Now everyone moves at the old
+// sprint pace all the time.
+const PLAYER_SPEED = 290;
+const SPRINT_MULT = 1.0;
 const TRAIL_INTERVAL = 0.04;     // drop a segment every N seconds
 const TRAIL_LIFETIME = 7.0;      // seconds before a segment fades
 const TRAIL_W = 22;              // visual + collision width
