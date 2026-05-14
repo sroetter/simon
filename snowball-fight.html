@@ -2474,6 +2474,26 @@ function drawHUD() {
             ctx.fillStyle = `rgba(255,255,255,${0.3 + frac * 0.5})`;
             ctx.beginPath(); ctx.arc(sx, sy, 5 * frac + 1, 0, Math.PI * 2); ctx.fill();
         }
+
+        // Revenge mode: if this human is knocked out, show who got them
+        if (state.revenge && !p.alive && p.killedByIdx != null) {
+            const killer = state.players[p.killedByIdx];
+            if (killer) {
+                const killerName = killer.isBot ? `BOT ${killer.idx + 1}` : `P${killer.idx + 1}`;
+                const msg = `${killerName} GOT YOU OUT`;
+                ctx.font = 'bold 13px Segoe UI';
+                ctx.textAlign = 'left';
+                const tw = ctx.measureText(msg).width;
+                const tx = ix - 8, ty = iy - 50;
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(tx, ty - 16, tw + 16, 22);
+                ctx.strokeStyle = killer.labelColor || '#ff5d5d';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(tx, ty - 16, tw + 16, 22);
+                ctx.fillStyle = killer.labelColor || '#ff5d5d';
+                ctx.fillText(msg, tx + 8, ty);
+            }
+        }
     });
 
     // Compact roster strip at the top — shows everyone's HP
