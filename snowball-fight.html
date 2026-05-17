@@ -2081,6 +2081,22 @@ function drawDeadPlayer(p) {
     drawSnowman(0, 0, p);
     ctx.restore();
 
+    // "KO <killer>" label under the snowman so you can see who got them
+    if (p.killedByIdx != null && t >= SHIVER_END) {
+        const killer = state.players[p.killedByIdx];
+        if (killer) {
+            const tag = (killer.isBot ? 'B' : 'P') + (killer.idx + 1);
+            const txt = `KO ${tag}`;
+            ctx.font = 'bold 11px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+            ctx.strokeText(txt, p.x, p.y + PLAYER_R + 14);
+            ctx.fillStyle = killer.labelColor || '#fff';
+            ctx.fillText(txt, p.x, p.y + PLAYER_R + 14);
+        }
+    }
+
     // Shiver indicator marks (radiating dashes) while shivering
     if (t < SHIVER_END) {
         const a = 0.4 + 0.4 * Math.sin(t * 30);

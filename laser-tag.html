@@ -51,6 +51,10 @@
     <input type="text" id="name" maxlength="14" value="Player">
     <label>COLOR</label>
     <div class="colors" id="colors"></div>
+    <div style="margin-top:8px; display:flex; align-items:center; gap:10px;">
+      <input type="color" id="customColor" value="#ff3366" style="width:42px; height:32px; border:1px solid #444; background:#11131e; border-radius:6px; cursor:pointer; padding:0;">
+      <span style="color:#888; font-size:12px;">or pick any color</span>
+    </div>
     <label>DIFFICULTY</label>
     <div class="row" id="diff">
       <button data-d="easy" class="sel">EASY</button>
@@ -121,9 +125,14 @@
     d.onclick = () => {
       colorsEl.querySelectorAll('.swatch').forEach(s=>s.classList.remove('sel'));
       d.classList.add('sel'); selColor = c;
+      document.getElementById('customColor').value = c;
     };
     colorsEl.appendChild(d);
   });
+  document.getElementById('customColor').oninput = e => {
+    selColor = e.target.value;
+    colorsEl.querySelectorAll('.swatch').forEach(s=>s.classList.remove('sel'));
+  };
 
   let diff = 'easy';
   document.querySelectorAll('#diff button').forEach(b => {
@@ -142,18 +151,18 @@
 
   const ARENA_W = 1900, ARENA_H = 1300;
   const PLAYER_R = 18;
-  const PLAYER_SPEED = 230;
+  const PLAYER_SPEED = 270;
   const BOLT_SPEED = 760;
   const BOLT_R = 5;
-  const RELOAD_TIME = 1.6;
-  const MAX_AMMO = 6;
-  const FIRE_COOLDOWN = 0.16;
-  const HP_MAX = 3;
+  const RELOAD_TIME = 1.1;
+  const MAX_AMMO = 8;
+  const FIRE_COOLDOWN = 0.14;
+  const HP_MAX = 4;
 
   const DIFF = {
-    easy:   { botSpeed: 0.55, botAccuracy: 0.55, botFireDelay: 1.6, time: 180 },
-    medium: { botSpeed: 0.70, botAccuracy: 0.72, botFireDelay: 1.0, time: 150 },
-    hard:   { botSpeed: 0.85, botAccuracy: 0.88, botFireDelay: 0.6, time: 120 },
+    easy:   { botSpeed: 0.45, botAccuracy: 0.32, botFireDelay: 2.4, time: 180 },
+    medium: { botSpeed: 0.62, botAccuracy: 0.55, botFireDelay: 1.5, time: 150 },
+    hard:   { botSpeed: 0.78, botAccuracy: 0.78, botFireDelay: 1.0, time: 120 },
   };
 
   const BOT_NAMES = ['Vex','Nova','Rio','Kade','Zane','Pip','Jet','Lux','Onyx','Sable','Wren','Cyra'];
@@ -404,13 +413,16 @@
     }
   }
 
-  function elim(p) {
+  function elim(p, by) {
     p.alive = false;
     p.eliminatedAt = state.elapsed;
-    state.particles.push(...burst(p.x, p.y, p.color, 24));
+    p.killedBy = by || null;
+    state.particles.push(...burst(p.x, p.y, p.color, 40));
+    state.particles.push(...burst(p.x, p.y, '#ffd700', 14));
     state.floaters.push({ x:p.x, y:p.y - 24, text:`${p.name} OUT`, color:p.color, life:1.6, ttl:1.6 });
-    noise(0.25, 0.06);
-    tone(180, 0.2, 'sawtooth', 0.05);
+    state.shake = Math.max(state.shake || 0, p === state.players[state.humanIdx] ? 22 : 8);
+    noise(0.3, 0.07);
+    tone(180, 0.25, 'sawtooth', 0.06);
   }
 
   function burst(x, y, color, n) {
@@ -510,9 +522,10 @@
           const dx = p.x - b.x, dy = p.y - b.y;
           if (dx*dx + dy*dy < (PLAYER_R + BOLT_R) * (PLAYER_R + BOLT_R)) {
             p.hp -= b.power;
-            state.particles.push(...burst(b.x, b.y, b.color, 8));
+            state.particles.push(...burst(b.x, b.y, b.color, 10));
             state.floaters.push({ x:p.x, y:p.y - 24, text:`-${b.power}`, color:b.color, life:0.8, ttl:0.8 });
-            if (p.hp <= 0) elim(p);
+            if (p === state.players[state.humanIdx]) state.shake = Math.max(state.shake || 0, 10);
+            if (p.hp <= 0) elim(p, b.owner);
             dead = true;
             break;
           }
@@ -557,7 +570,22 @@
     if (ARENA_H < innerHeight) cam.y = (ARENA_H - innerHeight) / 2;
 
     state.time -= dt;
+    if (state.shake) state.shake = Math.max(0, state.shake - dt * 60);
     const alive = state.players.filter(p => p.alive);
+
+    // End immediately when the human is down — take them back to the end screen.
+    // Delay slightly so the eliminate VFX gets to play.
+    if (!human.alive && !state.endTimer) state.endTimer = 1.2;
+    if (state.endTimer) {
+      state.endTimer -= dt;
+      if (state.endTimer <= 0) {
+        state.ended = true;
+        const winners = alive.length ? alive : [human];
+        showEnd(winners, human.killedBy);
+      }
+      return;
+    }
+
     if (alive.length <= 1 || state.time <= 0) {
       state.ended = true;
       let winners;
@@ -570,7 +598,7 @@
     }
   }
 
-  function showEnd(winners) {
+  function showEnd(winners, killer) {
     const ov = document.getElementById('endOv');
     const t = document.getElementById('endTitle');
     const txt = document.getElementById('endText');
@@ -579,8 +607,13 @@
     t.textContent = youWin ? (winners.length > 1 ? 'YOU SURVIVED' : 'VICTORY') : 'DOWN';
     t.style.color = youWin ? '#7eff5a' : '#ff3366';
     t.style.textShadow = `0 0 14px ${youWin ? '#7eff5a' : '#ff3366'}`;
-    if (winners.length === 1) txt.textContent = `${winners[0].name} wins the round.`;
-    else txt.textContent = `Tie — ${winners.map(w => w.name).join(', ')}`;
+    let line = '';
+    if (!human.alive && killer) {
+      line = `Eliminated by <b style="color:${killer.color}">${killer.name}</b>. `;
+    }
+    if (winners.length === 1) line += `${winners[0].name} wins the round.`;
+    else line += `Tie — ${winners.map(w => w.name).join(', ')}`;
+    txt.innerHTML = line;
     ov.classList.remove('hidden');
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('ch').classList.add('hidden');
@@ -590,7 +623,10 @@
     ctx.fillStyle = '#0a0a14';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save();
-    ctx.translate(-cam.x, -cam.y);
+    const sh = state.shake || 0;
+    const sx = sh ? (Math.random() - 0.5) * sh : 0;
+    const sy = sh ? (Math.random() - 0.5) * sh : 0;
+    ctx.translate(-cam.x + sx, -cam.y + sy);
     // floor grid
     ctx.strokeStyle = '#161827';
     ctx.lineWidth = 1;
