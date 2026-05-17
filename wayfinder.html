@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Wayfinder</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; background:#0a0a14; color:#e8e8f0; font-family:'Courier New', monospace; overflow:hidden; }
+  canvas { display:block; }
+  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  .panel { background:rgba(10,12,20,0.94); border:2px solid #ffd35e; padding:22px 28px; border-radius:14px; max-width:620px; box-shadow:0 0 40px rgba(255,211,94,0.3); }
+  h1 { color:#ffd35e; text-shadow:0 0 12px rgba(255,211,94,0.6); margin-bottom:8px; letter-spacing:2px; font-size:30px; }
+  label { display:block; margin:12px 0 4px; color:#aab; font-size:12px; letter-spacing:1px; }
+  input[type=text] { background:#11131e; border:1px solid #444; color:#fff; padding:6px 10px; font:inherit; border-radius:6px; width:100%; }
+  button { background:#ffd35e; color:#222; border:none; padding:10px 22px; font:inherit; cursor:pointer; border-radius:8px; font-weight:bold; letter-spacing:1px; }
+  button:hover { background:#ffe388; }
+  .biomes { display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; margin-top:6px; }
+  .biome { background:#1a1a26; border:2px solid #333; color:#cde; padding:14px; border-radius:8px; text-align:left; cursor:pointer; transition:transform 0.1s, border-color 0.15s; }
+  .biome:hover { transform:translateY(-2px); }
+  .biome.sel { border-color:#ffd35e; box-shadow:0 0 12px rgba(255,211,94,0.4); }
+  .biome b { display:block; font-size:18px; margin-bottom:4px; }
+  .biome span { font-size:12px; color:#9aa; line-height:1.4; }
+  .row { display:flex; gap:8px; margin-top:4px; }
+  .row button { padding:6px 14px; background:#333; color:#fff; font-size:13px; }
+  .row button.sel { background:#ffd35e; color:#222; }
+  .hud { position:fixed; top:8px; left:8px; right:8px; display:flex; justify-content:space-between; pointer-events:none; }
+  .hud-l { background:rgba(10,12,20,0.7); padding:10px 14px; border-radius:8px; font-size:13px; min-width:280px; }
+  .hud-r { background:rgba(10,12,20,0.7); padding:10px 14px; border-radius:8px; font-size:13px; text-align:right; }
+  .bar { display:flex; align-items:center; gap:8px; margin:3px 0; }
+  .bar label { display:inline-block; margin:0; width:50px; color:#9aa; font-size:11px; letter-spacing:0; }
+  .bar-track { width:160px; height:9px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden; border:1px solid #2a2c44; }
+  .bar-fill { height:100%; transition:width 0.2s; }
+  .bar-val { color:#cde; font-size:11px; width:30px; text-align:right; }
+  .hidden { display:none !important; }
+  .back { position:fixed; top:8px; right:8px; padding:6px 10px; font-size:12px; background:#222; border:1px solid #444; color:#aab; text-decoration:none; border-radius:6px; z-index:11; }
+  .back:hover { color:#fff; }
+  .hint { color:#888; font-size:12px; line-height:1.5; margin-top:6px; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud hidden" id="hud">
+  <div class="hud-l" id="hudL"></div>
+  <div class="hud-r" id="hudR"></div>
+</div>
+
+<div class="overlay" id="titleOv">
+  <div class="panel">
+    <h1>WAYFINDER</h1>
+    <div class="hint">
+      You're lost. Pick a biome and find your way out before you starve, dehydrate, or get killed.<br>
+      WASD/arrows to move &nbsp;•&nbsp; SHIFT to sprint &nbsp;•&nbsp; mouse to aim &nbsp;•&nbsp; click to attack &nbsp;•&nbsp; E to use/eat/drink
+    </div>
+    <label>BIOME</label>
+    <div class="biomes" id="biomes"></div>
+    <label>DIFFICULTY</label>
+    <div class="row" id="diff">
+      <button data-d="easy" class="sel">EASY</button>
+      <button data-d="medium">MEDIUM</button>
+      <button data-d="hard">HARD</button>
+    </div>
+    <div style="margin-top:18px; text-align:center;">
+      <button id="start">VENTURE OUT</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="endOv">
+  <div class="panel" style="text-align:center; min-width:380px;">
+    <h1 id="endTitle">SAVED</h1>
+    <p id="endText" style="color:#cde; margin:10px 0 16px; font-size:14px; line-height:1.6;"></p>
+    <button id="again">PLAY AGAIN</button>
+  </div>
+</div>
+
+<a class="back" href="index.html">← Games</a>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
+  resize();
+  addEventListener('resize', resize);
+
+  let audio = null;
+  function actx() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); return audio; }
+  function tone(freq, dur=0.1, type='sine', vol=0.05) {
+    try {
+      const a = actx();
+      const o = a.createOscillator(); const g = a.createGain();
+      o.type = type; o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, a.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+      o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+    } catch(e){}
+  }
+  function noise(dur=0.15, vol=0.04) {
+    try {
+      const a = actx();
+      const b = a.createBuffer(1, a.sampleRate * dur, a.sampleRate);
+      const d = b.getChannelData(0);
+      for (let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * (1 - i/d.length);
+      const s = a.createBufferSource(); s.buffer = b;
+      const g = a.createGain(); g.gain.value = vol;
+      s.connect(g); g.connect(a.destination); s.start();
+    } catch(e){}
+  }
+
+  const BIOMES = {
+    woods: {
+      name:'Woods', icon:'🌲', exitName:'TRAIL HEAD',
+      bg:'#1c3a22', bgAlt:'#234828', tint:'#5f8f4a',
+      desc:'Dense pines, hungry wolves, scattered berry bushes and streams.',
+      obstacleColor:'#3b1a08', leafColor:'#2c5a22', obstacleR:[22,42],
+      foodColor:'#c93a3a', foodGlow:'#ff8a8a',
+      waterColor:'#3a8fd0',
+      enemyName:'wolf', enemyColor:'#666', enemyEye:'#ff3030', enemyR:14, enemySpeed:1.05, enemyDmg:14, enemyChase:240,
+      hungerDrain:1.0, thirstDrain:1.0, ambient:'rgba(0,0,0,0.0)',
+      visibilityR:1200,
+      hazardName:'fog', hazardColor:'rgba(220,230,235,0.5)',
+    },
+    mountains: {
+      name:'Mountains', icon:'⛰️', exitName:'MOUNTAIN PASS',
+      bg:'#494956', bgAlt:'#53535f', tint:'#aab',
+      desc:'Cold thin air, jagged rocks, bears, mushrooms and clear springs.',
+      obstacleColor:'#5a5a66', leafColor:'#7a7a86', obstacleR:[26,48],
+      foodColor:'#c98a4a', foodGlow:'#ffd35e',
+      waterColor:'#4fb0e5',
+      enemyName:'bear', enemyColor:'#3a2a1c', enemyEye:'#ffd54f', enemyR:20, enemySpeed:0.78, enemyDmg:22, enemyChase:220,
+      hungerDrain:1.3, thirstDrain:0.8, ambient:'rgba(120,160,200,0.05)',
+      visibilityR:1100,
+      hazardName:'cold', hazardColor:'rgba(150,200,230,0.25)',
+    },
+    desert: {
+      name:'Desert', icon:'🏜️', exitName:'OLD ROAD',
+      bg:'#c79e6a', bgAlt:'#d4a875', tint:'#ffd35e',
+      desc:'Heat, blowing sand, biting scorpions, cacti to chew and rare oases.',
+      obstacleColor:'#2e5527', leafColor:'#4a7a37', obstacleR:[18,34],
+      foodColor:'#e85aa6', foodGlow:'#ffa6d4',
+      waterColor:'#62c2e8',
+      enemyName:'scorpion', enemyColor:'#a23a1a', enemyEye:'#ff0', enemyR:11, enemySpeed:1.25, enemyDmg:12, enemyChase:200,
+      hungerDrain:0.7, thirstDrain:1.9, ambient:'rgba(255,180,80,0.10)',
+      visibilityR:1500,
+      hazardName:'heat', hazardColor:'rgba(255,200,80,0.18)',
+    },
+    snow: {
+      name:'Snow', icon:'❄️', exitName:'CABIN',
+      bg:'#b6cad2', bgAlt:'#c7d8de', tint:'#fff',
+      desc:'Frozen wastes, frostbite, white wolves, snow piles you can eat.',
+      obstacleColor:'#2a3a32', leafColor:'#3a5a4a', obstacleR:[22,40],
+      foodColor:'#d8b88a', foodGlow:'#ffe4ba',
+      waterColor:'#ffffff',
+      enemyName:'snow wolf', enemyColor:'#cfd9dd', enemyEye:'#2050d0', enemyR:14, enemySpeed:1.15, enemyDmg:16, enemyChase:260,
+      hungerDrain:1.5, thirstDrain:0.75, ambient:'rgba(200,220,255,0.12)',
+      visibilityR:1000,
+      hazardName:'blizzard', hazardColor:'rgba(255,255,255,0.45)',
+    },
+  };
+
+  const DIFF = {
+    easy:   { compassDrift: 0,   compassRange: 4500, enemyCount: 6,  hazardCount: 4, drainMult: 0.7, exitDist: 2400 },
+    medium: { compassDrift: 0.3, compassRange: 2800, enemyCount: 10, hazardCount: 7, drainMult: 1.0, exitDist: 3000 },
+    hard:   { compassDrift: 0.8, compassRange: 1400, enemyCount: 16, hazardCount: 11, drainMult: 1.35, exitDist: 3600 },
+  };
+
+  const biomesEl = document.getElementById('biomes');
+  let selBiome = 'woods';
+  for (const key of Object.keys(BIOMES)) {
+    const b = BIOMES[key];
+    const d = document.createElement('div');
+    d.className = 'biome' + (key === selBiome ? ' sel' : '');
+    d.dataset.k = key;
+    d.innerHTML = `<b>${b.icon} ${b.name}</b><span>${b.desc}</span>`;
+    d.onclick = () => {
+      biomesEl.querySelectorAll('.biome').forEach(x=>x.classList.remove('sel'));
+      d.classList.add('sel'); selBiome = key;
+    };
+    biomesEl.appendChild(d);
+  }
+
+  let diff = 'easy';
+  document.querySelectorAll('#diff button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#diff button').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel'); diff = b.dataset.d;
+    };
+  });
+
+  const ARENA_W = 4200, ARENA_H = 4200;
+  const PLAYER_R = 16;
+  const WALK_SPEED = 200;
+  const RUN_SPEED = 320;
+  const ATTACK_RANGE = 48;
+  const ATTACK_COOLDOWN = 0.45;
+
+  let state = null;
+  const cam = { x:0, y:0 };
+  const keys = new Set();
+  let mouseDown = false;
+  const mouseScr = { x: innerWidth/2, y: innerHeight/2 };
+
+  addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    keys.add(k);
+    if (k === 'e' && state && !state.ended) tryInteract();
+  });
+  addEventListener('keyup', e => { keys.delete(e.key.toLowerCase()); });
+  addEventListener('mousemove', e => { mouseScr.x = e.clientX; mouseScr.y = e.clientY; });
+  addEventListener('mousedown', () => { mouseDown = true; });
+  addEventListener('mouseup', () => { mouseDown = false; });
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function dist2(a, b) { const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; }
+
+  function rng(seed) {
+    return () => {
+      seed = (seed * 1103515245 + 12345) | 0;
+      return ((seed >>> 16) & 0x7fff) / 0x7fff;
+    };
+  }
+
+  function genWorld() {
+    const seed = (Math.random() * 1e9) | 0;
+    const rand = rng(seed);
+    const biome = BIOMES[selBiome];
+    const cfg = DIFF[diff];
+
+    // exit at a random edge
+    const edge = Math.floor(rand() * 4);
+    const exit = { x:0, y:0 };
+    const margin = 100;
+    if (edge === 0) { exit.x = margin + rand() * (ARENA_W - 2*margin); exit.y = margin; }
+    if (edge === 1) { exit.x = ARENA_W - margin; exit.y = margin + rand() * (ARENA_H - 2*margin); }
+    if (edge === 2) { exit.x = margin + rand() * (ARENA_W - 2*margin); exit.y = ARENA_H - margin; }
+    if (edge === 3) { exit.x = margin; exit.y = margin + rand() * (ARENA_H - 2*margin); }
+
+    // player spawns far from the exit
+    let px, py;
+    let safety = 0;
+    do {
+      px = 800 + rand() * (ARENA_W - 1600);
+      py = 800 + rand() * (ARENA_H - 1600);
+      safety++;
+    } while (Math.hypot(px - exit.x, py - exit.y) < cfg.exitDist && safety < 80);
+
+    // obstacles
+    const obstacles = [];
+    const obstacleCount = 220;
+    for (let i=0;i<obstacleCount;i++) {
+      const r = biome.obstacleR[0] + rand() * (biome.obstacleR[1] - biome.obstacleR[0]);
+      // cluster a few near random center points
+      let x, y, ok = false, tries = 0;
+      while (!ok && tries < 30) {
+        x = 60 + rand() * (ARENA_W - 120);
+        y = 60 + rand() * (ARENA_H - 120);
+        ok = true;
+        if (Math.hypot(x - px, y - py) < 120) { ok = false; tries++; continue; }
+        if (Math.hypot(x - exit.x, y - exit.y) < 140) { ok = false; tries++; continue; }
+        for (const o of obstacles) {
+          if (Math.hypot(o.x - x, o.y - y) < o.r + r + 8) { ok = false; break; }
+        }
+        tries++;
+      }
+      if (ok) obstacles.push({ x, y, r, type:'obstacle' });
+    }
+
+    // pickups: food + water
+    const pickups = [];
+    function placePickup(type, count) {
+      for (let i=0;i<count;i++) {
+        let x, y, ok = false, tries = 0;
+        while (!ok && tries < 40) {
+          x = 60 + rand() * (ARENA_W - 120);
+          y = 60 + rand() * (ARENA_H - 120);
+          ok = true;
+          for (const o of obstacles) if (Math.hypot(o.x - x, o.y - y) < o.r + 24) { ok = false; break; }
+          if (ok) for (const p of pickups) if (Math.hypot(p.x - x, p.y - y) < 40) { ok = false; break; }
+          tries++;
+        }
+        if (ok) pickups.push({ x, y, type, used:false });
+      }
+    }
+    placePickup('food', 28);
+    placePickup('water', 22);
+
+    // hazard patches (heat / cold / fog / blizzard)
+    const hazards = [];
+    for (let i=0;i<cfg.hazardCount;i++) {
+      const x = 200 + rand() * (ARENA_W - 400);
+      const y = 200 + rand() * (ARENA_H - 400);
+      const r = 280 + rand() * 200;
+      if (Math.hypot(x - px, y - py) > 500) hazards.push({ x, y, r });
+    }
+
+    // enemies — spawn far from the player so you don't get jumped immediately
+    const enemies = [];
+    for (let i=0;i<cfg.enemyCount;i++) {
+      let x, y, ok = false, tries = 0;
+      while (!ok && tries < 60) {
+        x = 200 + rand() * (ARENA_W - 400);
+        y = 200 + rand() * (ARENA_H - 400);
+        ok = Math.hypot(x - px, y - py) > 700;
+        for (const o of obstacles) if (Math.hypot(o.x - x, o.y - y) < o.r + 30) { ok = false; break; }
+        tries++;
+      }
+      if (ok) enemies.push({
+        x, y, vx:0, vy:0, hp: 24,
+        wanderT: 0, wanderAng: rand() * Math.PI * 2,
+        attackT: 0,
+      });
+    }
+
+    const player = {
+      x: px, y: py, vx: 0, vy: 0,
+      hp: 100, hunger: 100, thirst: 100, stamina: 100,
+      aim: 0, attackT: 0, swing: 0,
+      hurtT: 0,
+    };
+
+    state = {
+      biome, cfg, seed,
+      player, obstacles, pickups, hazards, enemies,
+      exit,
+      particles: [], floaters: [],
+      elapsed: 0,
+      ended: false, win: false, endReason: '',
+      compassWobble: 0,
+      pickupCount: 0,
+      kills: 0,
+    };
+
+    cam.x = player.x - innerWidth/2;
+    cam.y = player.y - innerHeight/2;
+  }
+
+  function tryInteract() {
+    const p = state.player;
+    for (const pu of state.pickups) {
+      if (pu.used) continue;
+      if (Math.hypot(p.x - pu.x, p.y - pu.y) < PLAYER_R + 26) {
+        if (pu.type === 'food') {
+          p.hunger = Math.min(100, p.hunger + 28);
+          floater(pu.x, pu.y - 18, '+28 FOOD', '#7eff5a');
+        } else {
+          p.thirst = Math.min(100, p.thirst + 32);
+          floater(pu.x, pu.y - 18, '+32 WATER', '#39e3ff');
+        }
+        pu.used = true;
+        state.pickupCount++;
+        tone(660, 0.1, 'sine', 0.05);
+        return;
+      }
+    }
+    // exit check
+    if (Math.hypot(p.x - state.exit.x, p.y - state.exit.y) < 90) {
+      win();
+    }
+  }
+
+  function floater(x, y, text, color) {
+    state.floaters.push({ x, y, text, color, life:1.4, ttl:1.4 });
+  }
+
+  function burst(x, y, color, n) {
+    for (let i=0;i<n;i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 80 + Math.random() * 220;
+      state.particles.push({ x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:0.5+Math.random()*0.5, ttl:1, color, r:2+Math.random()*3 });
+    }
+  }
+
+  function circleObstacle(p, dx, dy) {
+    let nx = p.x + dx, ny = p.y + dy;
+    for (const o of state.obstacles) {
+      const ddx = nx - o.x, ddy = p.y - o.y;
+      if (ddx*ddx + ddy*ddy < (PLAYER_R + o.r) * (PLAYER_R + o.r)) { nx = p.x; break; }
+    }
+    for (const o of state.obstacles) {
+      const ddx = nx - o.x, ddy = ny - o.y;
+      if (ddx*ddx + ddy*ddy < (PLAYER_R + o.r) * (PLAYER_R + o.r)) { ny = p.y; break; }
+    }
+    p.x = clamp(nx, PLAYER_R, ARENA_W - PLAYER_R);
+    p.y = clamp(ny, PLAYER_R, ARENA_H - PLAYER_R);
+  }
+
+  function moveEnemy(e, dx, dy) {
+    let nx = e.x + dx, ny = e.y + dy;
+    for (const o of state.obstacles) {
+      const ddx = nx - o.x;
+      if ((nx - o.x)*(nx - o.x) + (e.y - o.y)*(e.y - o.y) < (12 + o.r) * (12 + o.r)) { nx = e.x; break; }
+    }
+    for (const o of state.obstacles) {
+      if ((nx - o.x)*(nx - o.x) + (ny - o.y)*(ny - o.y) < (12 + o.r) * (12 + o.r)) { ny = e.y; break; }
+    }
+    e.x = clamp(nx, 30, ARENA_W - 30);
+    e.y = clamp(ny, 30, ARENA_H - 30);
+  }
+
+  function attack() {
+    const p = state.player;
+    if (p.attackT > 0) return;
+    p.attackT = ATTACK_COOLDOWN;
+    p.swing = 0.25;
+    tone(220, 0.08, 'square', 0.04);
+    const hitX = p.x + Math.cos(p.aim) * ATTACK_RANGE * 0.6;
+    const hitY = p.y + Math.sin(p.aim) * ATTACK_RANGE * 0.6;
+    for (const e of state.enemies) {
+      const d = Math.hypot(e.x - hitX, e.y - hitY);
+      if (d < ATTACK_RANGE) {
+        e.hp -= 14;
+        const kb = 80;
+        const a = Math.atan2(e.y - p.y, e.x - p.x);
+        e.vx = Math.cos(a) * kb;
+        e.vy = Math.sin(a) * kb;
+        burst(e.x, e.y, '#ff5050', 4);
+        if (e.hp <= 0) {
+          state.kills++;
+          floater(e.x, e.y - 14, 'KO', '#ffd54f');
+          burst(e.x, e.y, '#ff3030', 18);
+          noise(0.2, 0.05);
+        }
+      }
+    }
+    state.enemies = state.enemies.filter(e => e.hp > 0);
+  }
+
+  function damage(p, amt, src) {
+    p.hp -= amt;
+    p.hurtT = 0.3;
+    burst(p.x, p.y, '#ff3030', 6);
+    floater(p.x, p.y - 20, `-${amt}`, '#ff5050');
+    noise(0.15, 0.05);
+    if (p.hp <= 0) lose(src);
+  }
+
+  function win() {
+    if (state.ended) return;
+    state.ended = true; state.win = true;
+    state.endReason = 'You made it out alive!';
+    showEnd();
+  }
+  function lose(reason) {
+    if (state.ended) return;
+    state.ended = true; state.win = false;
+    state.endReason = reason || 'You collapsed in the wilderness.';
+    showEnd();
+  }
+
+  function showEnd() {
+    const ov = document.getElementById('endOv');
+    const t = document.getElementById('endTitle');
+    const txt = document.getElementById('endText');
+    t.textContent = state.win ? 'SAVED' : 'LOST';
+    t.style.color = state.win ? '#7eff5a' : '#ff5050';
+    t.style.textShadow = `0 0 14px ${state.win ? '#7eff5a' : '#ff5050'}`;
+    const mins = Math.floor(state.elapsed / 60);
+    const secs = Math.floor(state.elapsed % 60);
+    txt.innerHTML = `${state.endReason}<br><br>
+      <span style="color:#9aa">Biome:</span> <b>${state.biome.name}</b> &nbsp;
+      <span style="color:#9aa">Time:</span> <b>${mins}:${String(secs).padStart(2,'0')}</b><br>
+      <span style="color:#9aa">Pickups:</span> <b>${state.pickupCount}</b> &nbsp;
+      <span style="color:#9aa">Hostiles down:</span> <b>${state.kills}</b>`;
+    ov.classList.remove('hidden');
+    document.getElementById('hud').classList.add('hidden');
+  }
+
+  document.getElementById('start').onclick = () => {
+    actx();
+    genWorld();
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('endOv').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+  };
+  document.getElementById('again').onclick = () => {
+    document.getElementById('endOv').classList.add('hidden');
+    document.getElementById('titleOv').classList.remove('hidden');
+  };
+
+  function update(dt) {
+    if (!state || state.ended) return;
+    state.elapsed += dt;
+    const p = state.player;
+    const b = state.biome;
+    const cfg = state.cfg;
+
+    // input
+    let mx = 0, my = 0;
+    if (keys.has('w') || keys.has('arrowup')) my -= 1;
+    if (keys.has('s') || keys.has('arrowdown')) my += 1;
+    if (keys.has('a') || keys.has('arrowleft')) mx -= 1;
+    if (keys.has('d') || keys.has('arrowright')) mx += 1;
+    const sprint = keys.has('shift') && p.stamina > 1 && (mx || my);
+    const speed = sprint ? RUN_SPEED : WALK_SPEED;
+    if (mx || my) {
+      const m = Math.hypot(mx, my);
+      mx /= m; my /= m;
+    }
+    circleObstacle(p, mx * speed * dt, my * speed * dt);
+
+    // aim
+    p.aim = Math.atan2((mouseScr.y + cam.y) - p.y, (mouseScr.x + cam.x) - p.x);
+
+    // attack
+    if (mouseDown && p.attackT <= 0) attack();
+    p.attackT = Math.max(0, p.attackT - dt);
+    if (p.swing > 0) p.swing = Math.max(0, p.swing - dt);
+    if (p.hurtT > 0) p.hurtT = Math.max(0, p.hurtT - dt);
+
+    // stamina
+    if (sprint) p.stamina = Math.max(0, p.stamina - 18 * dt);
+    else p.stamina = Math.min(100, p.stamina + 10 * dt);
+
+    // hunger / thirst drain
+    p.hunger = Math.max(0, p.hunger - b.hungerDrain * cfg.drainMult * dt);
+    p.thirst = Math.max(0, p.thirst - b.thirstDrain * cfg.drainMult * dt);
+
+    // hazard zones increase drain or damage
+    for (const h of state.hazards) {
+      if (Math.hypot(p.x - h.x, p.y - h.y) < h.r) {
+        if (b.hazardName === 'heat') p.thirst = Math.max(0, p.thirst - 4 * dt);
+        else if (b.hazardName === 'cold') p.hunger = Math.max(0, p.hunger - 4 * dt);
+        else if (b.hazardName === 'blizzard') { p.hunger = Math.max(0, p.hunger - 3 * dt); p.thirst = Math.max(0, p.thirst - 1 * dt); }
+        // fog mostly just obscures
+      }
+    }
+
+    // starving / dehydration damage
+    if (p.hunger <= 0) p.hp -= 4 * dt;
+    if (p.thirst <= 0) p.hp -= 6 * dt;
+    if (p.hp <= 0) { lose(p.thirst <= 0 ? 'You died of thirst.' : p.hunger <= 0 ? 'You starved.' : 'You bled out.'); return; }
+
+    // enemies
+    for (const e of state.enemies) {
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      const see = d < b.enemyChase;
+      e.wanderT -= dt;
+      let tx, ty;
+      if (see) {
+        tx = p.x; ty = p.y;
+      } else {
+        if (e.wanderT <= 0) { e.wanderAng = Math.random() * Math.PI * 2; e.wanderT = 2 + Math.random() * 3; }
+        tx = e.x + Math.cos(e.wanderAng) * 100;
+        ty = e.y + Math.sin(e.wanderAng) * 100;
+      }
+      const ax = tx - e.x, ay = ty - e.y;
+      const am = Math.hypot(ax, ay) || 1;
+      const speedE = (see ? 1 : 0.4) * b.enemySpeed * 90;
+      e.vx += (ax / am * speedE - e.vx) * Math.min(1, dt * 6);
+      e.vy += (ay / am * speedE - e.vy) * Math.min(1, dt * 6);
+      moveEnemy(e, e.vx * dt, e.vy * dt);
+      // attack player on contact
+      e.attackT = Math.max(0, e.attackT - dt);
+      if (d < PLAYER_R + 18 && e.attackT <= 0) {
+        damage(p, b.enemyDmg, b.enemyName);
+        e.attackT = 1.0;
+      }
+    }
+
+    // particles & floaters
+    for (let i=state.particles.length-1; i>=0; i--) {
+      const pp = state.particles[i];
+      pp.life -= dt; if (pp.life <= 0) { state.particles.splice(i,1); continue; }
+      pp.x += pp.vx * dt; pp.y += pp.vy * dt;
+      pp.vx *= 0.94; pp.vy *= 0.94;
+    }
+    for (let i=state.floaters.length-1; i>=0; i--) {
+      const f = state.floaters[i];
+      f.life -= dt; f.y -= 30 * dt;
+      if (f.life <= 0) state.floaters.splice(i,1);
+    }
+
+    state.compassWobble += dt;
+
+    // camera
+    cam.x = clamp(p.x - innerWidth/2, 0, Math.max(0, ARENA_W - innerWidth));
+    cam.y = clamp(p.y - innerHeight/2, 0, Math.max(0, ARENA_H - innerHeight));
+
+    // win check: stepping into exit also wins
+    if (Math.hypot(p.x - state.exit.x, p.y - state.exit.y) < 60) win();
+  }
+
+  function drawObstacle(o, biomeKey) {
+    const b = state.biome;
+    if (biomeKey === 'desert') {
+      // cactus: green column + arms
+      ctx.fillStyle = '#2e5527';
+      ctx.fillRect(o.x - o.r * 0.45, o.y - o.r * 0.9, o.r * 0.9, o.r * 1.8);
+      ctx.fillRect(o.x - o.r * 1.0, o.y - o.r * 0.5, o.r * 0.5, o.r * 0.7);
+      ctx.fillRect(o.x + o.r * 0.5, o.y - o.r * 0.5, o.r * 0.5, o.r * 0.7);
+      ctx.fillStyle = '#4a7a37';
+      ctx.fillRect(o.x - o.r * 0.4, o.y - o.r * 0.85, o.r * 0.8, o.r * 0.15);
+    } else if (biomeKey === 'mountains') {
+      // rock: angular polygon
+      ctx.fillStyle = b.obstacleColor;
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y - o.r);
+      ctx.lineTo(o.x + o.r * 0.9, o.y - o.r * 0.2);
+      ctx.lineTo(o.x + o.r * 0.7, o.y + o.r * 0.8);
+      ctx.lineTo(o.x - o.r * 0.6, o.y + o.r * 0.7);
+      ctx.lineTo(o.x - o.r * 0.95, o.y - o.r * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = b.leafColor;
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y - o.r * 0.95);
+      ctx.lineTo(o.x + o.r * 0.5, o.y - o.r * 0.3);
+      ctx.lineTo(o.x - o.r * 0.4, o.y - o.r * 0.2);
+      ctx.closePath();
+      ctx.fill();
+    } else if (biomeKey === 'snow') {
+      // snow-capped pine
+      ctx.fillStyle = b.obstacleColor;
+      ctx.fillRect(o.x - 5, o.y - 2, 10, o.r * 0.8);
+      ctx.fillStyle = b.leafColor;
+      ctx.beginPath();
+      ctx.moveTo(o.x - o.r * 0.85, o.y);
+      ctx.lineTo(o.x + o.r * 0.85, o.y);
+      ctx.lineTo(o.x, o.y - o.r * 1.2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(o.x - o.r * 0.85, o.y);
+      ctx.lineTo(o.x + o.r * 0.85, o.y);
+      ctx.lineTo(o.x, o.y - o.r * 0.3);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      // woods pine
+      ctx.fillStyle = b.obstacleColor;
+      ctx.fillRect(o.x - 5, o.y - 2, 10, o.r * 0.7);
+      ctx.fillStyle = b.leafColor;
+      ctx.beginPath();
+      ctx.arc(o.x, o.y - o.r * 0.3, o.r * 0.9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.beginPath();
+      ctx.arc(o.x - o.r * 0.3, o.y - o.r * 0.1, o.r * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawPickup(pu) {
+    if (pu.used) return;
+    const b = state.biome;
+    const pulse = 0.55 + 0.45 * Math.sin(state.elapsed * 4 + pu.x);
+    if (pu.type === 'food') {
+      ctx.save();
+      ctx.shadowColor = b.foodGlow; ctx.shadowBlur = 10 * pulse;
+      ctx.fillStyle = b.foodColor;
+      // 3 berries / fruit
+      for (let i=0;i<3;i++) {
+        const a = i * Math.PI * 2 / 3;
+        ctx.beginPath(); ctx.arc(pu.x + Math.cos(a)*5, pu.y + Math.sin(a)*5, 5, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.shadowColor = b.waterColor; ctx.shadowBlur = 10 * pulse;
+      ctx.fillStyle = b.waterColor;
+      ctx.beginPath();
+      ctx.ellipse(pu.x, pu.y, 14, 9, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath();
+      ctx.ellipse(pu.x - 3, pu.y - 2, 5, 2, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawEnemy(e) {
+    const b = state.biome;
+    ctx.fillStyle = b.enemyColor;
+    if (b.enemyName === 'scorpion') {
+      ctx.beginPath();
+      ctx.ellipse(e.x, e.y, e.enemyR || 11, 7, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = b.enemyColor;
+      ctx.lineWidth = 2;
+      // tail
+      ctx.beginPath();
+      ctx.moveTo(e.x, e.y);
+      ctx.quadraticCurveTo(e.x - 10, e.y - 10, e.x - 14, e.y - 4);
+      ctx.stroke();
+      // claws
+      ctx.beginPath(); ctx.moveTo(e.x + 6, e.y - 3); ctx.lineTo(e.x + 14, e.y - 7); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(e.x + 6, e.y + 3); ctx.lineTo(e.x + 14, e.y + 7); ctx.stroke();
+    } else if (b.enemyName === 'bear') {
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, 20, 0, Math.PI*2);
+      ctx.fill();
+      // ears
+      ctx.beginPath(); ctx.arc(e.x - 14, e.y - 14, 6, 0, Math.PI*2); ctx.arc(e.x + 14, e.y - 14, 6, 0, Math.PI*2); ctx.fill();
+      // muzzle
+      ctx.fillStyle = '#7a5a3a';
+      ctx.beginPath(); ctx.arc(e.x, e.y + 6, 8, 0, Math.PI*2); ctx.fill();
+    } else {
+      // wolf body
+      ctx.beginPath();
+      ctx.ellipse(e.x, e.y, 14, 10, 0, 0, Math.PI*2);
+      ctx.fill();
+      // head
+      ctx.beginPath();
+      ctx.arc(e.x + 10, e.y - 4, 8, 0, Math.PI*2);
+      ctx.fill();
+      // ears
+      ctx.beginPath(); ctx.moveTo(e.x + 7, e.y - 12); ctx.lineTo(e.x + 11, e.y - 6); ctx.lineTo(e.x + 5, e.y - 6); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(e.x + 14, e.y - 12); ctx.lineTo(e.x + 18, e.y - 6); ctx.lineTo(e.x + 12, e.y - 6); ctx.closePath(); ctx.fill();
+    }
+    // eye
+    ctx.fillStyle = b.enemyEye;
+    const ex = b.enemyName === 'bear' ? e.x : e.x + 11;
+    const ey = b.enemyName === 'bear' ? e.y - 5 : e.y - 5;
+    ctx.beginPath(); ctx.arc(ex, ey, 2.2, 0, Math.PI*2); ctx.fill();
+  }
+
+  function drawExit() {
+    const b = state.biome;
+    const ex = state.exit;
+    const pulse = 0.6 + 0.4 * Math.sin(state.elapsed * 3);
+    ctx.save();
+    ctx.shadowColor = '#ffd35e';
+    ctx.shadowBlur = 30 * pulse;
+    // signpost / lit cabin
+    if (selBiome === 'snow') {
+      ctx.fillStyle = '#6d4c41';
+      ctx.fillRect(ex.x - 30, ex.y - 28, 60, 40);
+      ctx.fillStyle = '#3e2723';
+      ctx.beginPath(); ctx.moveTo(ex.x - 36, ex.y - 28); ctx.lineTo(ex.x + 36, ex.y - 28); ctx.lineTo(ex.x, ex.y - 56); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ffd35e';
+      ctx.fillRect(ex.x - 8, ex.y - 14, 16, 22);
+    } else {
+      // signpost
+      ctx.fillStyle = '#6d4c41';
+      ctx.fillRect(ex.x - 3, ex.y - 30, 6, 50);
+      ctx.fillStyle = '#ffd35e';
+      ctx.fillRect(ex.x - 26, ex.y - 30, 52, 18);
+      ctx.fillStyle = '#222';
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(b.exitName, ex.x, ex.y - 18);
+    }
+    ctx.restore();
+    // glowing ring
+    ctx.strokeStyle = `rgba(255,211,94,${pulse * 0.5})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(ex.x, ex.y + 4, 70, 0, Math.PI*2); ctx.stroke();
+  }
+
+  function drawPlayer() {
+    const p = state.player;
+    // body
+    ctx.fillStyle = p.hurtT > 0 ? '#ff5050' : '#ffd35e';
+    ctx.beginPath(); ctx.arc(p.x, p.y, PLAYER_R, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#5a3a08';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // pack
+    ctx.fillStyle = '#7a4a1a';
+    ctx.beginPath(); ctx.arc(p.x - Math.cos(p.aim)*8, p.y - Math.sin(p.aim)*8, 7, 0, Math.PI*2); ctx.fill();
+    // arm + weapon
+    const swing = p.swing > 0 ? Math.sin((1 - p.swing / 0.25) * Math.PI) * 0.7 : 0;
+    const reach = PLAYER_R + 16 + swing * 14;
+    ctx.strokeStyle = '#5a3a08';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(p.x + Math.cos(p.aim - 0.3) * PLAYER_R, p.y + Math.sin(p.aim - 0.3) * PLAYER_R);
+    ctx.lineTo(p.x + Math.cos(p.aim) * reach, p.y + Math.sin(p.aim) * reach);
+    ctx.stroke();
+    // axe head
+    ctx.fillStyle = '#aab';
+    ctx.beginPath();
+    const hx = p.x + Math.cos(p.aim) * reach;
+    const hy = p.y + Math.sin(p.aim) * reach;
+    ctx.arc(hx, hy, 5, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  function drawBackground() {
+    const b = state.biome;
+    // tile pattern
+    const ts = 80;
+    const x0 = Math.floor(cam.x / ts) * ts;
+    const y0 = Math.floor(cam.y / ts) * ts;
+    for (let y = y0; y < cam.y + innerHeight + ts; y += ts) {
+      for (let x = x0; x < cam.x + innerWidth + ts; x += ts) {
+        ctx.fillStyle = ((Math.floor(x/ts) + Math.floor(y/ts)) % 2 === 0) ? b.bg : b.bgAlt;
+        ctx.fillRect(x, y, ts, ts);
+      }
+    }
+  }
+
+  function render() {
+    if (!state) { ctx.fillStyle = '#0a0a14'; ctx.fillRect(0, 0, canvas.width, canvas.height); return; }
+    const b = state.biome;
+    ctx.save();
+    ctx.translate(-cam.x, -cam.y);
+    drawBackground();
+    // arena border
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(0, 0, ARENA_W, ARENA_H);
+
+    // hazard zones (heat / cold / fog patches)
+    for (const h of state.hazards) {
+      const g = ctx.createRadialGradient(h.x, h.y, h.r * 0.3, h.x, h.y, h.r);
+      g.addColorStop(0, b.hazardColor);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, Math.PI*2); ctx.fill();
+    }
+
+    // exit
+    drawExit();
+
+    // pickups
+    for (const pu of state.pickups) drawPickup(pu);
+
+    // obstacles (drawn after pickups so trees overlap a bit)
+    for (const o of state.obstacles) drawObstacle(o, selBiome);
+
+    // enemies
+    for (const e of state.enemies) drawEnemy(e);
+
+    // player
+    drawPlayer();
+
+    // particles
+    for (const pp of state.particles) {
+      ctx.globalAlpha = Math.max(0, pp.life / pp.ttl);
+      ctx.fillStyle = pp.color;
+      ctx.beginPath(); ctx.arc(pp.x, pp.y, pp.r, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // floaters
+    for (const f of state.floaters) {
+      ctx.globalAlpha = Math.max(0, f.life / f.ttl);
+      ctx.font = 'bold 14px monospace';
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+
+    // biome tint overlay
+    if (b.ambient && b.ambient !== 'rgba(0,0,0,0.0)') {
+      ctx.fillStyle = b.ambient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // vignette to hint at fog / visibility
+    const visR = b.visibilityR;
+    if (visR < 1500) {
+      const cx = canvas.width / 2, cy = canvas.height / 2;
+      const g = ctx.createRadialGradient(cx, cy, visR * 0.4, cx, cy, visR * 0.9);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, b.bg);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    drawCompass();
+    drawMinimap();
+    drawHUDStats();
+  }
+
+  function drawCompass() {
+    const b = state.biome;
+    const cfg = state.cfg;
+    const p = state.player;
+    const ex = state.exit;
+    const d = Math.hypot(ex.x - p.x, ex.y - p.y);
+    const inRange = d < cfg.compassRange;
+    const cx = canvas.width / 2;
+    const cy = 60;
+    ctx.fillStyle = 'rgba(10,12,20,0.7)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 38, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffd35e';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#9aa';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ['N','E','S','W'].forEach((ch, i) => {
+      const a = -Math.PI/2 + i * Math.PI/2;
+      ctx.fillText(ch, cx + Math.cos(a) * 28, cy + Math.sin(a) * 28);
+    });
+    if (inRange) {
+      const baseAng = Math.atan2(ex.y - p.y, ex.x - p.x);
+      const drift = Math.sin(state.compassWobble * 0.7) * cfg.compassDrift;
+      const ang = baseAng + drift;
+      ctx.strokeStyle = '#ffd35e';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(ang) * 28, cy + Math.sin(ang) * 28);
+      ctx.stroke();
+      ctx.fillStyle = '#ffd35e';
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(ang) * 28, cy + Math.sin(ang) * 28, 4, 0, Math.PI*2);
+      ctx.fill();
+      // distance
+      ctx.fillStyle = '#cde';
+      ctx.font = 'bold 11px monospace';
+      ctx.fillText(`${Math.round(d)}m`, cx, cy + 52);
+    } else {
+      ctx.fillStyle = '#666';
+      ctx.fillText('?', cx, cy);
+      ctx.fillStyle = '#9aa';
+      ctx.font = '11px monospace';
+      ctx.fillText('TOO FAR', cx, cy + 52);
+    }
+  }
+
+  function drawMinimap() {
+    const mw = 200;
+    const mh = Math.round(mw * ARENA_H / ARENA_W);
+    const mx = canvas.width - mw - 16;
+    const my = canvas.height - mh - 16;
+    ctx.fillStyle = 'rgba(10,12,20,0.85)';
+    ctx.fillRect(mx, my, mw, mh);
+    ctx.strokeStyle = '#ffd35e';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(mx, my, mw, mh);
+    const sx = mw / ARENA_W, sy = mh / ARENA_H;
+    // obstacles
+    ctx.fillStyle = state.biome.obstacleColor;
+    for (const o of state.obstacles) ctx.fillRect(mx + o.x * sx - 1, my + o.y * sy - 1, 2, 2);
+    // exit
+    const ex = state.exit;
+    ctx.fillStyle = '#ffd35e';
+    ctx.beginPath(); ctx.arc(mx + ex.x * sx, my + ex.y * sy, 4, 0, Math.PI*2); ctx.fill();
+    // enemies
+    ctx.fillStyle = '#ff3030';
+    for (const e of state.enemies) ctx.fillRect(mx + e.x * sx - 1, my + e.y * sy - 1, 3, 3);
+    // player
+    const p = state.player;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(mx + p.x * sx, my + p.y * sy, 3.5, 0, Math.PI*2); ctx.fill();
+    // camera rect
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx + cam.x * sx, my + cam.y * sy, innerWidth * sx, innerHeight * sy);
+  }
+
+  function drawHUDStats() {
+    const p = state.player;
+    const b = state.biome;
+    const hL = document.getElementById('hudL');
+    function bar(label, val, max, color) {
+      return `<div class="bar"><label>${label}</label>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0, val/max*100)}%; background:${color};"></div></div>
+        <span class="bar-val">${Math.ceil(val)}</span></div>`;
+    }
+    hL.innerHTML = `
+      <b style="color:${b.tint}">${b.icon} ${b.name.toUpperCase()}</b>
+      ${bar('HP', p.hp, 100, '#ff5050')}
+      ${bar('FOOD', p.hunger, 100, '#7eff5a')}
+      ${bar('WATER', p.thirst, 100, '#39e3ff')}
+      ${bar('STAM', p.stamina, 100, '#ffd35e')}
+    `;
+    const hR = document.getElementById('hudR');
+    const mins = Math.floor(state.elapsed / 60);
+    const secs = Math.floor(state.elapsed % 60);
+    const distExit = Math.round(Math.hypot(p.x - state.exit.x, p.y - state.exit.y));
+    const inRange = distExit < state.cfg.compassRange;
+    hR.innerHTML = `
+      <div>TIME <b>${mins}:${String(secs).padStart(2,'0')}</b></div>
+      <div>HOSTILES <b>${state.kills}</b></div>
+      <div>EXIT <b>${inRange ? distExit + 'm' : '???'}</b></div>
+      <div style="color:#9aa; font-size:11px; margin-top:4px;">Press E to eat / drink / exit</div>
+    `;
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(dt);
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
