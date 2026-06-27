@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Protect the President</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; background:#0a0a14; color:#e8e8f0; font-family:'Courier New', monospace; overflow:hidden; }
+  canvas { display:block; }
+  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  .panel { background:rgba(10,12,20,0.94); border:2px solid #ffd54f; padding:22px 30px; border-radius:14px; max-width:600px; box-shadow:0 0 40px rgba(255,213,79,0.3); }
+  h1 { color:#ffd54f; text-shadow:0 0 12px rgba(255,213,79,0.7); margin-bottom:6px; letter-spacing:2px; font-size:28px; }
+  label { display:block; margin:12px 0 4px; color:#aab; font-size:12px; letter-spacing:1px; }
+  input[type=text] { background:#11131e; border:1px solid #444; color:#fff; padding:6px 10px; font:inherit; border-radius:6px; width:100%; }
+  button { background:#ffd54f; color:#222; border:none; padding:10px 22px; font:inherit; cursor:pointer; border-radius:8px; font-weight:bold; letter-spacing:1px; }
+  button:hover { background:#ffe57f; }
+  .row { display:flex; gap:8px; margin-top:4px; flex-wrap:wrap; }
+  .row button { padding:6px 14px; background:#333; color:#fff; font-size:13px; }
+  .row button.sel { background:#ffd54f; color:#222; }
+  .teams { display:flex; gap:8px; margin-top:6px; flex-wrap:wrap; }
+  .tswatch { width:36px; height:36px; border-radius:8px; border:2px solid #333; cursor:pointer; transition:transform 0.1s; }
+  .tswatch:hover { transform:translateY(-2px); }
+  .tswatch.sel { border-color:#fff; box-shadow:0 0 8px rgba(255,255,255,0.6); transform:scale(1.1); }
+  .tswatch.off { opacity:0.25; pointer-events:none; }
+  .hud { position:fixed; top:8px; left:8px; right:8px; display:flex; justify-content:space-between; pointer-events:none; }
+  .hud-l, .hud-r { background:rgba(10,12,20,0.78); padding:10px 14px; border-radius:8px; font-size:13px; }
+  .hud-b { position:fixed; bottom:8px; left:50%; transform:translateX(-50%); background:rgba(10,12,20,0.85); padding:10px 16px; border-radius:8px; font-size:14px; display:flex; gap:18px; pointer-events:none; align-items:center; }
+  .slot { display:flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px; border:1px solid transparent; }
+  .slot.active { border-color:#ffd54f; background:rgba(255,213,79,0.12); }
+  .slot b { color:#fff; font-size:15px; }
+  .slot span { color:#9aa; font-size:12px; }
+  .hidden { display:none !important; }
+  .back { position:fixed; top:8px; right:8px; padding:6px 10px; font-size:12px; background:#222; border:1px solid #444; color:#aab; text-decoration:none; border-radius:6px; z-index:11; }
+  .back:hover { color:#fff; }
+  .hint { color:#9aa; font-size:12px; line-height:1.5; margin-top:4px; }
+  .crosshair { position:fixed; width:22px; height:22px; pointer-events:none; transform:translate(-50%,-50%); z-index:5; }
+  .crosshair::before, .crosshair::after { content:''; position:absolute; background:#ffd54f; box-shadow:0 0 4px #ffd54f; }
+  .crosshair::before { left:50%; top:0; width:2px; height:22px; transform:translateX(-50%); }
+  .crosshair::after { left:0; top:50%; width:22px; height:2px; transform:translateY(-50%); }
+  .toast { position:fixed; top:80px; left:50%; transform:translateX(-50%); background:rgba(10,12,20,0.9); border:1px solid #ffd54f; padding:10px 18px; border-radius:8px; color:#ffd54f; font-size:14px; pointer-events:none; opacity:0; transition:opacity 0.2s; }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div class="crosshair hidden" id="ch"></div>
+
+<div class="hud hidden" id="hud">
+  <div class="hud-l" id="hudL"></div>
+  <div class="hud-r" id="hudR"></div>
+</div>
+<div class="hud-b hidden" id="hudB"></div>
+<div class="toast" id="toast"></div>
+
+<div class="overlay" id="titleOv">
+  <div class="panel">
+    <h1>PROTECT THE PRESIDENT</h1>
+    <div class="hint">
+      Kill the other teams' presidents — if your team's prez dies, your team is out.<br>
+      Last team standing wins.<br>
+      Controls: WASD move • mouse aim • click attack • <b>1</b> sword • <b>2</b> bow • <b>3</b> build blocks
+    </div>
+    <label>TEAMS</label>
+    <div class="row" id="teamCount">
+      <button data-n="3" class="sel">3 TEAMS</button>
+      <button data-n="5">5 TEAMS</button>
+      <button data-n="7">7 TEAMS</button>
+    </div>
+    <label>YOUR TEAM COLOR</label>
+    <div class="teams" id="teams"></div>
+    <label>DIFFICULTY</label>
+    <div class="row" id="diff">
+      <button data-d="easy" class="sel">EASY</button>
+      <button data-d="medium">MEDIUM</button>
+      <button data-d="hard">HARD</button>
+    </div>
+    <div style="margin-top:18px; text-align:center;">
+      <button id="start">DEPLOY</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="endOv">
+  <div class="panel" style="text-align:center; min-width:360px;">
+    <h1 id="endTitle">VICTORY</h1>
+    <p id="endText" style="color:#cde; margin:10px 0 16px; font-size:14px; line-height:1.6;"></p>
+    <button id="again">PLAY AGAIN</button>
+  </div>
+</div>
+
+<a class="back" href="index.html">← Games</a>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
+  resize();
+  addEventListener('resize', resize);
+
+  let audio = null;
+  function actx() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); return audio; }
+  function tone(freq, dur=0.1, type='square', vol=0.05) {
+    try {
+      const a = actx();
+      const o = a.createOscillator(); const g = a.createGain();
+      o.type = type; o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, a.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+      o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+    } catch(e){}
+  }
+  function noise(dur=0.15, vol=0.04) {
+    try {
+      const a = actx();
+      const b = a.createBuffer(1, a.sampleRate * dur, a.sampleRate);
+      const d = b.getChannelData(0);
+      for (let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * (1 - i/d.length);
+      const s = a.createBufferSource(); s.buffer = b;
+      const g = a.createGain(); g.gain.value = vol;
+      s.connect(g); g.connect(a.destination); s.start();
+    } catch(e){}
+  }
+
+  const TEAM_COLORS = [
+    { name:'RED',    main:'#ff3030', dim:'#7a1414' },
+    { name:'BLUE',   main:'#3a7cff', dim:'#1a3a7a' },
+    { name:'GREEN',  main:'#33cc44', dim:'#175a1f' },
+    { name:'YELLOW', main:'#ffd54f', dim:'#7a6526' },
+    { name:'PINK',   main:'#ff66cc', dim:'#7a306a' },
+    { name:'PURPLE', main:'#9966ff', dim:'#3e2a7a' },
+    { name:'ORANGE', main:'#ff8800', dim:'#7a4100' },
+  ];
+
+  const ARENA_W = 2800, ARENA_H = 2000;
+  const PLAYER_R = 16;
+  const PLAYER_SPEED = 240;
+  const GRID = 32;
+  const SWORD_RANGE = 56;
+  const SWORD_CD = 0.45;
+  const BOW_CD = 0.55;
+  const ARROW_SPEED = 760;
+  const PLACE_RANGE = 110;
+  const BLOCK_HP = 40;
+  const GRUNT_HP = 6;
+  const PREZ_HP = 12;
+  const START_BLOCKS = 30;
+  const START_ARROWS = 15;
+
+  const SWORD_TIERS = ['iron','gold','diamond'];
+  const SWORD = {
+    iron:    { dmg: 2, color:'#cdd', name:'IRON' },
+    gold:    { dmg: 4, color:'#ffd700', name:'GOLD' },
+    diamond: { dmg: 8, color:'#39e3ff', name:'DIAMOND' },
+  };
+  const ARROW_DMG = 3;
+
+  const DIFF = {
+    easy:   { botAcc: 0.45, botSpeed: 0.78, botAggro: 0.7,  botBuild: 0.6 },
+    medium: { botAcc: 0.62, botSpeed: 0.88, botAggro: 0.85, botBuild: 0.85 },
+    hard:   { botAcc: 0.80, botSpeed: 0.95, botAggro: 1.0,  botBuild: 1.0 },
+  };
+
+  // ---------- title setup
+  let teamCount = 3;
+  let selTeam = 0;
+  let diff = 'easy';
+  const teamsEl = document.getElementById('teams');
+  function renderTeamPicker() {
+    teamsEl.innerHTML = '';
+    TEAM_COLORS.forEach((tc, i) => {
+      const d = document.createElement('div');
+      const active = i < teamCount;
+      d.className = 'tswatch' + (active ? '' : ' off') + (i === selTeam ? ' sel' : '');
+      d.style.background = tc.main;
+      d.title = tc.name;
+      if (active) d.onclick = () => { selTeam = i; renderTeamPicker(); };
+      teamsEl.appendChild(d);
+    });
+  }
+  renderTeamPicker();
+  document.querySelectorAll('#teamCount button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#teamCount button').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel');
+      teamCount = parseInt(b.dataset.n);
+      if (selTeam >= teamCount) selTeam = 0;
+      renderTeamPicker();
+    };
+  });
+  document.querySelectorAll('#diff button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#diff button').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel'); diff = b.dataset.d;
+    };
+  });
+
+  // ---------- runtime state
+  let state = null;
+  const cam = { x:0, y:0 };
+  const keys = new Set();
+  let mouseDown = false;
+  let justClicked = false;
+  const mouseScr = { x: innerWidth/2, y: innerHeight/2 };
+  const chEl = document.getElementById('ch');
+  const toastEl = document.getElementById('toast');
+  let toastT = 0;
+
+  addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    keys.add(k);
+    if (k === '1' && state && state.human && state.human.alive) state.human.weapon = 'sword';
+    if (k === '2' && state && state.human && state.human.alive) state.human.weapon = 'bow';
+    if (k === '3' && state && state.human && state.human.alive) state.human.weapon = 'blocks';
+  });
+  addEventListener('keyup', e => { keys.delete(e.key.toLowerCase()); });
+  addEventListener('mousemove', e => {
+    mouseScr.x = e.clientX; mouseScr.y = e.clientY;
+    chEl.style.left = e.clientX + 'px'; chEl.style.top = e.clientY + 'px';
+  });
+  addEventListener('mousedown', () => { mouseDown = true; justClicked = true; });
+  addEventListener('mouseup', () => { mouseDown = false; });
+
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    toastT = 2;
+  }
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // ---------- player creation
+  function makePlayer(team, isPrez, isBot, x, y) {
+    return {
+      team, isPrez, isBot,
+      x, y, vx:0, vy:0,
+      hp: isPrez ? PREZ_HP : GRUNT_HP, hpMax: isPrez ? PREZ_HP : GRUNT_HP,
+      alive: true,
+      sword: 'iron',
+      weapon: 'sword',
+      arrows: START_ARROWS,
+      blocks: START_BLOCKS,
+      swordT: 0, bowT: 0, placeT: 0,
+      swingAnim: 0,
+      hurtT: 0,
+      aim: 0,
+      // AI
+      task: 'build', taskT: 0, aiTimer: 0,
+      target: null, targetT: 0, fireT: 0,
+      lastDmgFrom: null,
+    };
+  }
+
+  function startGame() {
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('endOv').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+    document.getElementById('hudB').classList.remove('hidden');
+    document.getElementById('ch').classList.remove('hidden');
+
+    const cfg = DIFF[diff];
+
+    // create teams positioned in a ring
+    const teams = [];
+    const cx = ARENA_W / 2, cy = ARENA_H / 2;
+    const ringR = Math.min(ARENA_W, ARENA_H) * 0.36;
+    for (let t = 0; t < teamCount; t++) {
+      const ang = -Math.PI/2 + (t / teamCount) * Math.PI * 2;
+      const fx = cx + Math.cos(ang) * ringR;
+      const fy = cy + Math.sin(ang) * ringR;
+      const tc = TEAM_COLORS[t];
+      teams.push({ idx: t, color: tc.main, dim: tc.dim, name: tc.name, flagX: fx, flagY: fy, alive: true, prez: null, players: [] });
+    }
+
+    // remap so player's selected color maps to team 0 (player team)
+    // We'll just give selTeam's color to team 0, others get remaining colors
+    const colorOrder = [TEAM_COLORS[selTeam]];
+    for (const tc of TEAM_COLORS) if (tc !== TEAM_COLORS[selTeam]) colorOrder.push(tc);
+    teams.forEach((team, i) => {
+      const tc = colorOrder[i];
+      team.color = tc.main; team.dim = tc.dim; team.name = tc.name;
+    });
+
+    let human = null;
+    for (const team of teams) {
+      // prez
+      const prez = makePlayer(team, true, true, team.flagX, team.flagY);
+      team.prez = prez;
+      team.players.push(prez);
+      // 2 grunts
+      for (let g = 0; g < 2; g++) {
+        const a2 = Math.random() * Math.PI * 2;
+        const gx = team.flagX + Math.cos(a2) * 70;
+        const gy = team.flagY + Math.sin(a2) * 70;
+        const isHuman = (team.idx === 0 && g === 0 && !human);
+        const grunt = makePlayer(team, false, !isHuman, gx, gy);
+        if (isHuman) { human = grunt; grunt.aiTimer = -1; }
+        team.players.push(grunt);
+      }
+    }
+
+    state = {
+      teams, human, cfg,
+      blocks: new Map(), // key "gx,gy" -> { gx, gy, team, hp }
+      arrows: [],
+      pickups: [],
+      particles: [],
+      floaters: [],
+      ended: false, win: false,
+      elapsed: 0,
+      pickupT: 18, // first pickup after 18s
+      placeGhost: null,
+    };
+
+    // sprinkle initial arrow crates between teams
+    for (let i = 0; i < 8; i++) {
+      const px = 300 + Math.random() * (ARENA_W - 600);
+      const py = 300 + Math.random() * (ARENA_H - 600);
+      if (!nearAnyFlag(px, py, 250)) state.pickups.push({ x: px, y: py, type: 'arrows', life: 9999 });
+    }
+    spawnPickup('gold');
+
+    if (human) {
+      cam.x = human.x - innerWidth/2;
+      cam.y = human.y - innerHeight/2;
+    }
+  }
+
+  function nearAnyFlag(x, y, r) {
+    for (const t of state.teams) if (Math.hypot(t.flagX - x, t.flagY - y) < r) return true;
+    return false;
+  }
+
+  function spawnPickup(type) {
+    let x, y, tries = 0;
+    while (tries < 60) {
+      x = 200 + Math.random() * (ARENA_W - 400);
+      y = 200 + Math.random() * (ARENA_H - 400);
+      if (!nearAnyFlag(x, y, 220)) break;
+      tries++;
+    }
+    state.pickups.push({ x, y, type, life: 9999 });
+  }
+
+  document.getElementById('start').onclick = () => { actx(); startGame(); };
+  document.getElementById('again').onclick = () => {
+    document.getElementById('endOv').classList.add('hidden');
+    document.getElementById('titleOv').classList.remove('hidden');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('hudB').classList.add('hidden');
+    document.getElementById('ch').classList.add('hidden');
+    state = null;
+  };
+
+  // ---------- helpers
+  function blockKey(gx, gy) { return gx + ',' + gy; }
+  function worldToGrid(wx, wy) { return [Math.floor(wx/GRID), Math.floor(wy/GRID)]; }
+  function gridRect(gx, gy) { return { x:gx*GRID, y:gy*GRID, w:GRID, h:GRID }; }
+  function getBlock(gx, gy) { return state.blocks.get(blockKey(gx, gy)); }
+
+  function tryPlaceBlock(p, gx, gy) {
+    const cx = gx * GRID + GRID/2, cy = gy * GRID + GRID/2;
+    if (Math.hypot(cx - p.x, cy - p.y) > PLACE_RANGE) return false;
+    if (gx < 0 || gy < 0 || gx >= Math.ceil(ARENA_W/GRID) || gy >= Math.ceil(ARENA_H/GRID)) return false;
+    if (getBlock(gx, gy)) return false;
+    // don't place on a player
+    for (const team of state.teams) for (const pp of team.players) {
+      if (!pp.alive) continue;
+      const r = gridRect(gx, gy);
+      const nx = clamp(pp.x, r.x, r.x + r.w);
+      const ny = clamp(pp.y, r.y, r.y + r.h);
+      if ((pp.x - nx)**2 + (pp.y - ny)**2 < (PLAYER_R - 1)**2) return false;
+    }
+    state.blocks.set(blockKey(gx, gy), { gx, gy, team: p.team, hp: BLOCK_HP });
+    p.blocks--;
+    tone(380, 0.06, 'square', 0.04);
+    return true;
+  }
+
+  function circleVsBlocks(x, y, r) {
+    const [gx0, gy0] = worldToGrid(x - r, y - r);
+    const [gx1, gy1] = worldToGrid(x + r, y + r);
+    for (let gx = gx0; gx <= gx1; gx++) for (let gy = gy0; gy <= gy1; gy++) {
+      const b = getBlock(gx, gy);
+      if (!b) continue;
+      const rect = gridRect(gx, gy);
+      const nx = clamp(x, rect.x, rect.x + rect.w);
+      const ny = clamp(y, rect.y, rect.y + rect.h);
+      if ((x - nx)**2 + (y - ny)**2 < r*r) return b;
+    }
+    return null;
+  }
+
+  function movePlayer(p, dt, mx, my) {
+    if (mx === 0 && my === 0) { p.vx = p.vy = 0; }
+    else {
+      const m = Math.hypot(mx, my);
+      mx /= m; my /= m;
+      const sp = PLAYER_SPEED * (p.isBot ? state.cfg.botSpeed : 1) * (p.isPrez ? 0.85 : 1);
+      p.vx = mx * sp; p.vy = my * sp;
+    }
+    let nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
+    if (circleVsBlocks(nx, p.y, PLAYER_R)) nx = p.x;
+    if (circleVsBlocks(p.x, ny, PLAYER_R)) ny = p.y;
+    p.x = clamp(nx, PLAYER_R, ARENA_W - PLAYER_R);
+    p.y = clamp(ny, PLAYER_R, ARENA_H - PLAYER_R);
+  }
+
+  // ---------- combat
+  function swingSword(p) {
+    if (p.swordT > 0) return;
+    p.swordT = SWORD_CD;
+    p.swingAnim = 0.28;
+    tone(620, 0.06, 'sawtooth', 0.04);
+    const ax = p.x + Math.cos(p.aim) * (SWORD_RANGE * 0.55);
+    const ay = p.y + Math.sin(p.aim) * (SWORD_RANGE * 0.55);
+    const dmg = SWORD[p.sword].dmg;
+    // damage enemies in arc
+    for (const team of state.teams) {
+      if (team === p.team) continue;
+      for (const enemy of team.players) {
+        if (!enemy.alive) continue;
+        if (Math.hypot(enemy.x - ax, enemy.y - ay) < SWORD_RANGE * 0.7) {
+          applyDamage(enemy, dmg, p);
+        }
+      }
+    }
+    // damage blocks in arc (enemy team's blocks)
+    const [gx0, gy0] = worldToGrid(ax - SWORD_RANGE, ay - SWORD_RANGE);
+    const [gx1, gy1] = worldToGrid(ax + SWORD_RANGE, ay + SWORD_RANGE);
+    for (let gx = gx0; gx <= gx1; gx++) for (let gy = gy0; gy <= gy1; gy++) {
+      const b = getBlock(gx, gy);
+      if (!b || b.team === p.team) continue;
+      const r = gridRect(gx, gy);
+      const cx = r.x + r.w/2, cy = r.y + r.h/2;
+      if (Math.hypot(cx - ax, cy - ay) < SWORD_RANGE * 0.7) {
+        b.hp -= dmg * 2;
+        if (b.hp <= 0) { state.blocks.delete(blockKey(gx, gy)); spawnBlockBurst(cx, cy, b.team); }
+      }
+    }
+  }
+
+  function shootBow(p) {
+    if (p.bowT > 0 || p.arrows <= 0) return;
+    p.bowT = BOW_CD;
+    p.arrows--;
+    let ang = p.aim;
+    if (p.isBot) {
+      const acc = state.cfg.botAcc;
+      ang += (Math.random() - 0.5) * (1 - acc) * 0.45;
+    }
+    state.arrows.push({
+      x: p.x + Math.cos(ang) * (PLAYER_R + 4),
+      y: p.y + Math.sin(ang) * (PLAYER_R + 4),
+      vx: Math.cos(ang) * ARROW_SPEED,
+      vy: Math.sin(ang) * ARROW_SPEED,
+      owner: p, life: 1.4,
+    });
+    tone(880, 0.05, 'triangle', 0.04);
+  }
+
+  function applyDamage(p, dmg, src) {
+    if (!p.alive) return;
+    p.hp -= dmg;
+    p.hurtT = 0.3;
+    p.lastDmgFrom = src;
+    spawnHitBurst(p.x, p.y, p.team.color);
+    floater(p.x, p.y - 22, `-${dmg}`, p.team.color);
+    if (p === state.human) state.shake = Math.max(state.shake || 0, 8);
+    if (p.hp <= 0) killPlayer(p, src);
+  }
+
+  function killPlayer(p, src) {
+    p.alive = false;
+    spawnDeathBurst(p.x, p.y, p.team.color);
+    if (p.isPrez) {
+      // entire team eliminated
+      p.team.alive = false;
+      for (const pp of p.team.players) pp.alive = false;
+      showToast(`${p.team.name} PRESIDENT DOWN — team eliminated`);
+      tone(120, 0.5, 'sawtooth', 0.08);
+      noise(0.5, 0.07);
+      if (state.human && p === state.human) {
+        // human was the prez (shouldn't be, human is grunt, but defend)
+      }
+    } else {
+      // grunt down — game continues
+      tone(180, 0.2, 'sawtooth', 0.05);
+      noise(0.2, 0.05);
+      // drop some arrows
+      if (p.arrows > 0) state.pickups.push({ x: p.x, y: p.y, type: 'arrows', life: 30, drop: true });
+    }
+    if (p === state.human) {
+      state.shake = Math.max(state.shake || 0, 24);
+      showToast('YOU ARE DOWN — spectating');
+    }
+    checkWin();
+  }
+
+  function spawnHitBurst(x, y, color) {
+    for (let i=0;i<6;i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 60 + Math.random() * 160;
+      state.particles.push({ x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:0.4+Math.random()*0.3, ttl:0.7, color, r:2+Math.random()*2 });
+    }
+  }
+  function spawnDeathBurst(x, y, color) {
+    for (let i=0;i<28;i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 100 + Math.random() * 240;
+      state.particles.push({ x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:0.6+Math.random()*0.5, ttl:1.1, color, r:2+Math.random()*3 });
+    }
+  }
+  function spawnBlockBurst(x, y, team) {
+    for (let i=0;i<10;i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 60 + Math.random() * 140;
+      state.particles.push({ x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:0.4+Math.random()*0.3, ttl:0.7, color:team.color, r:2+Math.random()*2 });
+    }
+  }
+  function floater(x, y, text, color) {
+    state.floaters.push({ x, y, text, color, life:0.9, ttl:0.9 });
+  }
+
+  function checkWin() {
+    const aliveTeams = state.teams.filter(t => t.alive);
+    if (aliveTeams.length <= 1) endGame(aliveTeams[0]);
+  }
+
+  function endGame(winnerTeam) {
+    if (state.ended) return;
+    state.ended = true;
+    state.win = winnerTeam && state.human && winnerTeam === state.human.team;
+    const ov = document.getElementById('endOv');
+    const t = document.getElementById('endTitle');
+    const txt = document.getElementById('endText');
+    if (state.win) {
+      t.textContent = 'VICTORY';
+      t.style.color = '#7eff5a';
+      t.style.textShadow = '0 0 14px #7eff5a';
+    } else if (winnerTeam) {
+      t.textContent = 'YOUR TEAM LOST';
+      t.style.color = '#ff5050';
+      t.style.textShadow = '0 0 14px #ff5050';
+    } else {
+      t.textContent = 'NO SURVIVORS';
+      t.style.color = '#aab';
+      t.style.textShadow = 'none';
+    }
+    let line = winnerTeam ? `<b style="color:${winnerTeam.color}">${winnerTeam.name}</b> team wins.<br>` : 'All teams wiped out.<br>';
+    if (state.human) {
+      line += state.human.alive ? 'You survived.' : 'You were eliminated as a grunt.';
+    }
+    txt.innerHTML = line;
+    ov.classList.remove('hidden');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('hudB').classList.add('hidden');
+    document.getElementById('ch').classList.add('hidden');
+  }
+
+  // ---------- bot AI
+  function lineOfSightClear(ax, ay, bx, by, ignoreTeam) {
+    // step along the line, check blocks
+    const dx = bx - ax, dy = by - ay;
+    const d = Math.hypot(dx, dy);
+    if (d < 1) return true;
+    const steps = Math.ceil(d / (GRID * 0.6));
+    for (let i=1;i<steps;i++) {
+      const t = i / steps;
+      const x = ax + dx * t, y = ay + dy * t;
+      const [gx, gy] = worldToGrid(x, y);
+      const b = getBlock(gx, gy);
+      if (b && b.team !== ignoreTeam) return false;
+    }
+    return true;
+  }
+
+  function nearestEnemy(p, alivePred) {
+    let best = null, bestD = Infinity;
+    for (const team of state.teams) {
+      if (team === p.team || !team.alive) continue;
+      for (const e of team.players) {
+        if (!e.alive) continue;
+        if (alivePred && !alivePred(e)) continue;
+        const d = Math.hypot(e.x - p.x, e.y - p.y);
+        if (d < bestD) { bestD = d; best = e; }
+      }
+    }
+    return best;
+  }
+
+  function nearestEnemyPrez(p) {
+    return nearestEnemy(p, e => e.isPrez);
+  }
+
+  function botUpdate(p, dt) {
+    p.aiTimer -= dt;
+    const cfg = state.cfg;
+    if (p.isPrez) {
+      // prez: stay near flag, retreat from enemy
+      const dxF = p.team.flagX - p.x, dyF = p.team.flagY - p.y;
+      const distF = Math.hypot(dxF, dyF);
+      const enemy = nearestEnemy(p, null);
+      const enemyClose = enemy && Math.hypot(enemy.x - p.x, enemy.y - p.y) < 240;
+      let mx = 0, my = 0;
+      if (enemyClose) {
+        // run opposite direction, bounded by flag
+        mx = -(enemy.x - p.x); my = -(enemy.y - p.y);
+        const m = Math.hypot(mx, my) || 1;
+        mx /= m; my /= m;
+        // also pull toward flag
+        if (distF > 60) { mx = (mx + dxF / distF) * 0.5; my = (my + dyF / distF) * 0.5; }
+      } else if (distF > 80) {
+        mx = dxF / distF; my = dyF / distF;
+      }
+      movePlayer(p, dt, mx, my);
+      // prez auto-shoots if enemy visible + has arrows
+      p.swordT = Math.max(0, p.swordT - dt);
+      p.bowT = Math.max(0, p.bowT - dt);
+      if (enemy) {
+        const d = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+        p.aim = Math.atan2(enemy.y - p.y, enemy.x - p.x);
+        if (d < SWORD_RANGE + 8 && p.swordT <= 0) swingSword(p);
+        else if (d < 700 && p.arrows > 0 && p.bowT <= 0 && lineOfSightClear(p.x, p.y, enemy.x, enemy.y, p.team)) shootBow(p);
+      }
+      return;
+    }
+    // grunt bot
+    p.swordT = Math.max(0, p.swordT - dt);
+    p.bowT = Math.max(0, p.bowT - dt);
+    p.placeT = Math.max(0, p.placeT - dt);
+
+    // pick up nearby pickups
+    for (const pu of state.pickups) {
+      if (Math.hypot(pu.x - p.x, pu.y - p.y) < 40) {
+        consumePickup(p, pu);
+      }
+    }
+
+    if (p.aiTimer <= 0) {
+      // decide task: early game build, late game hunt
+      const elapsed = state.elapsed;
+      if (elapsed < 6 + Math.random() * 4 && p.blocks > 10 && Math.random() < cfg.botBuild) {
+        p.task = 'build';
+      } else if (p.lastDmgFrom && p.lastDmgFrom.alive && Math.random() < 0.7) {
+        p.task = 'hunt';
+        p.target = p.lastDmgFrom;
+      } else {
+        p.task = 'hunt';
+        p.target = nearestEnemyPrez(p) || nearestEnemy(p, null);
+      }
+      p.aiTimer = 1.5 + Math.random() * 1.5;
+    }
+
+    if (p.task === 'build') {
+      // place a block adjacent to prez or self
+      const prez = p.team.prez;
+      const anchorX = prez && prez.alive ? prez.x : p.x;
+      const anchorY = prez && prez.alive ? prez.y : p.y;
+      // move toward prez
+      const dx = anchorX - p.x, dy = anchorY - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 120) movePlayer(p, dt, dx/d, dy/d);
+      else {
+        // try placing a wall facing the arena center (away from prez)
+        if (p.placeT <= 0 && p.blocks > 0) {
+          const enemyDir = nearestEnemy(p, null);
+          const ax = enemyDir ? enemyDir.x - anchorX : (ARENA_W/2 - anchorX);
+          const ay = enemyDir ? enemyDir.y - anchorY : (ARENA_H/2 - anchorY);
+          const am = Math.hypot(ax, ay) || 1;
+          const px = anchorX + (ax / am) * (50 + Math.random() * 30);
+          const py = anchorY + (ay / am) * (50 + Math.random() * 30);
+          const [gx, gy] = worldToGrid(px, py);
+          // walk close enough to place
+          const cellX = gx * GRID + GRID/2, cellY = gy * GRID + GRID/2;
+          if (Math.hypot(cellX - p.x, cellY - p.y) > PLACE_RANGE) {
+            const ddx = cellX - p.x, ddy = cellY - p.y;
+            const dd = Math.hypot(ddx, ddy);
+            movePlayer(p, dt, ddx/dd, ddy/dd);
+          } else if (tryPlaceBlock(p, gx, gy)) {
+            p.placeT = 0.6;
+          } else {
+            // try a random nearby cell
+            for (let i=0;i<6;i++) {
+              const ox = Math.floor(Math.random()*5)-2, oy = Math.floor(Math.random()*5)-2;
+              if (tryPlaceBlock(p, gx+ox, gy+oy)) { p.placeT = 0.6; break; }
+            }
+            if (p.placeT <= 0) movePlayer(p, dt, 0, 0);
+          }
+        } else movePlayer(p, dt, 0, 0);
+      }
+      return;
+    }
+
+    // hunt
+    let target = p.target;
+    if (!target || !target.alive) target = nearestEnemyPrez(p) || nearestEnemy(p, null);
+    if (!target) { movePlayer(p, dt, 0, 0); return; }
+    const dx = target.x - p.x, dy = target.y - p.y;
+    const d = Math.hypot(dx, dy);
+    const inSight = lineOfSightClear(p.x, p.y, target.x, target.y, p.team);
+    p.aim = Math.atan2(dy, dx);
+    if (inSight && d < 700 && p.arrows > 0) {
+      // shoot if within range
+      if (p.bowT <= 0 && d > 100) shootBow(p);
+    }
+    if (d < SWORD_RANGE + 6) {
+      // melee
+      if (p.swordT <= 0) swingSword(p);
+      movePlayer(p, dt, dx/d * 0.2, dy/d * 0.2);
+    } else if (!inSight) {
+      // can't see — try to break blocks in the way or path around
+      const stepX = Math.sign(dx), stepY = Math.sign(dy);
+      const [gx, gy] = worldToGrid(p.x + stepX * 40, p.y + stepY * 40);
+      const wallB = getBlock(gx, gy);
+      if (wallB && wallB.team !== p.team && Math.hypot((gx*GRID+GRID/2)-p.x, (gy*GRID+GRID/2)-p.y) < SWORD_RANGE + 6) {
+        p.aim = Math.atan2(gy*GRID+GRID/2-p.y, gx*GRID+GRID/2-p.x);
+        if (p.swordT <= 0) swingSword(p);
+        movePlayer(p, dt, stepX * 0.4, stepY * 0.4);
+      } else {
+        // strafe to find sight
+        const perp = (p.aiTimer * 2) % 2 < 1 ? 1 : -1;
+        const px = -dy / d, py = dx / d;
+        movePlayer(p, dt, dx/d * 0.6 + px * perp * 0.6, dy/d * 0.6 + py * perp * 0.6);
+      }
+    } else {
+      // close distance partway, keep some range for bow
+      if (d > 280) movePlayer(p, dt, dx/d, dy/d);
+      else {
+        const px = -dy / d, py = dx / d;
+        const dir = (Math.floor(p.aiTimer * 2) % 2) ? 1 : -1;
+        movePlayer(p, dt, dx/d * 0.2 + px * dir * 0.7, dy/d * 0.2 + py * dir * 0.7);
+      }
+    }
+  }
+
+  function consumePickup(p, pu) {
+    if (!pu.alive && pu.taken) return;
+    if (pu.taken) return;
+    if (pu.type === 'arrows') { p.arrows += 6; floater(p.x, p.y - 22, '+6 ARROWS', '#39e3ff'); }
+    else if (pu.type === 'gold') {
+      if (p.sword === 'iron') { p.sword = 'gold'; floater(p.x, p.y - 22, 'GOLD SWORD!', '#ffd700'); }
+      else if (p.sword === 'gold') { p.sword = 'diamond'; floater(p.x, p.y - 22, 'DIAMOND SWORD!', '#39e3ff'); }
+      else { p.arrows += 4; floater(p.x, p.y - 22, '+4 ARROWS', '#39e3ff'); }
+    }
+    else if (pu.type === 'diamond') {
+      p.sword = 'diamond'; floater(p.x, p.y - 22, 'DIAMOND SWORD!', '#39e3ff');
+    }
+    pu.taken = true;
+    tone(660, 0.12, 'sine', 0.06);
+  }
+
+  // ---------- update + render
+  function update(dt) {
+    if (!state || state.ended) return;
+    state.elapsed += dt;
+    if (state.shake) state.shake = Math.max(0, state.shake - dt * 60);
+
+    // pickup spawning over time
+    state.pickupT -= dt;
+    if (state.pickupT <= 0) {
+      const r = Math.random();
+      if (r < 0.55) spawnPickup('arrows');
+      else if (r < 0.85) spawnPickup('gold');
+      else spawnPickup('diamond');
+      state.pickupT = 14 + Math.random() * 12;
+    }
+
+    // remove taken / expired pickups
+    state.pickups = state.pickups.filter(pu => !pu.taken && (!pu.drop || pu.life > 0));
+    for (const pu of state.pickups) if (pu.drop) pu.life -= dt;
+
+    // human input
+    const h = state.human;
+    if (h && h.alive) {
+      let mx = 0, my = 0;
+      if (keys.has('w') || keys.has('arrowup')) my -= 1;
+      if (keys.has('s') || keys.has('arrowdown')) my += 1;
+      if (keys.has('a') || keys.has('arrowleft')) mx -= 1;
+      if (keys.has('d') || keys.has('arrowright')) mx += 1;
+      const wx = mouseScr.x + cam.x;
+      const wy = mouseScr.y + cam.y;
+      h.aim = Math.atan2(wy - h.y, wx - h.x);
+      movePlayer(h, dt, mx, my);
+
+      h.swordT = Math.max(0, h.swordT - dt);
+      h.bowT = Math.max(0, h.bowT - dt);
+      h.placeT = Math.max(0, h.placeT - dt);
+      h.swingAnim = Math.max(0, h.swingAnim - dt);
+      if (h.hurtT > 0) h.hurtT = Math.max(0, h.hurtT - dt);
+
+      // build mode ghost
+      if (h.weapon === 'blocks') {
+        const [gx, gy] = worldToGrid(wx, wy);
+        state.placeGhost = { gx, gy };
+      } else state.placeGhost = null;
+
+      // attack
+      if (mouseDown || justClicked) {
+        if (h.weapon === 'sword') { if (h.swordT <= 0) swingSword(h); }
+        else if (h.weapon === 'bow') { if (h.bowT <= 0 && h.arrows > 0) shootBow(h); }
+        else if (h.weapon === 'blocks' && justClicked) {
+          if (h.blocks > 0 && state.placeGhost && h.placeT <= 0) {
+            if (tryPlaceBlock(h, state.placeGhost.gx, state.placeGhost.gy)) {
+              h.placeT = 0.12;
+            }
+          }
+        }
+      }
+
+      // pick up pickups by walking over
+      for (const pu of state.pickups) if (Math.hypot(pu.x - h.x, pu.y - h.y) < 30) consumePickup(h, pu);
+    }
+    justClicked = false;
+
+    // bots
+    for (const team of state.teams) {
+      if (!team.alive) continue;
+      for (const p of team.players) {
+        if (!p.alive) continue;
+        if (p === h) continue;
+        if (p.hurtT > 0) p.hurtT = Math.max(0, p.hurtT - dt);
+        p.swingAnim = Math.max(0, p.swingAnim - dt);
+        botUpdate(p, dt);
+      }
+    }
+
+    // arrows
+    for (let i = state.arrows.length - 1; i >= 0; i--) {
+      const a = state.arrows[i];
+      const steps = 4;
+      let dead = false;
+      for (let s = 0; s < steps; s++) {
+        a.x += a.vx * dt / steps;
+        a.y += a.vy * dt / steps;
+        // out of bounds
+        if (a.x < 0 || a.y < 0 || a.x > ARENA_W || a.y > ARENA_H) { dead = true; break; }
+        // block hit
+        const [gx, gy] = worldToGrid(a.x, a.y);
+        const b = getBlock(gx, gy);
+        if (b) {
+          b.hp -= ARROW_DMG * 2;
+          spawnHitBurst(a.x, a.y, b.team.color);
+          if (b.hp <= 0) { state.blocks.delete(blockKey(gx, gy)); spawnBlockBurst(gx*GRID+GRID/2, gy*GRID+GRID/2, b.team); }
+          dead = true; break;
+        }
+        // player hit
+        for (const team of state.teams) {
+          if (team === a.owner.team) continue;
+          for (const p of team.players) {
+            if (!p.alive) continue;
+            if ((p.x - a.x)**2 + (p.y - a.y)**2 < (PLAYER_R + 3)**2) {
+              applyDamage(p, ARROW_DMG, a.owner);
+              dead = true; break;
+            }
+          }
+          if (dead) break;
+        }
+        if (dead) break;
+      }
+      a.life -= dt;
+      if (dead || a.life <= 0) state.arrows.splice(i, 1);
+    }
+
+    // particles + floaters
+    for (let i=state.particles.length-1; i>=0; i--) {
+      const p = state.particles[i];
+      p.life -= dt;
+      if (p.life <= 0) { state.particles.splice(i, 1); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vx *= 0.93; p.vy *= 0.93;
+    }
+    for (let i=state.floaters.length-1; i>=0; i--) {
+      const f = state.floaters[i];
+      f.life -= dt; f.y -= 28 * dt;
+      if (f.life <= 0) state.floaters.splice(i, 1);
+    }
+
+    // camera follow human (or prez if dead)
+    let camTarget = h;
+    if (!h || !h.alive) {
+      const team = h ? h.team : state.teams[0];
+      camTarget = team.players.find(p => p.alive) || h;
+    }
+    if (camTarget) {
+      cam.x = clamp(camTarget.x - innerWidth/2, 0, Math.max(0, ARENA_W - innerWidth));
+      cam.y = clamp(camTarget.y - innerHeight/2, 0, Math.max(0, ARENA_H - innerHeight));
+      if (ARENA_W < innerWidth) cam.x = (ARENA_W - innerWidth) / 2;
+      if (ARENA_H < innerHeight) cam.y = (ARENA_H - innerHeight) / 2;
+    }
+
+    // toast timer
+    if (toastT > 0) {
+      toastT -= dt;
+      if (toastT <= 0) toastEl.classList.remove('show');
+    }
+  }
+
+  // ---------- render
+  function render() {
+    if (!state) {
+      ctx.fillStyle = '#0a0a14';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+    ctx.fillStyle = '#1a1a26';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    const sh = state.shake || 0;
+    const sx = sh ? (Math.random() - 0.5) * sh : 0;
+    const sy = sh ? (Math.random() - 0.5) * sh : 0;
+    ctx.translate(-cam.x + sx, -cam.y + sy);
+
+    // floor grid
+    ctx.strokeStyle = '#262638';
+    ctx.lineWidth = 1;
+    const ts = GRID;
+    const x0 = Math.floor(cam.x / ts) * ts;
+    const y0 = Math.floor(cam.y / ts) * ts;
+    ctx.beginPath();
+    for (let x = x0; x < cam.x + innerWidth + ts; x += ts) { ctx.moveTo(x, cam.y); ctx.lineTo(x, cam.y + innerHeight); }
+    for (let y = y0; y < cam.y + innerHeight + ts; y += ts) { ctx.moveTo(cam.x, y); ctx.lineTo(cam.x + innerWidth, y); }
+    ctx.stroke();
+
+    // arena border
+    ctx.strokeStyle = '#ffd54f';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, ARENA_W - 4, ARENA_H - 4);
+
+    // flags
+    for (const team of state.teams) {
+      ctx.save();
+      ctx.globalAlpha = team.alive ? 0.5 : 0.15;
+      ctx.fillStyle = team.color;
+      ctx.beginPath();
+      ctx.arc(team.flagX, team.flagY, 26, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(team.name, team.flagX, team.flagY);
+      ctx.restore();
+    }
+
+    // pickups
+    for (const pu of state.pickups) {
+      const pulse = 0.55 + 0.45 * Math.sin(state.elapsed * 5 + pu.x);
+      let col, ch;
+      if (pu.type === 'arrows') { col = '#39e3ff'; ch = '↑'; }
+      else if (pu.type === 'gold') { col = '#ffd700'; ch = '⚔'; }
+      else { col = '#39e3ff'; ch = '◆'; }
+      ctx.save();
+      ctx.shadowColor = col; ctx.shadowBlur = 14 * pulse;
+      ctx.fillStyle = col;
+      ctx.fillRect(pu.x - 11, pu.y - 11, 22, 22);
+      ctx.restore();
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 14px monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(ch, pu.x, pu.y + 1);
+    }
+
+    // blocks
+    for (const b of state.blocks.values()) {
+      const r = gridRect(b.gx, b.gy);
+      ctx.fillStyle = b.team.dim;
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = b.team.color;
+      ctx.fillRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4);
+      // hp bar if damaged
+      const hpRatio = b.hp / BLOCK_HP;
+      if (hpRatio < 1) {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(r.x + 3, r.y + r.h - 5, r.w - 6, 3);
+        ctx.fillStyle = hpRatio > 0.5 ? '#7eff5a' : hpRatio > 0.25 ? '#ffd54f' : '#ff5050';
+        ctx.fillRect(r.x + 3, r.y + r.h - 5, (r.w - 6) * hpRatio, 3);
+      }
+    }
+
+    // place ghost
+    if (state.placeGhost && state.human && state.human.alive && state.human.weapon === 'blocks' && state.human.blocks > 0) {
+      const g = state.placeGhost;
+      const r = gridRect(g.gx, g.gy);
+      const cellX = r.x + r.w/2, cellY = r.y + r.h/2;
+      const inRange = Math.hypot(cellX - state.human.x, cellY - state.human.y) < PLACE_RANGE;
+      const occupied = !!getBlock(g.gx, g.gy);
+      const valid = inRange && !occupied;
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = valid ? state.human.team.color : '#ff5050';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = valid ? '#fff' : '#ff5050';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+    }
+
+    // arrows
+    for (const a of state.arrows) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(a.x - a.vx * 0.015, a.y - a.vy * 0.015);
+      ctx.lineTo(a.x, a.y);
+      ctx.stroke();
+      ctx.fillStyle = a.owner.team.color;
+      ctx.beginPath(); ctx.arc(a.x, a.y, 2.5, 0, Math.PI*2); ctx.fill();
+    }
+
+    // particles
+    for (const p of state.particles) {
+      ctx.globalAlpha = Math.max(0, p.life / p.ttl);
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // players (alive)
+    for (const team of state.teams) {
+      for (const p of team.players) {
+        if (!p.alive) continue;
+        drawPlayer(p);
+      }
+    }
+
+    // floaters
+    for (const f of state.floaters) {
+      ctx.globalAlpha = Math.max(0, f.life / f.ttl);
+      ctx.font = 'bold 14px monospace';
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+
+    drawMinimap();
+    drawHUD();
+  }
+
+  function drawPlayer(p) {
+    // body with team color and hurt flash
+    ctx.fillStyle = p.hurtT > 0 ? '#fff' : p.team.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, PLAYER_R, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = p.team.dim;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // president marker: gold star ring
+    if (p.isPrez) {
+      ctx.strokeStyle = '#ffd54f';
+      ctx.lineWidth = 2;
+      const r = PLAYER_R + 4 + Math.sin(state.elapsed * 4) * 1.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle = '#ffd54f';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('★', p.x, p.y - PLAYER_R - 6);
+    }
+    // human halo
+    if (p === state.human) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, PLAYER_R + 7, 0, Math.PI*2); ctx.stroke();
+    }
+    // arm / weapon
+    const swing = p.swingAnim > 0 ? Math.sin((1 - p.swingAnim / 0.28) * Math.PI) * 0.7 : 0;
+    const reach = PLAYER_R + 14 + swing * 18;
+    if (p.weapon === 'sword' || !p.weapon) {
+      // sword line in aim direction
+      ctx.strokeStyle = SWORD[p.sword].color;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(p.x + Math.cos(p.aim) * (PLAYER_R - 2), p.y + Math.sin(p.aim) * (PLAYER_R - 2));
+      ctx.lineTo(p.x + Math.cos(p.aim) * reach, p.y + Math.sin(p.aim) * reach);
+      ctx.stroke();
+      ctx.fillStyle = SWORD[p.sword].color;
+      ctx.beginPath(); ctx.arc(p.x + Math.cos(p.aim) * reach, p.y + Math.sin(p.aim) * reach, 3, 0, Math.PI*2); ctx.fill();
+    } else if (p.weapon === 'bow') {
+      ctx.strokeStyle = '#9c6';
+      ctx.lineWidth = 3;
+      // bow as arc perpendicular to aim
+      const perp = p.aim + Math.PI/2;
+      const bx = p.x + Math.cos(p.aim) * (PLAYER_R + 4);
+      const by = p.y + Math.sin(p.aim) * (PLAYER_R + 4);
+      ctx.beginPath();
+      ctx.arc(bx, by, 10, perp - 1.2, perp + 1.2);
+      ctx.stroke();
+      // arrow ready
+      if (p.arrows > 0) {
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bx - Math.cos(p.aim) * 6, by - Math.sin(p.aim) * 6);
+        ctx.lineTo(bx + Math.cos(p.aim) * 12, by + Math.sin(p.aim) * 12);
+        ctx.stroke();
+      }
+    } else {
+      // building — show small cube in hand
+      ctx.fillStyle = p.team.color;
+      ctx.fillRect(p.x + Math.cos(p.aim) * (PLAYER_R + 4) - 4, p.y + Math.sin(p.aim) * (PLAYER_R + 4) - 4, 8, 8);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+      ctx.strokeRect(p.x + Math.cos(p.aim) * (PLAYER_R + 4) - 4, p.y + Math.sin(p.aim) * (PLAYER_R + 4) - 4, 8, 8);
+    }
+    // hp bar
+    if (p.hp < p.hpMax) {
+      const w = 30, h = 4;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(p.x - w/2, p.y - PLAYER_R - 12, w, h);
+      const r = p.hp / p.hpMax;
+      ctx.fillStyle = r > 0.5 ? '#7eff5a' : r > 0.25 ? '#ffd54f' : '#ff5050';
+      ctx.fillRect(p.x - w/2, p.y - PLAYER_R - 12, w * r, h);
+    }
+  }
+
+  function drawMinimap() {
+    const mw = 220;
+    const mh = Math.round(mw * ARENA_H / ARENA_W);
+    const mx = canvas.width - mw - 16, my = canvas.height - mh - 16;
+    ctx.fillStyle = 'rgba(10,12,20,0.85)';
+    ctx.fillRect(mx, my, mw, mh);
+    ctx.strokeStyle = '#ffd54f';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(mx, my, mw, mh);
+    const sx = mw / ARENA_W, sy = mh / ARENA_H;
+    // blocks
+    for (const b of state.blocks.values()) {
+      ctx.fillStyle = b.team.color;
+      ctx.fillRect(mx + b.gx * GRID * sx, my + b.gy * GRID * sy, Math.max(1, GRID * sx), Math.max(1, GRID * sy));
+    }
+    // flags
+    for (const team of state.teams) {
+      ctx.fillStyle = team.alive ? team.color : team.dim;
+      ctx.globalAlpha = team.alive ? 0.5 : 0.2;
+      ctx.fillRect(mx + team.flagX * sx - 3, my + team.flagY * sy - 3, 6, 6);
+      ctx.globalAlpha = 1;
+    }
+    // players
+    for (const team of state.teams) {
+      for (const p of team.players) {
+        if (!p.alive) continue;
+        ctx.fillStyle = team.color;
+        const size = p.isPrez ? 5 : 3;
+        ctx.fillRect(mx + p.x * sx - size/2, my + p.y * sy - size/2, size, size);
+        if (p.isPrez) {
+          ctx.strokeStyle = '#ffd54f';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(mx + p.x * sx - size/2 - 1, my + p.y * sy - size/2 - 1, size + 2, size + 2);
+        }
+      }
+    }
+    // human halo
+    if (state.human && state.human.alive) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(mx + state.human.x * sx, my + state.human.y * sy, 6, 0, Math.PI*2);
+      ctx.stroke();
+    }
+    // cam rect
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx + cam.x * sx, my + cam.y * sy, innerWidth * sx, innerHeight * sy);
+  }
+
+  function drawHUD() {
+    const h = state.human;
+    const hL = document.getElementById('hudL');
+    const hR = document.getElementById('hudR');
+    const hB = document.getElementById('hudB');
+    if (h && h.alive) {
+      hL.innerHTML = `<b style="color:${h.team.color}">${h.team.name} GRUNT</b> &nbsp;
+        HP <b>${Math.ceil(h.hp)}/${h.hpMax}</b> &nbsp;
+        SWORD <b style="color:${SWORD[h.sword].color}">${SWORD[h.sword].name}</b>`;
+    } else if (h) {
+      hL.innerHTML = `<b style="color:#ff5050">SPECTATING</b> &nbsp; ${h.team.name} team ${h.team.alive ? 'still alive' : 'eliminated'}`;
+    }
+    // alive teams summary
+    const out = state.teams.map(t => `<span style="color:${t.alive ? t.color : t.dim}; ${t.alive ? '' : 'text-decoration:line-through;'}">${t.name}<sub style="font-size:10px">${t.players.filter(p=>p.alive).length}</sub></span>`).join(' &nbsp;');
+    hR.innerHTML = `${state.teams.filter(t=>t.alive).length} TEAMS LEFT<br><span style="font-size:12px">${out}</span>`;
+    // bottom bar — weapons
+    if (h && h.alive) {
+      hB.innerHTML = `
+        <div class="slot ${h.weapon==='sword'?'active':''}"><b>1</b> <span>SWORD</span></div>
+        <div class="slot ${h.weapon==='bow'?'active':''}"><b>2</b> <span>BOW ${h.arrows}</span></div>
+        <div class="slot ${h.weapon==='blocks'?'active':''}"><b>3</b> <span>BLOCKS ${h.blocks}</span></div>
+      `;
+    } else hB.innerHTML = '';
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    update(dt);
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
