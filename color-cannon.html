@@ -35,9 +35,12 @@
   .stat span { color:#ffd700; font-weight:bold; }
   .hidden { display:none !important; }
 
-  .back { position:fixed; bottom:8px; left:8px; padding:6px 10px; font-size:12px; background:rgba(20,16,36,.85);
-          border:1px solid #45356b; color:#9a9ab5; text-decoration:none; border-radius:6px; z-index:5; }
-  .back:hover { color:#fff; }
+  .back { position:fixed; bottom:8px; left:8px; padding:8px 14px; font-size:13px; font-weight:bold; letter-spacing:1px;
+          background:rgba(20,16,36,.9); border:1px solid #7b2ff7; color:#cbb6ff; text-decoration:none; border-radius:8px;
+          z-index:5; box-shadow:0 0 14px rgba(123,47,247,0.3); }
+  .back:hover { color:#fff; background:#221a36; }
+  .btn2 { background:#2b2545; margin-top:8px; margin-left:8px; }
+  .btn2:hover { background:#3a3260; }
 
   .pauseBtn { position:fixed; bottom:8px; right:8px; width:42px; height:42px; padding:0; margin:0;
               display:flex; align-items:center; justify-content:center; font-size:16px; line-height:1;
@@ -98,10 +101,11 @@
     <div class="stat">Score <span id="overScore">0</span></div>
     <div class="stat" id="overBest"></div>
     <button id="againBtn">PLAY AGAIN</button>
+    <a href="index.html"><button class="btn2">🎮 GALLERY</button></a>
   </div>
 </div>
 
-<a class="back" href="index.html">← Games</a>
+<a class="back" href="index.html">🎮 Game Gallery</a>
 <button class="pauseBtn hidden" id="pauseBtn" title="Pause (P)">❚❚</button>
 
 <script>
