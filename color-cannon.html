@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Color Cannon</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; background:#07060f; color:#e8e8f0; font-family:'Courier New', monospace; overflow:hidden; }
+  canvas { display:block; }
+
+  .hud { position:fixed; top:0; left:0; right:0; height:44px; display:flex; align-items:center; justify-content:space-between;
+         padding:0 12px; pointer-events:none; background:linear-gradient(#07060f 40%, rgba(7,6,15,0)); z-index:4; }
+  .hud-l, .hud-r { display:flex; align-items:center; gap:14px; font-size:14px; letter-spacing:1px; }
+  .hud .lbl { color:#7a7a95; font-size:11px; letter-spacing:2px; }
+  .hud .val { color:#fff; font-weight:bold; }
+  .shield { display:flex; gap:5px; align-items:center; }
+  .pip { width:13px; height:13px; border-radius:3px; background:#39e3ff; box-shadow:0 0 8px #39e3ff; transition:all .2s; }
+  .pip.gone { background:#241d2e; box-shadow:none; }
+
+  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:6; background:rgba(7,6,15,0.72); }
+  .panel { background:rgba(12,10,26,0.96); border:2px solid #7b2ff7; padding:26px 34px; border-radius:16px; max-width:560px;
+           box-shadow:0 0 50px rgba(123,47,247,0.4); text-align:center; }
+  h1 { font-size:38px; letter-spacing:3px; margin-bottom:6px;
+       background:linear-gradient(90deg,#e6262f,#2fd968,#b57cff); -webkit-background-clip:text; background-clip:text;
+       -webkit-text-fill-color:transparent; }
+  h2 { font-size:26px; letter-spacing:2px; color:#ffd700; margin-bottom:8px; text-shadow:0 0 14px rgba(255,215,0,.5); }
+  .hint { color:#9a9ab5; font-size:13px; line-height:1.7; margin:14px 0; text-align:left; }
+  .hint b { color:#e8e8f0; }
+  .key { display:inline-block; background:#221a36; border:1px solid #45356b; border-radius:5px; padding:1px 7px; color:#cbb6ff; font-size:12px; }
+  button { background:#7b2ff7; color:#fff; border:none; padding:12px 30px; font:inherit; font-weight:bold; letter-spacing:2px;
+           cursor:pointer; border-radius:9px; margin-top:8px; }
+  button:hover { background:#9a5cff; }
+  .stat { color:#cdd; font-size:15px; margin:6px 0; }
+  .stat span { color:#ffd700; font-weight:bold; }
+  .hidden { display:none !important; }
+
+  .back { position:fixed; bottom:8px; left:8px; padding:6px 10px; font-size:12px; background:rgba(20,16,36,.85);
+          border:1px solid #45356b; color:#9a9ab5; text-decoration:none; border-radius:6px; z-index:5; }
+  .back:hover { color:#fff; }
+
+  .pauseBtn { position:fixed; bottom:8px; right:8px; width:42px; height:42px; padding:0; margin:0;
+              display:flex; align-items:center; justify-content:center; font-size:16px; line-height:1;
+              background:rgba(20,16,36,.85); border:1px solid #45356b; color:#cbb6ff; border-radius:9px; z-index:5; }
+  .pauseBtn:hover { background:#221a36; color:#fff; }
+
+  .banner { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index:5; }
+  .banner div { font-size:44px; letter-spacing:4px; font-weight:bold; color:#fff; text-shadow:0 0 24px #7b2ff7, 0 0 50px #7b2ff7; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud hidden" id="hud">
+  <div class="hud-l">
+    <span><span class="lbl">LEVEL</span> <span class="val" id="hLevel">1</span></span>
+    <span><span class="lbl">SCORE</span> <span class="val" id="hScore">0</span></span>
+  </div>
+  <div class="hud-r">
+    <span class="lbl">BEST</span> <span class="val" id="hBest">0</span>
+    <span class="lbl">BARS</span>
+    <span class="shield" id="hShield"></span>
+  </div>
+</div>
+
+<div class="banner hidden" id="banner"><div id="bannerText"></div></div>
+
+<div class="overlay" id="titleOv">
+  <div class="panel">
+    <h1>COLOR CANNON</h1>
+    <div class="hint">
+      Tubes hang from the ceiling and spit out colored blocks. Your bars are at the bottom —
+      <b>let 5 blocks through and it's game over.</b> The bars are repaired at the start of every round.<br><br>
+      <span class="key">←</span> <span class="key">→</span> one press moves you exactly one bar &nbsp;•&nbsp;
+      <span class="key">SPACE</span> fire &nbsp;•&nbsp; <span class="key">P</span> pause<br><br>
+      Every bar sits under its own tube — purple under purple, green under green — and your shot
+      takes the color of the bar you're parked on. Blocks drift as they fall, so hitting one with
+      its <b>matching color</b> sets off a chain blast and scores double.<br><br>
+      Every tube has <b>3 lives</b>. Wipe them all out to clear the level. Each level is a little
+      faster, and every 3rd level adds a new tube and bar — but the speed resets.
+    </div>
+    <button id="startBtn">START</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="pauseOv">
+  <div class="panel">
+    <h2>PAUSED</h2>
+    <div class="stat">Press <span class="key">P</span> to keep going</div>
+    <button id="resumeBtn">RESUME</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overOv">
+  <div class="panel">
+    <h2 id="overTitle">GAME OVER</h2>
+    <div class="stat">You reached level <span id="overLevel">1</span></div>
+    <div class="stat">Score <span id="overScore">0</span></div>
+    <div class="stat" id="overBest"></div>
+    <button id="againBtn">PLAY AGAIN</button>
+  </div>
+</div>
+
+<a class="back" href="index.html">← Games</a>
+<button class="pauseBtn hidden" id="pauseBtn" title="Pause (P)">❚❚</button>
+
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  /* ---------- audio ---------- */
+  let audio = null;
+  function actx() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); return audio; }
+  function tone(freq, dur=0.1, type='square', vol=0.05) {
+    try {
+      const a = actx();
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = type; o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, a.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+      o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+    } catch(e){}
+  }
+  function sweep(f0, f1, dur=0.2, type='sawtooth', vol=0.05) {
+    try {
+      const a = actx();
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(f0, a.currentTime);
+      o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), a.currentTime + dur);
+      g.gain.setValueAtTime(vol, a.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+      o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+    } catch(e){}
+  }
+  function noise(dur=0.15, vol=0.04) {
+    try {
+      const a = actx();
+      const b = a.createBuffer(1, Math.max(1, a.sampleRate * dur), a.sampleRate);
+      const d = b.getChannelData(0);
+      for (let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * (1 - i/d.length);
+      const s = a.createBufferSource(); s.buffer = b;
+      const g = a.createGain(); g.gain.value = vol;
+      s.connect(g); g.connect(a.destination); s.start();
+    } catch(e){}
+  }
+
+  /* ---------- tuning ---------- */
+  // The first three are the starting tubes; the rest get added as levels go up.
+  const COLORS = [
+    { main:'#e6262f', glow:'#ff6a72', dark:'#7a0d13' },  // red
+    { main:'#0f7a34', glow:'#3ee077', dark:'#053f19' },  // dark green
+    { main:'#7b2ff7', glow:'#bd8bff', dark:'#3d1180' },  // purple
+    { main:'#ff8c1a', glow:'#ffc477', dark:'#8a4400' },  // orange
+    { main:'#12d6e8', glow:'#7ff4ff', dark:'#076c77' },  // cyan
+    { main:'#ff3d9a', glow:'#ff92c7', dark:'#8a0f47' },  // pink
+    { main:'#e8c81a', glow:'#fff275', dark:'#7d6a00' },  // yellow
+    { main:'#7fc4ff', glow:'#c4e4ff', dark:'#255f9c' },  // light blue
+    { main:'#7ee03c', glow:'#c2ff8f', dark:'#3f7a15' },  // light green
+    { main:'#2a4fd4', glow:'#6d8bff', dark:'#0e2270' },  // dark blue
+    { main:'#8b5a2b', glow:'#c08b52', dark:'#4a2d12' },  // brown
+    { main:'#c8ccd8', glow:'#eef1f7', dark:'#7d8190' },  // light gray
+    { main:'#6b7280', glow:'#9aa1ad', dark:'#363b45' },  // dark gray
+    { main:'#f5f7ff', glow:'#ffffff', dark:'#9aa0b8' },  // white
+  ];
+  const MAX_TUBES   = COLORS.length;
+  const START_TUBES = 3;
+  const TUBE_LIVES  = 3;
+  const MAX_SHIELD  = 5;
+
+  const TOP_MARGIN   = 52;   // room for the HUD
+  const TUBE_H       = 74;
+  const BAR_H        = 16;
+  const BAR_OFFSET   = 118;  // bar distance from bottom
+  const CANNON_H     = 40;
+
+  const BLOCK_SIZE      = 46;
+  const BASE_FALL       = 64;    // px/sec at the start of a tier
+  const FALL_STEP       = 1.18;  // speed multiplier per level within a tier
+  const BASE_SPAWN      = 1.55;  // seconds between blocks at the start of a tier
+  const SPAWN_STEP      = 0.83;  // spawn interval multiplier per level within a tier
+  const SLIDE_SPEED     = 2600;  // how fast the cannon snaps between segments
+  const HOLD_DELAY      = 0.4;   // hold an arrow this long before it auto-repeats
+  const HOLD_REPEAT     = 0.12;
+  const BULLET_SPEED    = 780;
+  const FIRE_COOLDOWN   = 0.7;   // no spamming — the cannon has to recharge between shots
+  const CHAIN_RADIUS    = 110;   // matching-color chain blast reach
+
+  /* ---------- state ---------- */
+  const game = {
+    mode: 'title',        // title | playing | clearing | over | paused
+    level: 1,
+    score: 0,
+    best: +(localStorage.getItem('colorCannonBest') || 0),
+    shield: MAX_SHIELD,
+    tubes: [],            // { colorIdx, lives, flash, dead }
+    segments: [],         // colorIdx per bar segment
+    blocks: [],
+    bullets: [],
+    particles: [],
+    lane: 0,              // which bar segment the cannon is parked on
+    cannonX: 0,           // animated position, eases toward the lane center
+    cannonFlash: 0,
+    holdTimer: 0,         // arrow auto-repeat while held
+    fireTimer: 0,
+    spawnTimer: 0,
+    shake: 0,
+    clearTimer: 0,
+    time: 0,
+  };
+  const segFlash = [];   // white flash per bar segment when a block gets through
+
+  const keys = {};
+
+  /* ---------- layout (derived from canvas size, so resizing just works) ---------- */
+  const L = {};
+  function relayout() {
+    const oldW = L.w || 0;
+    L.w = canvas.width; L.h = canvas.height;
+    L.tubeTop    = TOP_MARGIN;
+    L.tubeBottom = TOP_MARGIN + TUBE_H;
+    L.barTop     = L.h - BAR_OFFSET;
+    L.barBottom  = L.barTop + BAR_H;
+    L.cannonY    = L.barBottom + 26;
+
+    const n = Math.max(1, game.tubes.length || START_TUBES);
+    L.laneW = L.w / n;
+    L.tubeW = Math.min(78, L.laneW * 0.62);
+
+    // keep everything in the same relative spot across a resize
+    if (oldW && oldW !== L.w) {
+      const r = L.w / oldW;
+      game.cannonX *= r;
+      game.blocks.forEach(b => b.x *= r);
+      game.bullets.forEach(b => b.x *= r);
+      game.particles.forEach(p => { p.x *= r; });
+    }
+    game.lane = clamp(game.lane, 0, n - 1);
+    game.cannonX = clamp(game.cannonX, 24, L.w - 24);
+  }
+  function resize() {
+    canvas.width = innerWidth;
+    canvas.height = innerHeight;
+    relayout();
+  }
+  const laneCenter = i => (i + 0.5) * L.laneW;
+  const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+
+  /* ---------- level setup ---------- */
+  // Level 1..3 => tier 0 (3 tubes), 4..6 => tier 1 (4 tubes), and so on.
+  const tierOf     = lv => Math.floor((lv - 1) / 3);
+  const stepOf     = lv => (lv - 1) % 3;
+  const tubeCount  = lv => Math.min(MAX_TUBES, START_TUBES + tierOf(lv));
+  const fallSpeed  = lv => BASE_FALL * Math.pow(FALL_STEP, stepOf(lv));
+  const spawnEvery = lv => BASE_SPAWN * Math.pow(SPAWN_STEP, stepOf(lv)) / (1 + 0.18 * tierOf(lv));
+
+  function buildLevel(lv) {
+    const n = tubeCount(lv);
+    game.tubes = [];
+    for (let i = 0; i < n; i++) {
+      game.tubes.push({ colorIdx: i, lives: TUBE_LIVES, flash: 0, dead: false });
+    }
+    // Each bar segment sits directly under its own tube — purple under purple, green under green.
+    game.segments = game.tubes.map(t => t.colorIdx);
+    segFlash.length = 0;
+    for (let i = 0; i < n; i++) segFlash.push(0);
+    game.blocks.length = 0;
+    game.bullets.length = 0;
+    game.spawnTimer = 1.2;
+    game.fireTimer = 0;
+    game.holdTimer = 0;
+    game.shield = MAX_SHIELD;   // the bars are repaired at the start of every round
+    relayout();
+    game.lane = clamp(game.lane, 0, n - 1);
+    game.cannonX = laneCenter(game.lane);
+  }
+
+  function startGame() {
+    game.level = 1;
+    game.score = 0;
+    game.particles.length = 0;
+    game.shake = 0;
+    game.lane = Math.floor(START_TUBES / 2);
+    buildLevel(1);
+    game.mode = 'playing';
+    syncHud();
+  }
+
+  function nextLevel() {
+    game.level++;
+    buildLevel(game.level);
+    game.mode = 'playing';
+    syncHud();
+  }
+
+  /* ---------- HUD ---------- */
+  const el = {
+    hud:      document.getElementById('hud'),
+    level:    document.getElementById('hLevel'),
+    score:    document.getElementById('hScore'),
+    best:     document.getElementById('hBest'),
+    shield:   document.getElementById('hShield'),
+    banner:   document.getElementById('banner'),
+    bannerTx: document.getElementById('bannerText'),
+    titleOv:  document.getElementById('titleOv'),
+    pauseOv:  document.getElementById('pauseOv'),
+    overOv:   document.getElementById('overOv'),
+    pauseBtn: document.getElementById('pauseBtn'),
+  };
+  for (let i = 0; i < MAX_SHIELD; i++) {
+    const p = document.createElement('div');
+    p.className = 'pip';
+    el.shield.appendChild(p);
+  }
+  function syncHud() {
+    el.level.textContent = game.level;
+    el.score.textContent = game.score;
+    el.best.textContent  = game.best;
+    [...el.shield.children].forEach((p, i) => p.classList.toggle('gone', i >= game.shield));
+  }
+  let bannerTimer = 0;
+  function showBanner(text, secs=1.4) {
+    el.bannerTx.textContent = text;
+    el.banner.classList.remove('hidden');
+    bannerTimer = secs;
+  }
+
+  /* ---------- particles ---------- */
+  function burst(x, y, colorIdx, count=18, power=1) {
+    const c = COLORS[colorIdx];
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = (60 + Math.random() * 220) * power;
+      game.particles.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 40,
+        life: 0.45 + Math.random() * 0.5,
+        max: 0.95,
+        size: 2 + Math.random() * 4 * power,
+        color: Math.random() < 0.35 ? c.glow : c.main,
+        gravity: 320,
+      });
+    }
+  }
+  function ring(x, y, colorIdx) {
+    const c = COLORS[colorIdx];
+    for (let i = 0; i < 26; i++) {
+      const a = (i / 26) * Math.PI * 2;
+      game.particles.push({
+        x, y,
+        vx: Math.cos(a) * 260,
+        vy: Math.sin(a) * 260,
+        life: 0.4, max: 0.4,
+        size: 3, color: c.glow, gravity: 0,
+      });
+    }
+  }
+
+  /* ---------- spawning ---------- */
+  function spawnBlock() {
+    const alive = game.tubes.filter(t => !t.dead);
+    if (!alive.length) return;
+    const tube = alive[Math.floor(Math.random() * alive.length)];
+    const idx = game.tubes.indexOf(tube);
+    game.blocks.push({
+      x: laneCenter(idx),                 // tubes fire straight down their own lane
+      y: L.tubeBottom + 4,
+      vy: fallSpeed(game.level) * (0.9 + Math.random() * 0.25),
+      colorIdx: tube.colorIdx,
+      rot: Math.random() * Math.PI,
+      rotV: (Math.random() * 2 - 1) * 1.6,
+      spawn: 0,
+    });
+    tube.flash = Math.max(tube.flash, 0.16);
+    tone(150 + Math.random() * 40, 0.06, 'square', 0.025);
+  }
+
+  // move the cannon exactly one bar segment
+  function step(dir) {
+    const next = clamp(game.lane + dir, 0, game.segments.length - 1);
+    if (next === game.lane) return;
+    game.lane = next;
+    tone(430, 0.04, 'square', 0.022);
+  }
+
+  function fire() {
+    if (game.fireTimer > 0) return;
+    game.fireTimer = FIRE_COOLDOWN;
+    const x = laneCenter(game.lane);
+    game.bullets.push({
+      x,
+      y: L.barTop - 6,
+      prevY: L.barTop - 6,
+      colorIdx: game.segments[game.lane],
+      r: 7,
+    });
+    game.cannonFlash = 0.12;
+    tone(660, 0.07, 'square', 0.035);
+  }
+
+  /* ---------- damage ---------- */
+  function damageTube(tube, amount, x, y) {
+    tube.lives -= amount;
+    tube.flash = 0.3;
+    const i = game.tubes.indexOf(tube);
+    burst(x, y, tube.colorIdx, 14, 0.9);
+    if (tube.lives <= 0) {
+      tube.dead = true;
+      tube.lives = 0;
+      game.score += 250;
+      burst(laneCenter(i), L.tubeBottom - TUBE_H / 2, tube.colorIdx, 46, 1.6);
+      ring(laneCenter(i), L.tubeBottom - TUBE_H / 2, tube.colorIdx);
+      game.shake = Math.max(game.shake, 14);
+      sweep(420, 60, 0.4, 'sawtooth', 0.06);
+      noise(0.3, 0.05);
+    } else {
+      game.score += 40 * amount;
+      game.shake = Math.max(game.shake, 5);
+      tone(300, 0.09, 'triangle', 0.04);
+    }
+  }
+
+  function destroyBlock(bi, bulletColorIdx, chain) {
+    const b = game.blocks[bi];
+    if (!b) return;
+    const match = bulletColorIdx === b.colorIdx;
+    game.blocks.splice(bi, 1);
+    burst(b.x, b.y, b.colorIdx, match ? 26 : 16, match ? 1.3 : 1);
+    game.score += match ? 40 : 20;
+    if (match && !chain) {
+      // matching color sets off everything nearby sharing that color
+      ring(b.x, b.y, b.colorIdx);
+      for (let j = game.blocks.length - 1; j >= 0; j--) {
+        const o = game.blocks[j];
+        if (o.colorIdx !== b.colorIdx) continue;
+        if (Math.hypot(o.x - b.x, o.y - b.y) > CHAIN_RADIUS) continue;
+        destroyBlock(j, bulletColorIdx, true);
+      }
+      tone(880, 0.12, 'triangle', 0.05);
+      game.shake = Math.max(game.shake, 6);
+    } else {
+      noise(0.1, 0.03);
+    }
+  }
+
+  function hitBar(block) {
+    game.shield--;
+    game.shake = Math.max(game.shake, 18);
+    burst(block.x, L.barTop, block.colorIdx, 30, 1.4);
+    sweep(220, 40, 0.35, 'square', 0.07);
+    noise(0.25, 0.06);
+    const segIdx = clamp(Math.floor(block.x / L.laneW), 0, game.segments.length - 1);
+    segFlash[segIdx] = 0.6;
+    syncHud();
+    if (game.shield <= 0) gameOver();
+  }
+
+  function gameOver() {
+    game.mode = 'over';
+    el.pauseBtn.classList.add('hidden');
+    if (game.score > game.best) {
+      game.best = game.score;
+      localStorage.setItem('colorCannonBest', String(game.best));
+    }
+    document.getElementById('overLevel').textContent = game.level;
+    document.getElementById('overScore').textContent = game.score;
+    document.getElementById('overBest').innerHTML = 'Best <span>' + game.best + '</span>';
+    el.overOv.classList.remove('hidden');
+    syncHud();
+  }
+
+  /* ---------- update ---------- */
+  function update(dt) {
+    game.time += dt;
+    if (bannerTimer > 0) {
+      bannerTimer -= dt;
+      if (bannerTimer <= 0) el.banner.classList.add('hidden');
+    }
+    for (let i = 0; i < game.segments.length; i++) {
+      if (segFlash[i] > 0) segFlash[i] = Math.max(0, segFlash[i] - dt);
+    }
+    if (game.shake > 0) game.shake = Math.max(0, game.shake - dt * 40);
+
+    // particles always run, even between levels
+    for (let i = game.particles.length - 1; i >= 0; i--) {
+      const p = game.particles[i];
+      p.life -= dt;
+      if (p.life <= 0) { game.particles.splice(i, 1); continue; }
+      p.vy += p.gravity * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+
+    if (game.mode === 'clearing') {
+      game.clearTimer -= dt;
+      if (game.clearTimer <= 0) nextLevel();
+      return;
+    }
+    if (game.mode !== 'playing') return;
+
+    // cannon — one keypress moves exactly one bar segment; holding auto-repeats slowly
+    let dir = 0;
+    if (keys.ArrowLeft || keys.KeyA) dir -= 1;
+    if (keys.ArrowRight || keys.KeyD) dir += 1;
+    if (dir !== 0) {
+      game.holdTimer -= dt;
+      if (game.holdTimer <= 0) {
+        step(dir);
+        game.holdTimer = HOLD_REPEAT;
+      }
+    } else {
+      game.holdTimer = HOLD_DELAY;
+    }
+    // snap the cannon straight to its lane so the shot always leaves from under it
+    const target = laneCenter(game.lane);
+    const d = target - game.cannonX;
+    game.cannonX = Math.abs(d) < 1 ? target : game.cannonX + clamp(d, -SLIDE_SPEED * dt, SLIDE_SPEED * dt);
+
+    game.fireTimer = Math.max(0, game.fireTimer - dt);
+    game.cannonFlash = Math.max(0, game.cannonFlash - dt);
+    if (keys.Space) fire();
+
+    // tubes
+    game.tubes.forEach(t => { if (t.flash > 0) t.flash = Math.max(0, t.flash - dt); });
+
+    // spawning
+    game.spawnTimer -= dt;
+    if (game.spawnTimer <= 0) {
+      spawnBlock();
+      game.spawnTimer = spawnEvery(game.level) * (0.75 + Math.random() * 0.5);
+    }
+
+    // blocks
+    for (let i = game.blocks.length - 1; i >= 0; i--) {
+      const b = game.blocks[i];
+      b.spawn += dt;
+      b.y += b.vy * dt;
+      b.rot += b.rotV * dt;
+      const half = BLOCK_SIZE / 2;
+      if (b.y + half >= L.barTop) {
+        game.blocks.splice(i, 1);
+        hitBar(b);
+        if (game.mode !== 'playing') return;
+      }
+    }
+
+    // bullets
+    for (let i = game.bullets.length - 1; i >= 0; i--) {
+      const bu = game.bullets[i];
+      bu.prevY = bu.y;
+      bu.y -= BULLET_SPEED * dt;
+
+      // swept test against blocks so fast shots can't tunnel through
+      let consumed = false;
+      for (let j = game.blocks.length - 1; j >= 0; j--) {
+        const b = game.blocks[j];
+        const half = BLOCK_SIZE / 2;
+        if (Math.abs(b.x - bu.x) > half + bu.r) continue;
+        const top = b.y - half, bot = b.y + half;
+        if (bu.y - bu.r > bot || bu.prevY + bu.r < top) continue;
+        destroyBlock(j, bu.colorIdx, false);
+        consumed = true;
+        break;
+      }
+      if (consumed) { game.bullets.splice(i, 1); continue; }
+
+      // tubes
+      if (bu.y - bu.r <= L.tubeBottom) {
+        const idx = clamp(Math.floor(bu.x / L.laneW), 0, game.tubes.length - 1);
+        const tube = game.tubes[idx];
+        const cx = laneCenter(idx);
+        if (tube && !tube.dead && Math.abs(bu.x - cx) <= L.tubeW / 2 + bu.r) {
+          damageTube(tube, 1, bu.x, L.tubeBottom);
+          game.bullets.splice(i, 1);
+          if (game.tubes.every(t => t.dead)) {
+            game.mode = 'clearing';
+            game.clearTimer = 1.7;
+            game.score += 500;
+            const nextAddsTube = tubeCount(game.level + 1) > game.tubes.length;
+            showBanner(nextAddsTube ? 'NEW TUBE INCOMING' : 'LEVEL ' + (game.level + 1), 1.5);
+            syncHud();
+          }
+          continue;
+        }
+        if (bu.y + bu.r < L.tubeTop) { game.bullets.splice(i, 1); continue; }
+      }
+      if (bu.y + bu.r < 0) game.bullets.splice(i, 1);
+    }
+
+    syncHud();
+  }
+
+  /* ---------- drawing ---------- */
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y,     x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x,     y + h, r);
+    ctx.arcTo(x,     y + h, x,     y,     r);
+    ctx.arcTo(x,     y,     x + w, y,     r);
+    ctx.closePath();
+  }
+
+  function drawBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, L.h);
+    g.addColorStop(0, '#120b26');
+    g.addColorStop(0.55, '#0a0718');
+    g.addColorStop(1, '#07060f');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, L.w, L.h);
+
+    // lane guides
+    ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < game.segments.length; i++) {
+      const x = Math.round(i * L.laneW) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, L.tubeBottom);
+      ctx.lineTo(x, L.barTop);
+      ctx.stroke();
+    }
+  }
+
+  function ellipse(cx, cy, rx, ry) {
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  }
+
+  function drawTubes() {
+    game.tubes.forEach((t, i) => {
+      const c = COLORS[t.colorIdx];
+      const cx = laneCenter(i);
+      const w = Math.min(L.tubeW, 68);
+      const x = cx - w / 2;
+      const top = L.tubeTop - 12;
+      const bodyBot = L.tubeBottom - 8;   // where the glass ends, nozzle below
+      const bodyH = bodyBot - top;
+      const rx = w / 2;
+
+      /* ----- dead tube: shattered dark husk ----- */
+      if (t.dead) {
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = '#15101f';
+        roundRect(x, top, w, bodyH, rx * 0.7);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - rx * 0.5, top + 12);
+        ctx.lineTo(cx + rx * 0.2, top + bodyH * 0.5);
+        ctx.lineTo(cx - rx * 0.3, bodyBot - 10);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        return;
+      }
+
+      const pulse = 0.5 + 0.5 * Math.sin(game.time * 3 + i);
+
+      /* ----- outer glow ----- */
+      ctx.save();
+      ctx.shadowColor = c.glow;
+      ctx.shadowBlur = 26 + pulse * 8;
+
+      /* ----- glass body ----- */
+      const glass = ctx.createLinearGradient(x, 0, x + w, 0);
+      glass.addColorStop(0.00, 'rgba(255,255,255,0.05)');
+      glass.addColorStop(0.15, 'rgba(255,255,255,0.20)');
+      glass.addColorStop(0.50, 'rgba(255,255,255,0.03)');
+      glass.addColorStop(0.85, 'rgba(0,0,0,0.25)');
+      glass.addColorStop(1.00, 'rgba(0,0,0,0.10)');
+      ctx.fillStyle = glass;
+      roundRect(x, top, w, bodyH, rx * 0.7);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      /* ----- glowing liquid inside (clipped to the glass) ----- */
+      ctx.save();
+      roundRect(x + 3, top + 3, w - 6, bodyH - 6, rx * 0.6);
+      ctx.clip();
+      const liq = ctx.createLinearGradient(x, top, x + w, top);
+      liq.addColorStop(0.00, c.dark);
+      liq.addColorStop(0.40, c.main);
+      liq.addColorStop(0.55, c.glow);
+      liq.addColorStop(0.70, c.main);
+      liq.addColorStop(1.00, c.dark);
+      ctx.fillStyle = liq;
+      ctx.fillRect(x, top + 14, w, bodyH);
+      // wavy meniscus at the top of the liquid
+      ctx.fillStyle = c.glow;
+      ctx.beginPath();
+      ctx.moveTo(x, top + 16);
+      for (let s = 0; s <= w; s += 6) {
+        ctx.lineTo(x + s, top + 14 + Math.sin(s * 0.25 + game.time * 4) * 2);
+      }
+      ctx.lineTo(x + w, top + 22);
+      ctx.lineTo(x, top + 22);
+      ctx.fill();
+      // rising bubbles
+      for (let b = 0; b < 3; b++) {
+        const by = bodyBot - ((game.time * 30 + b * 47 + i * 20) % (bodyH - 20)) - 6;
+        const bx = cx + Math.sin(game.time * 2 + b * 2 + i) * rx * 0.4;
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = '#ffffff';
+        ellipse(bx, by, 2.2, 2.2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+
+      /* ----- vertical highlight streak on the glass ----- */
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      roundRect(x + rx * 0.28, top + 8, w * 0.12, bodyH - 20, 4);
+      ctx.fill();
+
+      /* ----- metal collar / cap at the top ----- */
+      const cap = ctx.createLinearGradient(x, top - 10, x, top + 10);
+      cap.addColorStop(0, '#c9cede');
+      cap.addColorStop(0.5, '#6b7183');
+      cap.addColorStop(1, '#3a3f4d');
+      ctx.fillStyle = cap;
+      roundRect(x - 3, top - 12, w + 6, 20, 6);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      roundRect(x - 1, top - 10, w + 2, 3, 2);
+      ctx.fill();
+
+      /* ----- life gems on the collar ----- */
+      for (let k = 0; k < TUBE_LIVES; k++) {
+        const px = cx - (TUBE_LIVES - 1) * 8 + k * 16;
+        const alive = k < t.lives;
+        if (alive) { ctx.shadowColor = c.glow; ctx.shadowBlur = 8; }
+        ctx.fillStyle = alive ? c.glow : 'rgba(0,0,0,0.45)';
+        ellipse(px, top - 2, 4.2, 4.2); ctx.fill();
+        ctx.shadowBlur = 0;
+        if (alive) {
+          ctx.fillStyle = 'rgba(255,255,255,0.9)';
+          ellipse(px - 1.2, top - 3.2, 1.4, 1.4); ctx.fill();
+        }
+      }
+
+      /* ----- glowing nozzle at the bottom ----- */
+      const noz = ctx.createLinearGradient(0, bodyBot - 4, 0, L.tubeBottom + 6);
+      noz.addColorStop(0, '#5a5f70');
+      noz.addColorStop(1, '#2a2e3a');
+      ctx.fillStyle = noz;
+      roundRect(cx - w * 0.24, bodyBot - 4, w * 0.48, 14, 4);
+      ctx.fill();
+      ctx.shadowColor = c.glow;
+      ctx.shadowBlur = 14 + pulse * 10;
+      ctx.fillStyle = c.glow;
+      roundRect(cx - w * 0.12, L.tubeBottom + 2, w * 0.24, 5, 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.restore();
+
+      /* ----- damage flash ----- */
+      if (t.flash > 0) {
+        ctx.globalAlpha = Math.min(1, t.flash * 3);
+        ctx.fillStyle = '#fff';
+        roundRect(x, top, w, bodyH, rx * 0.7);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    });
+  }
+
+  function drawBlocks() {
+    game.blocks.forEach(b => {
+      const c = COLORS[b.colorIdx];
+      const s = BLOCK_SIZE * Math.min(1, 0.4 + b.spawn * 4);
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.rot * 0.25);
+      ctx.shadowColor = c.glow;
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = c.main;
+      roundRect(-s / 2, -s / 2, s, s, 7);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = c.glow;
+      roundRect(-s / 2 + 4, -s / 2 + 4, s * 0.34, s * 0.34, 3);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 2;
+      roundRect(-s / 2, -s / 2, s, s, 7);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  function drawBar() {
+    const gap = 3;
+    game.segments.forEach((ci, i) => {
+      const c = COLORS[ci];
+      const x = i * L.laneW + gap / 2;
+      const w = L.laneW - gap;
+      ctx.shadowColor = c.glow;
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = c.main;
+      roundRect(x, L.barTop, w, BAR_H, 5);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = c.glow;
+      ctx.fillRect(x + 3, L.barTop + 2, w - 6, 3);
+      if (segFlash[i] > 0) {
+        ctx.globalAlpha = Math.min(1, segFlash[i] * 2);
+        ctx.fillStyle = '#fff';
+        roundRect(x, L.barTop, w, BAR_H, 5);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    });
+  }
+
+  function drawCannon() {
+    const c = COLORS[game.segments[game.lane]] || COLORS[0];
+    const x = game.cannonX, y = L.cannonY;
+    const ready = game.fireTimer <= 0;
+    const charge = 1 - game.fireTimer / FIRE_COOLDOWN;   // 0 = just fired, 1 = ready
+
+    // ammo indicator beam up to the bar — only lit when charged
+    ctx.globalAlpha = ready ? 0.28 + Math.sin(game.time * 6) * 0.06 : 0.08;
+    ctx.strokeStyle = c.glow;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x, y - CANNON_H * 0.6);
+    ctx.lineTo(x, L.barBottom);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // ----- barrel (metal with a colored energy channel) -----
+    const barTop = y - 34, barLen = 34;
+    const bg = ctx.createLinearGradient(x - 9, 0, x + 9, 0);
+    bg.addColorStop(0.0, '#2a2e3c');
+    bg.addColorStop(0.35, '#7a8093');
+    bg.addColorStop(0.5, '#aeb4c6');
+    bg.addColorStop(0.65, '#7a8093');
+    bg.addColorStop(1.0, '#2a2e3c');
+    ctx.fillStyle = bg;
+    roundRect(x - 9, barTop, 18, barLen, 5);
+    ctx.fill();
+    // energy channel down the barrel
+    ctx.shadowColor = c.glow;
+    ctx.shadowBlur = ready ? 16 : 4;
+    ctx.fillStyle = ready ? c.glow : c.dark;
+    roundRect(x - 3, barTop + 3, 6, barLen - 6, 3);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // barrel rings
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(x - 9, barTop + barLen * 0.4, 18, 2);
+    ctx.fillRect(x - 9, barTop + barLen * 0.7, 18, 2);
+    // muzzle
+    ctx.fillStyle = '#c9cede';
+    roundRect(x - 10, barTop - 4, 20, 7, 3);
+    ctx.fill();
+
+    // ----- turret dome with a glowing core -----
+    const dome = ctx.createRadialGradient(x - 6, y - 6, 2, x, y, 26);
+    dome.addColorStop(0, '#8b91a6');
+    dome.addColorStop(0.6, '#4a4f61');
+    dome.addColorStop(1, '#232733');
+    ctx.fillStyle = dome;
+    ellipse(x, y, 24, 18); ctx.fill();
+    // core shows the loaded color, pulsing brighter when ready
+    ctx.shadowColor = c.glow;
+    ctx.shadowBlur = ready ? 20 : 6;
+    const core = ctx.createRadialGradient(x, y - 2, 1, x, y - 2, 12);
+    core.addColorStop(0, '#ffffff');
+    core.addColorStop(0.4, c.glow);
+    core.addColorStop(1, c.main);
+    ctx.globalAlpha = ready ? 1 : 0.55;
+    ctx.fillStyle = core;
+    ellipse(x, y - 2, ready ? 9 : 7, ready ? 8 : 6); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+
+    // ----- treaded base -----
+    const base = ctx.createLinearGradient(0, y + 8, 0, y + 26);
+    base.addColorStop(0, '#3a3f52');
+    base.addColorStop(1, '#1c1f2b');
+    ctx.fillStyle = base;
+    roundRect(x - 30, y + 8, 60, 18, 6);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    for (let tx = -26; tx < 26; tx += 8) ctx.fillRect(x + tx, y + 11, 4, 12);
+
+    // recharge gauge across the base
+    const gw = 50;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    roundRect(x - gw / 2, y + 27, gw, 4, 2); ctx.fill();
+    ctx.shadowColor = ready ? '#8dffb0' : c.glow;
+    ctx.shadowBlur = ready ? 8 : 0;
+    ctx.fillStyle = ready ? '#8dffb0' : c.glow;
+    roundRect(x - gw / 2, y + 27, gw * charge, 4, 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // muzzle flash
+    if (game.cannonFlash > 0) {
+      ctx.globalAlpha = game.cannonFlash / 0.12;
+      ctx.shadowColor = c.glow;
+      ctx.shadowBlur = 24;
+      ctx.fillStyle = '#fff';
+      ellipse(x, barTop - 4, 14, 14); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawBullets() {
+    game.bullets.forEach(b => {
+      const c = COLORS[b.colorIdx];
+      const gr = ctx.createLinearGradient(0, b.y, 0, b.y + 34);
+      gr.addColorStop(0, c.glow);
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(b.x - 2.5, b.y, 5, 34);
+
+      ctx.shadowColor = c.glow;
+      ctx.shadowBlur = 18;
+      ctx.fillStyle = c.main;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(b.x - 2, b.y - 2, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  function drawParticles() {
+    game.particles.forEach(p => {
+      ctx.globalAlpha = Math.max(0, p.life / p.max);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function render() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, L.w, L.h);
+    if (game.shake > 0) {
+      ctx.translate((Math.random() * 2 - 1) * game.shake, (Math.random() * 2 - 1) * game.shake);
+    }
+    drawBackground();
+    if (game.mode !== 'title') {
+      drawTubes();
+      drawBlocks();
+      drawBullets();
+      drawBar();
+      drawCannon();
+    }
+    drawParticles();
+  }
+
+  /* ---------- loop ---------- */
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- input ---------- */
+  addEventListener('keydown', e => {
+    if (['ArrowLeft','ArrowRight','Space','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault();
+    if (e.repeat) return;
+    keys[e.code] = true;
+    if (e.code === 'KeyP' || e.code === 'Escape') togglePause();
+    if (game.mode === 'playing') {
+      if (e.code === 'ArrowLeft'  || e.code === 'KeyA') step(-1);
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') step(1);
+    }
+  });
+  addEventListener('keyup', e => { keys[e.code] = false; });
+  addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+  // tapping a segment parks the cannon there and fires
+  function laneFromPointer(e) {
+    const r = canvas.getBoundingClientRect();
+    return clamp(Math.floor((e.clientX - r.left) / L.laneW), 0, game.segments.length - 1);
+  }
+  canvas.addEventListener('pointerdown', e => {
+    if (game.mode !== 'playing') return;
+    game.lane = laneFromPointer(e);
+    fire();
+  });
+
+  function togglePause() {
+    if (game.mode === 'playing') {
+      game.mode = 'paused';
+      el.pauseOv.classList.remove('hidden');
+      el.pauseBtn.textContent = '▶';
+    } else if (game.mode === 'paused') {
+      game.mode = 'playing';
+      el.pauseOv.classList.add('hidden');
+      el.pauseBtn.textContent = '❚❚';
+      last = performance.now();
+    }
+  }
+
+  function launch() {
+    el.titleOv.classList.add('hidden');
+    el.overOv.classList.add('hidden');
+    el.hud.classList.remove('hidden');
+    el.pauseBtn.classList.remove('hidden');
+    el.pauseBtn.textContent = '❚❚';
+    startGame();
+    showBanner('LEVEL 1', 1.2);
+    last = performance.now();
+  }
+  document.getElementById('startBtn').addEventListener('click', launch);
+  document.getElementById('againBtn').addEventListener('click', launch);
+  document.getElementById('resumeBtn').addEventListener('click', togglePause);
+  document.getElementById('pauseBtn').addEventListener('click', togglePause);
+
+  /* ---------- go ---------- */
+  addEventListener('resize', resize);
+  resize();
+  buildLevel(1);   // gives the title screen a sensible lane count
+  syncHud();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
