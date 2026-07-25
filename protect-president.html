@@ -884,6 +884,31 @@
           return;
         }
       }
+      // if the president is the last one standing on the team, there's no one left
+      // to protect them — so they go on the offensive and hunt instead of hiding.
+      const gruntsLeft = p.team.players.some(q => !q.isPrez && q.alive);
+      if (!gruntsLeft) {
+        p.swordT = Math.max(0, p.swordT - dt);
+        p.bowT = Math.max(0, p.bowT - dt);
+        const foe = nearestEnemyPrez(p) || nearestEnemy(p, null);
+        if (foe) {
+          const dx = foe.x - p.x, dy = foe.y - p.y, d = Math.hypot(dx, dy) || 1;
+          p.aim = Math.atan2(dy, dx);
+          const sight = lineOfSightClear(p.x, p.y, foe.x, foe.y, p.team);
+          if (d < SWORD_RANGE + 6) {
+            if (p.swordT <= 0) swingSword(p);
+            moveSmart(p, dt, dx / d * 0.3, dy / d * 0.3);
+          } else {
+            // press the attack, but keep some spacing to use the bow
+            if (d > 240) moveSmart(p, dt, dx / d, dy / d);
+            else { const px = -dy / d, py = dx / d; moveSmart(p, dt, dx/d*0.3 + px*p.strafeDir*0.6, dy/d*0.3 + py*p.strafeDir*0.6); }
+            if (sight && p.arrows > 0 && p.bowT <= 0) shootBow(p);
+          }
+        } else {
+          movePlayer(p, dt, 0, 0);
+        }
+        return;
+      }
       // prez: stay near flag, retreat from enemy
       const dxF = p.team.flagX - p.x, dyF = p.team.flagY - p.y;
       const distF = Math.hypot(dxF, dyF);
@@ -976,9 +1001,10 @@
       }
     }
 
-    // one grunt per team is the bodyguard: it stays home, builds/repairs the
-    // wall ring, and guards the president; everyone else attacks.
-    const iAmGuard = !peace && myPrez && myPrez.alive && closestGuard(p.team, myPrez) === p;
+    // one grunt is the bodyguard (builds/repairs the ring, guards the prez) — but
+    // ONLY if the team can spare it. With just one grunt left, it fights, not hides.
+    const livingGrunts = p.team.players.filter(q => !q.isPrez && q.alive).length;
+    const iAmGuard = !peace && myPrez && myPrez.alive && livingGrunts >= 2 && closestGuard(p.team, myPrez) === p;
 
     if (peace) {
       // opening truce: everyone digs in and walls up around the president
