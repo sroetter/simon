@@ -627,7 +627,8 @@
 
   // ---------- bot AI
   function lineOfSightClear(ax, ay, bx, by, ignoreTeam) {
-    // step along the line, check blocks
+    // step along the line — ANY wall (yours or theirs) blocks the shot,
+    // since arrows can't pass through walls
     const dx = bx - ax, dy = by - ay;
     const d = Math.hypot(dx, dy);
     if (d < 1) return true;
@@ -636,8 +637,7 @@
       const t = i / steps;
       const x = ax + dx * t, y = ay + dy * t;
       const [gx, gy] = worldToGrid(x, y);
-      const b = getBlock(gx, gy);
-      if (b && b.team !== ignoreTeam) return false;
+      if (getBlock(gx, gy)) return false;
     }
     return true;
   }
@@ -1031,11 +1031,16 @@
         // block hit
         const [gx, gy] = worldToGrid(a.x, a.y);
         const b = getBlock(gx, gy);
-        // arrows fly over your own team's walls but smash enemy ones
-        if (b && b.team !== a.owner.team) {
-          b.hp -= ARROW_DMG * 2;
-          spawnHitBurst(a.x, a.y, b.team.color);
-          if (b.hp <= 0) { state.blocks.delete(blockKey(gx, gy)); spawnBlockBurst(gx*GRID+GRID/2, gy*GRID+GRID/2, b.team); }
+        // arrows are stopped by ANY wall; only enemy walls take damage,
+        // so friendly fire can't chew through your own defenses
+        if (b) {
+          if (b.team !== a.owner.team) {
+            b.hp -= ARROW_DMG * 2;
+            spawnHitBurst(a.x, a.y, b.team.color);
+            if (b.hp <= 0) { state.blocks.delete(blockKey(gx, gy)); spawnBlockBurst(gx*GRID+GRID/2, gy*GRID+GRID/2, b.team); }
+          } else {
+            spawnHitBurst(a.x, a.y, b.team.color);   // thunk into your own wall, no damage
+          }
           dead = true; break;
         }
         // player hit
