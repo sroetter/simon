@@ -584,8 +584,21 @@
     }
     if (p === state.human) {
       state.shake = Math.max(state.shake || 0, 24);
-      state.specTarget = pickSpecTarget();
-      showToast('YOU ARE DOWN — spectating your team · [Tab] to switch view');
+      // respawn as one of your surviving teammates — take over a living grunt
+      const grunt = p.team.players.find(q => q.alive && !q.isPrez && q !== p);
+      if (grunt) {
+        grunt.isBot = false;
+        grunt.stuckT = 0; grunt.unstickT = 0;
+        state.human = grunt;
+        state.specTeam = grunt.team;
+        state.specTarget = grunt;
+        showToast('You were downed — took over a teammate!');
+        tone(520, 0.12, 'triangle', 0.05);
+      } else {
+        // no teammates left — fall back to spectating
+        state.specTarget = pickSpecTarget();
+        showToast('YOU ARE DOWN — spectating your team · [Tab] to switch view');
+      }
     }
     checkWin();
   }
@@ -687,6 +700,51 @@
 
   function nearestEnemyPrez(p) {
     return nearestEnemy(p, e => e.isPrez);
+  }
+
+  // pick the best empty cell on a defensive ring around the anchor (the president):
+  // nearest to the builder so the wall fills efficiently, but skip one doorway cell.
+  function bestWallCell(anchor, p) {
+    const [agx, agy] = worldToGrid(anchor.x, anchor.y);
+    const R = 2;                    // ring radius in cells
+    const doorway = 5;              // leave one perimeter slot open as an entrance
+    let best = null, bestD = Infinity, idx = 0;
+    for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== R) continue;   // perimeter only
+      idx++;
+      if (idx % doorway === 0) continue;                          // keep a gap
+      const gx = agx + dx, gy = agy + dy;
+      if (getBlock(gx, gy)) continue;
+      const cx = gx * GRID + GRID/2, cy = gy * GRID + GRID/2;
+      const d = Math.hypot(cx - p.x, cy - p.y);
+      if (d < bestD) { bestD = d; best = { gx, gy }; }
+    }
+    return best;
+  }
+
+  // the enemy president the whole team should focus — nearest to our flag, so all
+  // attackers converge on the same target and gang up instead of scattering.
+  function teamFocusPrez(team) {
+    let best = null, bestD = Infinity;
+    for (const t of state.teams) {
+      if (t === team || !t.alive) continue;
+      const pr = t.prez;
+      if (!pr || !pr.alive) continue;
+      const d = Math.hypot(pr.x - team.flagX, pr.y - team.flagY);
+      if (d < bestD) { bestD = d; best = pr; }
+    }
+    return best;
+  }
+
+  // the living grunt standing closest to its own president — the designated bodyguard
+  function closestGuard(team, prez) {
+    let best = null, bestD = Infinity;
+    for (const pl of team.players) {
+      if (pl.isPrez || !pl.alive) continue;
+      const d = Math.hypot(pl.x - prez.x, pl.y - prez.y);
+      if (d < bestD) { bestD = d; best = pl; }
+    }
+    return best;
   }
 
   // ---------- spectating: who the camera follows when there's no living human
@@ -827,13 +885,13 @@
       return;
     }
 
-    // DEFEND: if an enemy is closing in on our own president, break off and stop them.
-    // This keeps teammates actively fighting instead of standing around building.
+    // DEFEND: only the single closest bodyguard peels back to protect the president;
+    // everyone else keeps pushing the attack so the team isn't just turtling at base.
     let defending = false;
     const myPrez = p.team.prez;
     if (!peace && myPrez && myPrez.alive && myPrez !== p) {
       const threat = nearestEnemy(myPrez, null);
-      if (threat && Math.hypot(threat.x - myPrez.x, threat.y - myPrez.y) < 340) {
+      if (threat && Math.hypot(threat.x - myPrez.x, threat.y - myPrez.y) < 300 && closestGuard(p.team, myPrez) === p) {
         p.task = 'hunt';
         p.target = threat;
         defending = true;
@@ -848,52 +906,32 @@
       const elapsed = state.elapsed;
       if (elapsed < 5 + Math.random() * 3 && p.blocks > 10 && Math.random() < cfg.botBuild * 0.6) {
         p.task = 'build';
-      } else if (p.lastDmgFrom && p.lastDmgFrom.alive && Math.random() < 0.7) {
+      } else if (p.lastDmgFrom && p.lastDmgFrom.alive && Math.random() < 0.55) {
         p.task = 'hunt';
         p.target = p.lastDmgFrom;
       } else {
+        // gang up on the team's shared focus president
         p.task = 'hunt';
-        p.target = nearestEnemyPrez(p) || nearestEnemy(p, null);
+        p.target = teamFocusPrez(p.team) || nearestEnemy(p, null);
       }
       p.aiTimer = 1.2 + Math.random() * 1.2;
     }
 
     if (p.task === 'build') {
-      // place a block adjacent to prez or self
+      // build an efficient defensive RING around the president, filling gaps
+      // and leaving one doorway so the team can still get in and out.
       const prez = p.team.prez;
-      const anchorX = prez && prez.alive ? prez.x : p.x;
-      const anchorY = prez && prez.alive ? prez.y : p.y;
-      // move toward prez
-      const dx = anchorX - p.x, dy = anchorY - p.y;
-      const d = Math.hypot(dx, dy);
-      if (d > 120) moveSmart(p, dt, dx/d, dy/d);
-      else {
-        // try placing a wall facing the arena center (away from prez)
-        if (p.placeT <= 0 && p.blocks > 0) {
-          const enemyDir = nearestEnemy(p, null);
-          const ax = enemyDir ? enemyDir.x - anchorX : (ARENA_W/2 - anchorX);
-          const ay = enemyDir ? enemyDir.y - anchorY : (ARENA_H/2 - anchorY);
-          const am = Math.hypot(ax, ay) || 1;
-          const px = anchorX + (ax / am) * (50 + Math.random() * 30);
-          const py = anchorY + (ay / am) * (50 + Math.random() * 30);
-          const [gx, gy] = worldToGrid(px, py);
-          // walk close enough to place
-          const cellX = gx * GRID + GRID/2, cellY = gy * GRID + GRID/2;
-          if (Math.hypot(cellX - p.x, cellY - p.y) > PLACE_RANGE) {
-            const ddx = cellX - p.x, ddy = cellY - p.y;
-            const dd = Math.hypot(ddx, ddy);
-            moveSmart(p, dt, ddx/dd, ddy/dd);
-          } else if (tryPlaceBlock(p, gx, gy)) {
-            p.placeT = 0.6;
-          } else {
-            // try a random nearby cell
-            for (let i=0;i<6;i++) {
-              const ox = Math.floor(Math.random()*5)-2, oy = Math.floor(Math.random()*5)-2;
-              if (tryPlaceBlock(p, gx+ox, gy+oy)) { p.placeT = 0.6; break; }
-            }
-            if (p.placeT <= 0) movePlayer(p, dt, 0, 0);
-          }
-        } else movePlayer(p, dt, 0, 0);
+      const anchor = prez && prez.alive ? prez : p;
+      const cell = bestWallCell(anchor, p);
+      if (!cell) { movePlayer(p, dt, 0, 0); return; }   // ring complete
+      const cellX = cell.gx * GRID + GRID/2, cellY = cell.gy * GRID + GRID/2;
+      const dd = Math.hypot(cellX - p.x, cellY - p.y);
+      if (dd > PLACE_RANGE) {
+        moveSmart(p, dt, (cellX - p.x) / dd, (cellY - p.y) / dd);
+      } else if (p.placeT <= 0 && p.blocks > 0) {
+        if (tryPlaceBlock(p, cell.gx, cell.gy)) p.placeT = 0.5;
+      } else {
+        movePlayer(p, dt, 0, 0);
       }
       return;
     }
