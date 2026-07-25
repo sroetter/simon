@@ -62,7 +62,7 @@
     <div class="hint">
       Kill the other teams' presidents — if your team's prez dies, your team is out.<br>
       Last team standing wins.<br>
-      Controls: WASD move • mouse aim • click attack • <b>1</b> sword • <b>2</b> bow • <b>3</b> build blocks
+      Controls: WASD move • mouse aim • click attack • <b>1</b> sword • <b>2</b> bow • <b>3</b> build blocks • <b>Shift</b> unstuck
     </div>
     <label>TEAMS</label>
     <div class="row" id="teamCount">
@@ -238,6 +238,17 @@
     if (k === 'tab' && state && !state.ended && (!state.human || !state.human.alive)) {
       e.preventDefault();
       cycleSpecTarget(e.shiftKey ? -1 : 1);
+    }
+    // Shift = panic teleport to the nearest space you can actually move in
+    if (k === 'shift' && !e.repeat && state && state.human && state.human.alive) {
+      const h = state.human;
+      const spot = freeSpotNear(h.x, h.y);
+      if (spot && (spot.x !== h.x || spot.y !== h.y)) {
+        h.x = spot.x; h.y = spot.y; h.vx = 0; h.vy = 0;
+        spawnHitBurst(h.x, h.y, '#39e3ff');
+        showToast('Teleported to open ground!');
+        tone(700, 0.1, 'triangle', 0.05);
+      }
     }
   });
   addEventListener('keyup', e => { keys.delete(e.key.toLowerCase()); });
@@ -443,6 +454,19 @@
     if (circleVsBlocks(p.x, ny, PLAYER_R)) ny = p.y;
     p.x = clamp(nx, PLAYER_R, ARENA_W - PLAYER_R);
     p.y = clamp(ny, PLAYER_R, ARENA_H - PLAYER_R);
+  }
+
+  // find the nearest spot around (x,y) where a player can actually stand (no wall overlap)
+  function freeSpotNear(x, y) {
+    if (!circleVsBlocks(x, y, PLAYER_R)) return { x, y };
+    for (let r = GRID * 0.75; r <= GRID * 14; r += GRID * 0.5) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 10) {
+        const nx = clamp(x + Math.cos(a) * r, PLAYER_R, ARENA_W - PLAYER_R);
+        const ny = clamp(y + Math.sin(a) * r, PLAYER_R, ARENA_H - PLAYER_R);
+        if (!circleVsBlocks(nx, ny, PLAYER_R)) return { x: nx, y: ny };
+      }
+    }
+    return null;
   }
 
   // is the path a short step ahead in this direction blocked by a wall?
