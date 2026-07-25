@@ -151,24 +151,24 @@
   const BOW_CD = 0.55;
   const ARROW_SPEED = 760;
   const PLACE_RANGE = 110;
-  const BLOCK_HP = 40;
+  const BLOCK_HP = 20;   // halved to match the lower weapon damage (blocks take 2x)
   const GRUNT_HP = 10;
   const PREZ_HP = 20;
   const START_BLOCKS = 30;
   const START_ARROWS = 15;
   const PREZ_ARROWS = 60;  // presidents keep a deep quiver so they can snipe from the flag
   const GRUNTS_PER_TEAM = 3;
-  const HEAL_AMOUNT = 8;   // HP restored by a healing pack
+  const HEAL_AMOUNT = 3;   // HP restored by a healing pack
   const HEAL_PACKS = 7;    // healing packs scattered around the arena at the start
   const PEACE_TIME = 15;   // seconds of no-combat prep at the start of a match
 
   const SWORD_TIERS = ['iron','gold','diamond'];
   const SWORD = {
-    iron:    { dmg: 2, color:'#cdd', name:'IRON' },
-    gold:    { dmg: 4, color:'#ffd700', name:'GOLD' },
-    diamond: { dmg: 8, color:'#39e3ff', name:'DIAMOND' },
+    iron:    { dmg: 1, color:'#cdd', name:'IRON' },
+    gold:    { dmg: 2, color:'#ffd700', name:'GOLD' },
+    diamond: { dmg: 3, color:'#39e3ff', name:'DIAMOND' },
   };
-  const ARROW_DMG = 3;
+  const ARROW_DMG = 1.5;
 
   const DIFF = {
     easy:   { botAcc: 0.45, botSpeed: 0.78, botAggro: 0.7,  botBuild: 0.6 },
@@ -275,6 +275,7 @@
       task: 'build', taskT: 0, aiTimer: 0,
       target: null, targetT: 0, fireT: 0,
       lastDmgFrom: null,
+      stuckT: 0, unstickT: 0, unstickX: 0, unstickY: 0,
     };
   }
 
@@ -448,24 +449,52 @@
   function blockedAhead(p, dx, dy, dist) {
     return !!circleVsBlocks(p.x + dx * dist, p.y + dy * dist, PLAYER_R + 2);
   }
-  // move toward (dirX,dirY) but steer around walls instead of grinding into them
+  // move toward (dirX,dirY) but steer around walls, and shake loose if pinned
   function moveSmart(p, dt, dirX, dirY) {
     const m = Math.hypot(dirX, dirY);
     if (m < 0.0001) { movePlayer(p, dt, 0, 0); return; }
     dirX /= m; dirY /= m;
-    const probe = PLAYER_R + 30;
-    if (!blockedAhead(p, dirX, dirY, probe)) { movePlayer(p, dt, dirX, dirY); return; }
-    // sweep out to the sides for the first clear heading (alternating left/right)
-    const base = Math.atan2(dirY, dirX);
-    for (const off of [0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.3, -2.3]) {
-      const a = base + off;
-      if (!blockedAhead(p, Math.cos(a), Math.sin(a), probe)) {
-        movePlayer(p, dt, Math.cos(a), Math.sin(a));
-        return;
-      }
+
+    // mid "unstick" burst: commit to a sideways escape for a moment
+    if (p.unstickT > 0) {
+      p.unstickT -= dt;
+      const bx0 = p.x, by0 = p.y;
+      movePlayer(p, dt, p.unstickX, p.unstickY);
+      if (Math.hypot(p.x - bx0, p.y - by0) < 0.5) p.unstickT = 0; // escape blocked too — bail early
+      return;
     }
-    // boxed in — let movePlayer slide us along the wall
-    movePlayer(p, dt, dirX, dirY);
+
+    // pick the first clear heading, sweeping wider than before
+    const probe = PLAYER_R + 32;
+    let hx = dirX, hy = dirY;
+    if (blockedAhead(p, dirX, dirY, probe)) {
+      const base = Math.atan2(dirY, dirX);
+      let found = false;
+      for (const off of [0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.6, -1.6, 2.1, -2.1, 2.6, -2.6]) {
+        const a = base + off;
+        if (!blockedAhead(p, Math.cos(a), Math.sin(a), probe)) { hx = Math.cos(a); hy = Math.sin(a); found = true; break; }
+      }
+      if (!found) { hx = dirX; hy = dirY; } // fully boxed — push and let it slide
+    }
+
+    const bx = p.x, by = p.y;
+    movePlayer(p, dt, hx, hy);
+
+    // stuck detection: we wanted to move but barely did → start an unstick burst
+    const moved = Math.hypot(p.x - bx, p.y - by);
+    const wanted = PLAYER_SPEED * (p.isBot ? state.cfg.botSpeed : 1) * dt * 0.4;
+    if (moved < wanted) {
+      p.stuckT += dt;
+      if (p.stuckT > 0.3) {
+        const side = (Math.random() < 0.5 ? 1 : -1) * (Math.PI / 2 + Math.random() * 0.7);
+        const a = Math.atan2(dirY, dirX) + side;
+        p.unstickX = Math.cos(a); p.unstickY = Math.sin(a);
+        p.unstickT = 0.45;
+        p.stuckT = 0;
+      }
+    } else {
+      p.stuckT = 0;
+    }
   }
 
   // ---------- combat
@@ -837,7 +866,7 @@
       // move toward prez
       const dx = anchorX - p.x, dy = anchorY - p.y;
       const d = Math.hypot(dx, dy);
-      if (d > 120) movePlayer(p, dt, dx/d, dy/d);
+      if (d > 120) moveSmart(p, dt, dx/d, dy/d);
       else {
         // try placing a wall facing the arena center (away from prez)
         if (p.placeT <= 0 && p.blocks > 0) {
@@ -853,7 +882,7 @@
           if (Math.hypot(cellX - p.x, cellY - p.y) > PLACE_RANGE) {
             const ddx = cellX - p.x, ddy = cellY - p.y;
             const dd = Math.hypot(ddx, ddy);
-            movePlayer(p, dt, ddx/dd, ddy/dd);
+            moveSmart(p, dt, ddx/dd, ddy/dd);
           } else if (tryPlaceBlock(p, gx, gy)) {
             p.placeT = 0.6;
           } else {
