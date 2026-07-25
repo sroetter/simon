@@ -158,6 +158,8 @@
   const START_ARROWS = 15;
   const PREZ_ARROWS = 60;  // presidents keep a deep quiver so they can snipe from the flag
   const GRUNTS_PER_TEAM = 3;
+  const HEAL_AMOUNT = 8;   // HP restored by a healing pack
+  const HEAL_PACKS = 7;    // healing packs scattered around the arena at the start
   const PEACE_TIME = 15;   // seconds of no-combat prep at the start of a match
 
   const SWORD_TIERS = ['iron','gold','diamond'];
@@ -351,6 +353,8 @@
       const py = 300 + Math.random() * (ARENA_H - 600);
       if (!nearAnyFlag(px, py, 250)) state.pickups.push({ x: px, y: py, type: 'arrows', life: 9999 });
     }
+    // scatter healing packs around the playing space
+    for (let i = 0; i < HEAL_PACKS; i++) spawnPickup('heal');
     spawnPickup('gold');
 
     const camOn = human || teams[0].prez;
@@ -735,18 +739,33 @@
       }
     }
 
-    // FLEE: when badly hurt, break off and run for home instead of trading blows.
+    // FLEE: when badly hurt, break off — run for a healing pack if one's near,
+    // otherwise fall back toward home — instead of trading blows.
     if (!peace && p.hp <= p.hpMax * 0.32) {
       const foe = nearestEnemy(p, null);
-      // blend "away from the nearest enemy" with "back toward our own flag"
+      // is there a healing pack within reach to make for?
+      let heal = null, healD = 900;
+      for (const pu of state.pickups) {
+        if (pu.type !== 'heal' || pu.taken) continue;
+        const dpu = Math.hypot(pu.x - p.x, pu.y - p.y);
+        if (dpu < healD) { healD = dpu; heal = pu; }
+      }
       let bx = 0, by = 0;
+      if (heal) {
+        // beeline for the pack (still weighted slightly away from the enemy)
+        const hd = Math.hypot(heal.x - p.x, heal.y - p.y) || 1;
+        bx += (heal.x - p.x) / hd; by += (heal.y - p.y) / hd;
+        if (Math.hypot(heal.x - p.x, heal.y - p.y) < 40) consumePickup(p, heal);
+      } else {
+        // no pack nearby — retreat home
+        const gx = p.team.flagX - p.x, gy = p.team.flagY - p.y;
+        const gm = Math.hypot(gx, gy) || 1;
+        bx += (gx / gm) * 0.6; by += (gy / gm) * 0.6;
+      }
       if (foe) {
         const fm = Math.hypot(p.x - foe.x, p.y - foe.y) || 1;
-        bx += (p.x - foe.x) / fm; by += (p.y - foe.y) / fm;
+        bx += (p.x - foe.x) / fm * 0.5; by += (p.y - foe.y) / fm * 0.5;
       }
-      const hx = p.team.flagX - p.x, hy = p.team.flagY - p.y;
-      const hm = Math.hypot(hx, hy) || 1;
-      bx += (hx / hm) * 0.6; by += (hy / hm) * 0.6;
       moveSmart(p, dt, bx, by);
       // still loose an arrow at a chaser if we can, to cover the retreat
       if (foe) {
@@ -882,6 +901,12 @@
     else if (pu.type === 'diamond') {
       p.sword = 'diamond'; floater(p.x, p.y - 22, 'DIAMOND SWORD!', '#39e3ff');
     }
+    else if (pu.type === 'heal') {
+      if (p.hp >= p.hpMax) return;   // leave it for someone who's actually hurt
+      p.hp = Math.min(p.hpMax, p.hp + HEAL_AMOUNT);
+      floater(p.x, p.y - 22, '+' + HEAL_AMOUNT + ' HP', '#7eff5a');
+      spawnHitBurst(p.x, p.y, '#7eff5a');
+    }
     pu.taken = true;
     tone(660, 0.12, 'sine', 0.06);
   }
@@ -905,8 +930,9 @@
     state.pickupT -= dt;
     if (state.pickupT <= 0) {
       const r = Math.random();
-      if (r < 0.55) spawnPickup('arrows');
-      else if (r < 0.85) spawnPickup('gold');
+      if (r < 0.4) spawnPickup('arrows');
+      else if (r < 0.65) spawnPickup('heal');
+      else if (r < 0.88) spawnPickup('gold');
       else spawnPickup('diamond');
       state.pickupT = 14 + Math.random() * 12;
     }
@@ -1094,6 +1120,7 @@
       let col, ch;
       if (pu.type === 'arrows') { col = '#39e3ff'; ch = '↑'; }
       else if (pu.type === 'gold') { col = '#ffd700'; ch = '⚔'; }
+      else if (pu.type === 'heal') { col = '#7eff5a'; ch = '+'; }
       else { col = '#39e3ff'; ch = '◆'; }
       ctx.save();
       ctx.shadowColor = col; ctx.shadowBlur = 14 * pulse;
