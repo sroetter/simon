@@ -239,10 +239,10 @@
       e.preventDefault();
       cycleSpecTarget(e.shiftKey ? -1 : 1);
     }
-    // Shift = panic teleport to the nearest space you can actually move in
+    // Shift = panic teleport out to open ground (breaks you out of a sealed base too)
     if (k === 'shift' && !e.repeat && state && state.human && state.human.alive) {
       const h = state.human;
-      const spot = freeSpotNear(h.x, h.y);
+      const spot = teleportUnstuck(h);
       if (spot && (spot.x !== h.x || spot.y !== h.y)) {
         h.x = spot.x; h.y = spot.y; h.vx = 0; h.vy = 0;
         spawnHitBurst(h.x, h.y, '#39e3ff');
@@ -467,6 +467,42 @@
       }
     }
     return null;
+  }
+
+  // Panic teleport: get the player to somewhere they can actually roam. If they're
+  // sealed inside an enclosure (e.g. their own base), flood-fill the trapped pocket
+  // and jump them to the nearest OPEN cell beyond the walls so they can get out.
+  function teleportUnstuck(h) {
+    const [cgx, cgy] = worldToGrid(h.x, h.y);
+    const CAP = 140;                 // if the reachable pocket is bigger than this, they're not trapped
+    const seen = new Set([cgx + ',' + cgy]);
+    const q = [[cgx, cgy]];
+    let enclosed = true;
+    while (q.length) {
+      const [gx, gy] = q.shift();
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = gx + dx, ny = gy + dy;
+        // reaching the arena edge means they're not sealed in
+        if (nx * GRID < 0 || ny * GRID < 0 || nx * GRID > ARENA_W || ny * GRID > ARENA_H) { enclosed = false; continue; }
+        const key = nx + ',' + ny;
+        if (seen.has(key) || getBlock(nx, ny)) continue;
+        seen.add(key);
+        q.push([nx, ny]);
+      }
+      if (seen.size > CAP) { enclosed = false; break; }
+      if (!enclosed) break;
+    }
+    if (!enclosed) return freeSpotNear(h.x, h.y);   // open ground — just resolve any overlap
+    // sealed in: spiral outward for the nearest empty cell OUTSIDE the trapped pocket
+    for (let r = 1; r <= 24; r++) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 24) {
+        const gx = Math.round(cgx + Math.cos(a) * r), gy = Math.round(cgy + Math.sin(a) * r);
+        if (seen.has(gx + ',' + gy) || getBlock(gx, gy)) continue;
+        const spot = freeSpotNear(gx * GRID + GRID/2, gy * GRID + GRID/2);
+        if (spot) return spot;
+      }
+    }
+    return freeSpotNear(h.x, h.y);
   }
 
   // is the path a short step ahead in this direction blocked by a wall?
