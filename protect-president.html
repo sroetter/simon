@@ -287,6 +287,7 @@
       target: null, targetT: 0, fireT: 0,
       lastDmgFrom: null,
       stuckT: 0, unstickT: 0, unstickX: 0, unstickY: 0,
+      strafeDir: Math.random() < 0.5 ? 1 : -1,
     };
   }
 
@@ -796,6 +797,23 @@
     return best;
   }
 
+  // walk to and place the nearest missing wall on the defensive ring around `anchor`
+  // ({x,y}). Returns true while there's still ring to build.
+  function buildRing(p, anchor, dt) {
+    const cell = bestWallCell(anchor, p);
+    if (!cell) { movePlayer(p, dt, 0, 0); return false; }   // ring complete
+    const cellX = cell.gx * GRID + GRID/2, cellY = cell.gy * GRID + GRID/2;
+    const dd = Math.hypot(cellX - p.x, cellY - p.y);
+    if (dd > PLACE_RANGE) {
+      moveSmart(p, dt, (cellX - p.x) / dd, (cellY - p.y) / dd);
+    } else if (p.placeT <= 0 && p.blocks > 0) {
+      if (tryPlaceBlock(p, cell.gx, cell.gy)) p.placeT = 0.5;
+    } else {
+      movePlayer(p, dt, 0, 0);
+    }
+    return true;
+  }
+
   // the living grunt standing closest to its own president — the designated bodyguard
   function closestGuard(team, prez) {
     let best = null, bestD = Infinity;
@@ -958,40 +976,53 @@
       }
     }
 
+    // one grunt per team is the bodyguard: it stays home, builds/repairs the
+    // wall ring, and guards the president; everyone else attacks.
+    const iAmGuard = !peace && myPrez && myPrez.alive && closestGuard(p.team, myPrez) === p;
+
     if (peace) {
       // opening truce: everyone digs in and walls up around the president
       p.task = 'build';
-    } else if (!defending && p.aiTimer <= 0) {
-      // decide task: a short early build phase, then hunt the enemy president
-      const elapsed = state.elapsed;
-      if (elapsed < 5 + Math.random() * 3 && p.blocks > 10 && Math.random() < cfg.botBuild * 0.6) {
-        p.task = 'build';
-      } else if (p.lastDmgFrom && p.lastDmgFrom.alive && Math.random() < 0.55) {
+    } else if (defending) {
+      // p.task/target already set to intercept the threat
+    } else if (iAmGuard) {
+      p.task = 'guard';
+    } else if (p.aiTimer <= 0) {
+      // attackers gang up on the team's shared focus president
+      if (p.lastDmgFrom && p.lastDmgFrom.alive && Math.random() < 0.55) {
         p.task = 'hunt';
         p.target = p.lastDmgFrom;
       } else {
-        // gang up on the team's shared focus president
         p.task = 'hunt';
         p.target = teamFocusPrez(p.team) || nearestEnemy(p, null);
       }
+      p.strafeDir = Math.random() < 0.5 ? 1 : -1;   // fix a strafe side so we don't jitter
       p.aiTimer = 1.2 + Math.random() * 1.2;
     }
 
-    if (p.task === 'build') {
-      // build an efficient defensive RING around the president, filling gaps
-      // and leaving one doorway so the team can still get in and out.
+    if (p.task === 'build' || p.task === 'guard') {
+      // build/repair the defensive RING around the president (with a doorway)
       const prez = p.team.prez;
-      const anchor = prez && prez.alive ? prez : p;
-      const cell = bestWallCell(anchor, p);
-      if (!cell) { movePlayer(p, dt, 0, 0); return; }   // ring complete
-      const cellX = cell.gx * GRID + GRID/2, cellY = cell.gy * GRID + GRID/2;
-      const dd = Math.hypot(cellX - p.x, cellY - p.y);
-      if (dd > PLACE_RANGE) {
-        moveSmart(p, dt, (cellX - p.x) / dd, (cellY - p.y) / dd);
-      } else if (p.placeT <= 0 && p.blocks > 0) {
-        if (tryPlaceBlock(p, cell.gx, cell.gy)) p.placeT = 0.5;
-      } else {
-        movePlayer(p, dt, 0, 0);
+      const anchor = prez && prez.alive ? { x: prez.x, y: prez.y }
+                                        : { x: p.team.flagX, y: p.team.flagY };
+      const building = p.blocks > 0 && buildRing(p, anchor, dt);
+      if (p.task === 'guard') {
+        // the guard also shoots at anything threatening home
+        const foe = nearestEnemy(p, null);
+        if (foe) {
+          const fd = Math.hypot(foe.x - p.x, foe.y - p.y);
+          p.aim = Math.atan2(foe.y - p.y, foe.x - p.x);
+          if (fd < 820 && p.arrows > 0 && p.bowT <= 0 && lineOfSightClear(p.x, p.y, foe.x, foe.y, p.team)) shootBow(p);
+          else if (fd < SWORD_RANGE + 8 && p.swordT <= 0) swingSword(p);
+        }
+        if (!building) {
+          // ring done / out of blocks — hold station near the president
+          const ax = prez && prez.alive ? prez.x : p.team.flagX;
+          const ay = prez && prez.alive ? prez.y : p.team.flagY;
+          const dxp = ax - p.x, dyp = ay - p.y, dp = Math.hypot(dxp, dyp);
+          if (dp > 100) moveSmart(p, dt, dxp / dp, dyp / dp);
+          else movePlayer(p, dt, 0, 0);
+        }
       }
       return;
     }
@@ -1022,8 +1053,8 @@
         if (p.swordT <= 0) swingSword(p);
         movePlayer(p, dt, stepX * 0.4, stepY * 0.4);
       } else {
-        // strafe to find sight — steering around walls rather than into them
-        const perp = (p.aiTimer * 2) % 2 < 1 ? 1 : -1;
+        // strafe to find sight — steer around walls, using a steady side so we don't jitter
+        const perp = p.strafeDir;
         const px = -dy / d, py = dx / d;
         moveSmart(p, dt, dx/d * 0.6 + px * perp * 0.6, dy/d * 0.6 + py * perp * 0.6);
       }
@@ -1032,7 +1063,7 @@
       if (d > 280) moveSmart(p, dt, dx/d, dy/d);
       else {
         const px = -dy / d, py = dx / d;
-        const dir = (Math.floor(p.aiTimer * 2) % 2) ? 1 : -1;
+        const dir = p.strafeDir;
         movePlayer(p, dt, dx/d * 0.2 + px * dir * 0.7, dy/d * 0.2 + py * dir * 0.7);
       }
     }
