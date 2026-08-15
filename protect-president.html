@@ -177,7 +177,7 @@
   const START_BLOCKS = 30;
   const START_ARROWS = 15;
   const PREZ_ARROWS = 60;  // presidents keep a deep quiver so they can snipe from the flag
-  const GRUNTS_PER_TEAM = 3;
+  const GRUNTS_PER_TEAM = 5;
   const HEAL_AMOUNT = 3;   // HP restored by a healing pack
   const HEAL_PACKS = 7;    // healing packs scattered around the arena at the start
   const PEACE_TIME = 15;   // seconds of no-combat prep at the start of a match
@@ -1015,17 +1015,57 @@
     return null;
   }
 
-  // the enemy president the whole team should focus — nearest to our flag, so all
-  // attackers converge on the same target and gang up instead of scattering.
+  // How appealing an enemy is, scored from a point we care about. Lower is better.
+  // Close counts, and so does hurt — a wounded enemy is worth walking further for,
+  // because finishing off the easy target is better than starting a fresh fight.
+  const HURT_PULL = 420;    // a target on death's door is "worth" this many pixels of travel
+  function targetScore(e, fromX, fromY) {
+    return Math.hypot(e.x - fromX, e.y - fromY) + (e.hp / e.hpMax) * HURT_PULL;
+  }
+
+  // Everyone attacking picks the SAME victim, so a team that sends two or three out
+  // arrives together instead of spreading thin. Presidents first (killing one ends a
+  // team); among them, whichever is nearest and weakest. The choice is held for a
+  // second so the squad doesn't keep changing its mind on the way over.
   function teamFocusPrez(team) {
-    let best = null, bestD = Infinity;
+    if (team.focus && team.focus.alive && state.elapsed < (team.focusUntil || 0)) return team.focus;
+    let best = null, bestS = Infinity, fallback = null, fallbackS = Infinity;
     for (const t of state.teams) {
       if (t === team || !t.alive) continue;
-      const pr = t.prez;
-      if (!pr || !pr.alive) continue;
-      const d = Math.hypot(pr.x - team.flagX, pr.y - team.flagY);
-      if (d < bestD) { bestD = d; best = pr; }
+      for (const e of t.players) {
+        if (!e.alive) continue;
+        const s = targetScore(e, team.flagX, team.flagY);
+        if (e.isPrez) { if (s < bestS) { bestS = s; best = e; } }
+        else if (s < fallbackS) { fallbackS = s; fallback = e; }
+      }
     }
+    team.focus = best || fallback;
+    team.focusUntil = state.elapsed + 1;
+    return team.focus;
+  }
+
+  // Who the defenders collectively answer: whatever is the biggest threat to our
+  // president — nearest to them — with wounded intruders preferred, since they're the
+  // ones we can actually put down. All the defenders pile onto the same one.
+  const DEFEND_RADIUS = 340;   // how close an enemy must get before the defence answers
+  const DEFEND_LEASH = 460;    // ...and how far a defender will chase before turning back
+  function teamDefendTarget(team) {
+    const prez = team.prez;
+    if (!prez || !prez.alive) return null;
+    if (team.dfoc && team.dfoc.alive && state.elapsed < (team.dfocUntil || 0)
+        && Math.hypot(team.dfoc.x - prez.x, team.dfoc.y - prez.y) < DEFEND_RADIUS * 1.4) return team.dfoc;
+    let best = null, bestS = Infinity;
+    for (const t of state.teams) {
+      if (t === team || !t.alive) continue;
+      for (const e of t.players) {
+        if (!e.alive) continue;
+        if (Math.hypot(e.x - prez.x, e.y - prez.y) > DEFEND_RADIUS) continue;
+        const s = targetScore(e, prez.x, prez.y);
+        if (s < bestS) { bestS = s; best = e; }
+      }
+    }
+    team.dfoc = best;
+    team.dfocUntil = state.elapsed + 0.8;
     return best;
   }
 
@@ -1302,8 +1342,10 @@
     let defending = false;
     const myPrez = p.team.prez;
     if (!peace && !iAttack && myPrez && myPrez.alive && myPrez !== p) {
-      const threat = nearestEnemy(myPrez, null);
-      if (threat && Math.hypot(threat.x - myPrez.x, threat.y - myPrez.y) < 300 && closestGuard(p.team, myPrez) === p) {
+      // every defender answers the same call — the biggest threat to the president,
+      // weakest first — so two defenders gang up rather than each taking one intruder
+      const threat = teamDefendTarget(p.team);
+      if (threat) {
         p.task = 'hunt';
         p.target = threat;
         defending = true;
@@ -1348,8 +1390,9 @@
       const building = buildRing(p, anchor, dt, peace ? BASE_RINGS : LATE_RINGS);
       const prez = p.team.prez;
       if (p.task === 'guard') {
-        // the guard also shoots at anything threatening home
-        const foe = nearestEnemy(p, null);
+        // builders shoot at whatever the defence has settled on, falling back to
+        // whoever is nearest if nothing is actually threatening the president
+        const foe = teamDefendTarget(p.team) || nearestEnemy(p, null);
         if (foe) {
           const fd = Math.hypot(foe.x - p.x, foe.y - p.y);
           p.aim = Math.atan2(foe.y - p.y, foe.x - p.x);
@@ -1372,6 +1415,24 @@
     let target = p.target;
     if (!target || !target.alive) target = nearestEnemyPrez(p) || nearestEnemy(p, null);
     if (!target) { movePlayer(p, dt, 0, 0); return; }
+
+    // Defenders are on a leash. Chasing an intruder is fine; being lured halfway across
+    // the map is not — past this range they break off and head back inside the base.
+    if (!peace && !iAttack) {
+      const hx = p.team.flagX - p.x, hy = p.team.flagY - p.y;
+      const homeD = Math.hypot(hx, hy);
+      if (homeD > DEFEND_LEASH) {
+        moveSmart(p, dt, hx / homeD, hy / homeD);
+        // cover the walk back with an arrow if anything is chasing
+        const chaser = nearestEnemy(p, null);
+        if (chaser) {
+          const cd = Math.hypot(chaser.x - p.x, chaser.y - p.y);
+          p.aim = Math.atan2(chaser.y - p.y, chaser.x - p.x);
+          if (cd < 620 && p.arrows > 0 && p.bowT <= 0 && lineOfSightClear(p.x, p.y, chaser.x, chaser.y, p.team)) shootBow(p);
+        }
+        return;
+      }
+    }
     const dx = target.x - p.x, dy = target.y - p.y;
     const d = Math.hypot(dx, dy);
     const inSight = lineOfSightClear(p.x, p.y, target.x, target.y, p.team);
