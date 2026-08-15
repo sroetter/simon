@@ -65,9 +65,7 @@
       Last team standing wins.<br>
       Controls: WASD move • mouse aim • click attack • <b>1</b> sword • <b>2</b> bow • <b>3</b> build blocks • <b>Shift</b> unstuck<br>
       <b>GATES:</b> in build mode, click a square to put a block down — click the <b>same square again</b> to turn it into a gate (a white cross ✕).
-      Walls are solid: your team walks through your gates, enemies can't.<br>
-      <b>Q</b> switches your team's battle plan: <b style="color:#ff5050">GO FOR BLOOD</b> (straight at the enemy president) or
-      <b style="color:#39e3ff">SWOOP IN</b> (hold and build, then send the whole army once only two teams are left).
+      Walls are solid: your team walks through your gates, enemies can't.
     </div>
     <label>TEAMS</label>
     <div class="row" id="teamCount">
@@ -278,18 +276,6 @@
       e.preventDefault();
       cycleSpecTarget(e.shiftKey ? -1 : 1);
     }
-    // Q = flip your team's battle plan between going for blood and swooping in late
-    if (k === 'q' && !e.repeat && state && !state.ended) {
-      const team = state.human ? state.human.team : state.specTeam;
-      if (team && team.alive) {
-        team.doctrine = team.doctrine === 'blood' ? 'swoop' : 'blood';
-        team.swooped = false;
-        showToast(team.doctrine === 'blood'
-          ? '🩸 GO FOR BLOOD — your team charges now'
-          : '🛡️ SWOOP IN — your team digs in and waits for its moment');
-        tone(team.doctrine === 'blood' ? 520 : 330, 0.14, 'triangle', 0.05);
-      }
-    }
     // Shift = panic teleport out to open ground (breaks you out of a sealed base too)
     if (k === 'shift' && !e.repeat && state && state.human && state.human.alive) {
       const h = state.human;
@@ -369,7 +355,7 @@
       const fx = cx + Math.cos(ang) * ringR;
       const fy = cy + Math.sin(ang) * ringR;
       const tc = TEAM_COLORS[t];
-      teams.push({ idx: t, color: tc.main, dim: tc.dim, name: tc.name, flagX: fx, flagY: fy, alive: true, prez: null, players: [], doctrine: 'balanced', swooped: false });
+      teams.push({ idx: t, color: tc.main, dim: tc.dim, name: tc.name, flagX: fx, flagY: fy, alive: true, prez: null, players: [] });
     }
 
     // remap so player's selected color maps to team 0 (player team)
@@ -1107,28 +1093,9 @@
     // bots only: the human plays however they like, so bots fill the quota themselves
     const grunts = team.players.filter(q => !q.isPrez && q.alive && q.isBot);
     if (!grunts.length) return [];
-    // swooping means EVERYONE stays home behind the walls — not even a harasser goes
-    // out — right up until the swoop fires and the whole army leaves at once
-    if (team.doctrine === 'swoop' && !swoopTime(team)) return [];
     grunts.sort((a, b) => a.slot - b.slot);   // stable roles — no flip-flopping mid-fight
-    const n = Math.max(MIN_ATTACKERS, Math.round(grunts.length * attackShare(team)));
+    const n = Math.max(MIN_ATTACKERS, Math.round(grunts.length * ATTACK_SHARE));
     return grunts.slice(0, n);
-  }
-
-  // How hard a team pushes, set by its doctrine:
-  //   blood    — everyone charges, all the time
-  //   swoop    — dig in and build, keep only the one required harasser out there, then
-  //              commit everything the moment the field has thinned out
-  //   balanced — the standing half-and-half split
-  function attackShare(team) {
-    if (team.doctrine === 'blood') return 1;
-    if (team.doctrine === 'swoop') return swoopTime(team) ? 1 : 0;
-    return ATTACK_SHARE;
-  }
-
-  // a swooping team sits tight until it's down to two teams — then the whole army goes in
-  function swoopTime(team) {
-    return state.teams.filter(t => t.alive).length <= 2;
   }
 
   // the living defender standing closest to its own president — the bodyguard.
@@ -1366,10 +1333,8 @@
     } else if (iAmGuard) {
       p.task = 'guard';
     } else if (p.aiTimer <= 0) {
-      // attackers gang up on the team's shared focus president. Going for blood means
-      // exactly that — straight at the enemy president, no detours to pick fights.
-      const blood = p.team.doctrine === 'blood';
-      if (!blood && p.lastDmgFrom && p.lastDmgFrom.alive && Math.random() < 0.55) {
+      // attackers gang up on the team's shared focus president
+      if (p.lastDmgFrom && p.lastDmgFrom.alive && Math.random() < 0.55) {
         p.task = 'hunt';
         p.target = p.lastDmgFrom;
       } else {
@@ -1517,14 +1482,6 @@
     state.elapsed += dt;
     if (state.shake) state.shake = Math.max(0, state.shake - dt * 60);
     if (state.unstickCd) state.unstickCd = Math.max(0, state.unstickCd - dt);
-
-    // announce the swoop the moment the field narrows to two teams
-    for (const t of state.teams) {
-      if (!t.alive || t.doctrine !== 'swoop' || t.swooped || !swoopTime(t)) continue;
-      t.swooped = true;
-      const mine = state.human ? state.human.team === t : state.specTeam === t;
-      if (mine) { showToast('🛡️➡️🩸 SWOOP! Your whole army is going in'); tone(600, 0.3, 'triangle', 0.07); }
-    }
 
     // opening peace: tick it down, then sound the charge
     if (state.peace > 0) {
@@ -2034,13 +1991,9 @@
     const hR = document.getElementById('hudR');
     const hB = document.getElementById('hudB');
     if (h && h.alive) {
-      const doc = h.team.doctrine === 'blood' ? '<b style="color:#ff5050">🩸 GO FOR BLOOD</b>'
-                : h.team.doctrine === 'swoop' ? `<b style="color:#39e3ff">🛡️ SWOOP IN</b>${swoopTime(h.team) ? ' <b style="color:#7eff5a">— GOING IN!</b>' : ''}`
-                : '<b style="color:#bbb">BALANCED</b>';
       hL.innerHTML = `<b style="color:${h.team.color}">${h.team.name} ${h.isPrez ? 'PRESIDENT ★' : 'GRUNT'}</b> &nbsp;
         HP <b>${Math.ceil(h.hp)}/${h.hpMax}</b> &nbsp;
-        SWORD <b style="color:${SWORD[h.sword].color}">${SWORD[h.sword].name}</b><br>
-        <span style="font-size:12px">PLAN ${doc} <span style="color:#8aa">[Q] switch</span></span>`;
+        SWORD <b style="color:${SWORD[h.sword].color}">${SWORD[h.sword].name}</b>`;
     } else {
       // spectating (either you were knocked out, or you chose spectate mode)
       const t = state.specTarget;
