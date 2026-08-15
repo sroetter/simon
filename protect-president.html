@@ -30,7 +30,8 @@
   .slot b { color:#fff; font-size:15px; }
   .slot span { color:#9aa; font-size:12px; }
   .hidden { display:none !important; }
-  .back { position:fixed; top:10px; right:10px; padding:9px 16px; font-size:14px; font-weight:bold; letter-spacing:1px; background:rgba(20,10,10,0.92); border:2px solid #ff5050; color:#ffd0d0; text-decoration:none; border-radius:9px; z-index:11; box-shadow:0 0 16px rgba(255,80,80,0.4); }
+  /* bottom-left, out of the way of the team list in the top-right corner */
+  .back { position:fixed; bottom:10px; left:10px; padding:9px 16px; font-size:14px; font-weight:bold; letter-spacing:1px; background:rgba(20,10,10,0.92); border:2px solid #ff5050; color:#ffd0d0; text-decoration:none; border-radius:9px; z-index:11; box-shadow:0 0 16px rgba(255,80,80,0.4); }
   .back:hover { color:#fff; background:#3a1414; box-shadow:0 0 22px rgba(255,80,80,0.7); }
   .hint { color:#9aa; font-size:12px; line-height:1.5; margin-top:4px; }
   .crosshair { position:fixed; width:22px; height:22px; pointer-events:none; transform:translate(-50%,-50%); z-index:5; }
@@ -62,7 +63,11 @@
     <div class="hint">
       Kill the other teams' presidents — if your team's prez dies, your team is out.<br>
       Last team standing wins.<br>
-      Controls: WASD move • mouse aim • click attack • <b>1</b> sword • <b>2</b> bow • <b>3</b> build blocks • <b>Shift</b> unstuck
+      Controls: WASD move • mouse aim • click attack • <b>1</b> sword • <b>2</b> bow • <b>3</b> build blocks • <b>Shift</b> unstuck<br>
+      <b>GATES:</b> in build mode, click a square to put a block down — click the <b>same square again</b> to turn it into a gate (a white cross ✕).
+      Walls are solid: your team walks through your gates, enemies can't.<br>
+      <b>Q</b> switches your team's battle plan: <b style="color:#ff5050">GO FOR BLOOD</b> (straight at the enemy president) or
+      <b style="color:#39e3ff">SWOOP IN</b> (hold and build, then send the whole army once only two teams are left).
     </div>
     <label>TEAMS</label>
     <div class="row" id="teamCount">
@@ -84,6 +89,12 @@
       <button data-m="spectate">SPECTATE</button>
     </div>
     <div style="color:#8aa; font-size:11px; margin-top:4px;">Spectate: sit back and watch the AI teams battle. Press <b>Tab</b> to switch who you follow.</div>
+    <label>YOUR ROLE</label>
+    <div class="row" id="role">
+      <button data-r="grunt" class="sel">ALWAYS A GRUNT</button>
+      <button data-r="draft">RUN FOR PRESIDENT</button>
+    </div>
+    <div style="color:#8aa; font-size:11px; margin-top:4px;">Run for president: a <b>1 in 4</b> chance you get drafted as your team's prez. If you're drafted, your team dies when you do — and you have no teammate to take over.</div>
     <div style="margin-top:18px; text-align:center;">
       <button id="start">DEPLOY</button>
     </div>
@@ -94,6 +105,11 @@
   <div class="panel" style="text-align:center; min-width:360px;">
     <h1 id="endTitle">VICTORY</h1>
     <p id="endText" style="color:#cde; margin:10px 0 16px; font-size:14px; line-height:1.6;"></p>
+    <!-- these two only appear if that death actually happened this match -->
+    <div class="row" id="reviewRow" style="justify-content:center;">
+      <button id="revPrez" class="hidden">▶ REVIEW PRESIDENT'S DEATH</button>
+      <button id="revMe" class="hidden">▶ REVIEW MY DEATH</button>
+    </div>
     <button id="again">PLAY AGAIN</button>
   </div>
 </div>
@@ -144,6 +160,10 @@
 
   const ARENA_W = 2800, ARENA_H = 2000;
   const PLAYER_R = 16;
+  // Walls are checked against a slimmer radius than the body, so a ONE-BLOCK gap (a
+  // gate, or a hole punched in a wall) is comfortably wide enough to walk through
+  // instead of needing pixel-perfect alignment.
+  const WALL_R = 11;
   const PLAYER_SPEED = 240;
   const GRID = 32;
   const SWORD_RANGE = 56;
@@ -161,6 +181,15 @@
   const HEAL_AMOUNT = 3;   // HP restored by a healing pack
   const HEAL_PACKS = 7;    // healing packs scattered around the arena at the start
   const PEACE_TIME = 15;   // seconds of no-combat prep at the start of a match
+  const BASE_RINGS = 4;    // rings of wall the team must have finished by the end of the truce
+  const LATE_RINGS = 6;    // ...and they keep adding rings beyond that as the match runs on
+  const PEACE_PLACE_CD = 0.14;  // truce build speed — fast enough to finish a whole base in 15s
+  const PLACE_CD = 0.45;        // slower once the fighting starts
+  const BLOCK_REGEN = 3.5; // seconds per resupplied block, so bots can ALWAYS keep building
+  const BLOCK_CAP = 40;    // most blocks anyone can be holding at once
+  const ATTACK_SHARE = 0.5;      // half of every team's living grunts push the attack...
+  const MIN_ATTACKERS = 1;       // ...and at least one is ALWAYS on offense, never turtling
+  const PREZ_DRAFT_CHANCE = 0.25; // odds of being drafted as prez when you run for it (1 of 4 slots)
 
   const SWORD_TIERS = ['iron','gold','diamond'];
   const SWORD = {
@@ -181,6 +210,7 @@
   let selTeam = 0;
   let diff = 'easy';
   let mode = 'play';
+  let role = 'grunt';   // 'grunt' = always a grunt, 'draft' = enter the presidential lottery
   const teamsEl = document.getElementById('teams');
   function renderTeamPicker() {
     teamsEl.innerHTML = '';
@@ -216,6 +246,12 @@
       b.classList.add('sel'); mode = b.dataset.m;
     };
   });
+  document.querySelectorAll('#role button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#role button').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel'); role = b.dataset.r;
+    };
+  });
 
   // ---------- runtime state
   let state = null;
@@ -223,6 +259,9 @@
   const keys = new Set();
   let mouseDown = false;
   let justClicked = false;
+  const DOUBLE_CLICK_MS = 450;   // click, then click again this fast on the same square = gate
+  let lastClickT = 0;
+  let lastClickCell = null;
   const mouseScr = { x: innerWidth/2, y: innerHeight/2 };
   const chEl = document.getElementById('ch');
   const toastEl = document.getElementById('toast');
@@ -239,15 +278,34 @@
       e.preventDefault();
       cycleSpecTarget(e.shiftKey ? -1 : 1);
     }
+    // Q = flip your team's battle plan between going for blood and swooping in late
+    if (k === 'q' && !e.repeat && state && !state.ended) {
+      const team = state.human ? state.human.team : state.specTeam;
+      if (team && team.alive) {
+        team.doctrine = team.doctrine === 'blood' ? 'swoop' : 'blood';
+        team.swooped = false;
+        showToast(team.doctrine === 'blood'
+          ? '🩸 GO FOR BLOOD — your team charges now'
+          : '🛡️ SWOOP IN — your team digs in and waits for its moment');
+        tone(team.doctrine === 'blood' ? 520 : 330, 0.14, 'triangle', 0.05);
+      }
+    }
     // Shift = panic teleport out to open ground (breaks you out of a sealed base too)
     if (k === 'shift' && !e.repeat && state && state.human && state.human.alive) {
       const h = state.human;
+      if ((state.unstickCd || 0) > 0) return;
+      state.unstickCd = 0.5;
+      const stuck = !!circleVsBlocks(h.x, h.y, WALL_R, h.team);
       const spot = teleportUnstuck(h);
       if (spot && (spot.x !== h.x || spot.y !== h.y)) {
         h.x = spot.x; h.y = spot.y; h.vx = 0; h.vy = 0;
+        h.stuckT = 0; h.unstickT = 0; h.detourT = 0;
         spawnHitBurst(h.x, h.y, '#39e3ff');
-        showToast('Teleported to open ground!');
+        showToast(stuck ? 'Pulled free of the wall!' : 'Teleported out to open ground!');
         tone(700, 0.1, 'triangle', 0.05);
+      } else {
+        // nothing to escape from — say so instead of silently doing nothing
+        showToast("You're not stuck — walk out through your gate");
       }
     }
   });
@@ -268,9 +326,10 @@
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
   // ---------- player creation
-  function makePlayer(team, isPrez, isBot, x, y) {
+  function makePlayer(team, isPrez, isBot, x, y, slot) {
     return {
       team, isPrez, isBot,
+      slot: slot || 0,        // fixed roster index — keeps AI role assignment stable
       x, y, vx:0, vy:0,
       hp: isPrez ? PREZ_HP : GRUNT_HP, hpMax: isPrez ? PREZ_HP : GRUNT_HP,
       alive: true,
@@ -285,8 +344,9 @@
       // AI
       task: 'build', taskT: 0, aiTimer: 0,
       target: null, targetT: 0, fireT: 0,
-      lastDmgFrom: null,
+      lastDmgFrom: null, retaliateT: 0, fleeing: false, closeIn: true,
       stuckT: 0, unstickT: 0, unstickX: 0, unstickY: 0,
+      detourT: 0, detourX: 0, detourY: 0, blockRegenT: 0,
       strafeDir: Math.random() < 0.5 ? 1 : -1,
     };
   }
@@ -309,7 +369,7 @@
       const fx = cx + Math.cos(ang) * ringR;
       const fy = cy + Math.sin(ang) * ringR;
       const tc = TEAM_COLORS[t];
-      teams.push({ idx: t, color: tc.main, dim: tc.dim, name: tc.name, flagX: fx, flagY: fy, alive: true, prez: null, players: [] });
+      teams.push({ idx: t, color: tc.main, dim: tc.dim, name: tc.name, flagX: fx, flagY: fy, alive: true, prez: null, players: [], doctrine: 'balanced', swooped: false });
     }
 
     // remap so player's selected color maps to team 0 (player team)
@@ -322,10 +382,14 @@
     });
 
     const spectate = (mode === 'spectate');
+    // if you ran for president, roll the dice — one of the team's four slots is the prez job
+    const drafted = !spectate && role === 'draft' && Math.random() < PREZ_DRAFT_CHANCE;
     let human = null;
     for (const team of teams) {
       // prez
-      const prez = makePlayer(team, true, true, team.flagX, team.flagY);
+      const humanPrez = (!spectate && team.idx === 0 && drafted);
+      const prez = makePlayer(team, true, !humanPrez, team.flagX, team.flagY, 0);
+      if (humanPrez) { human = prez; prez.aiTimer = -1; }
       team.prez = prez;
       team.players.push(prez);
       // grunts
@@ -333,8 +397,8 @@
         const a2 = (g / GRUNTS_PER_TEAM) * Math.PI * 2 + Math.random() * 0.6;
         const gx = team.flagX + Math.cos(a2) * 70;
         const gy = team.flagY + Math.sin(a2) * 70;
-        const isHuman = (!spectate && team.idx === 0 && g === 0 && !human);
-        const grunt = makePlayer(team, false, !isHuman, gx, gy);
+        const isHuman = (!spectate && !drafted && team.idx === 0 && g === 0 && !human);
+        const grunt = makePlayer(team, false, !isHuman, gx, gy, g + 1);
         if (isHuman) { human = grunt; grunt.aiTimer = -1; }
         team.players.push(grunt);
       }
@@ -358,6 +422,8 @@
       peaceAnnounced: false,
       pickupT: 18, // first pickup after 18s
       placeGhost: null,
+      // kill-cam: a rolling few seconds of history, and the clips saved out of it
+      clipBuf: [], clipT: 0, prezClip: null, myClip: null, replay: null,
     };
 
     // sprinkle initial arrow crates between teams
@@ -374,6 +440,13 @@
     if (camOn) {
       cam.x = camOn.x - innerWidth/2;
       cam.y = camOn.y - innerHeight/2;
+    }
+
+    if (human && human.isPrez) {
+      showToast('🎖️ YOU WERE DRAFTED — you are the PRESIDENT. Stay alive!');
+      tone(660, 0.35, 'triangle', 0.07);
+    } else if (role === 'draft' && !spectate) {
+      showToast('You lost the draft — grunt duty. Protect your president!');
     }
   }
 
@@ -394,6 +467,8 @@
   }
 
   document.getElementById('start').onclick = () => { actx(); startGame(); };
+  document.getElementById('revPrez').onclick = () => playClip(state && state.prezClip);
+  document.getElementById('revMe').onclick = () => playClip(state && state.myClip);
   document.getElementById('again').onclick = () => {
     document.getElementById('endOv').classList.add('hidden');
     document.getElementById('titleOv').classList.remove('hidden');
@@ -409,7 +484,7 @@
   function gridRect(gx, gy) { return { x:gx*GRID, y:gy*GRID, w:GRID, h:GRID }; }
   function getBlock(gx, gy) { return state.blocks.get(blockKey(gx, gy)); }
 
-  function tryPlaceBlock(p, gx, gy) {
+  function tryPlaceBlock(p, gx, gy, gate) {
     const cx = gx * GRID + GRID/2, cy = gy * GRID + GRID/2;
     if (Math.hypot(cx - p.x, cy - p.y) > PLACE_RANGE) return false;
     if (gx < 0 || gy < 0 || gx >= Math.ceil(ARENA_W/GRID) || gy >= Math.ceil(ARENA_H/GRID)) return false;
@@ -422,18 +497,41 @@
       const ny = clamp(pp.y, r.y, r.y + r.h);
       if ((pp.x - nx)**2 + (pp.y - ny)**2 < (PLAYER_R - 1)**2) return false;
     }
-    state.blocks.set(blockKey(gx, gy), { gx, gy, team: p.team, hp: BLOCK_HP });
+    state.blocks.set(blockKey(gx, gy), { gx, gy, team: p.team, hp: BLOCK_HP, gate: !!gate });
     p.blocks--;
-    tone(380, 0.06, 'square', 0.04);
+    tone(gate ? 300 : 380, 0.06, 'square', 0.04);
     return true;
   }
 
-  function circleVsBlocks(x, y, r) {
+  // A GATE is the only way through your own wall: your team walks straight through it,
+  // everyone else (and every arrow) is stopped cold. Double-click in build mode to turn
+  // a wall you own into a gate — or to drop a fresh gate on empty ground.
+  function tryMakeGate(p, gx, gy) {
+    const b = getBlock(gx, gy);
+    if (b) {
+      const cx = gx * GRID + GRID/2, cy = gy * GRID + GRID/2;
+      if (b.team !== p.team) return false;                       // can't door an enemy wall
+      if (Math.hypot(cx - p.x, cy - p.y) > PLACE_RANGE) return false;
+      if (b.gate) return false;                                   // already a gate
+      b.gate = true;
+      b.hp = Math.max(b.hp, BLOCK_HP);
+      tone(300, 0.09, 'square', 0.05);
+      floater(cx, cy - 18, 'GATE', p.team.color);
+      return true;
+    }
+    if (p.blocks <= 0) return false;
+    return tryPlaceBlock(p, gx, gy, true);
+  }
+
+  // a block only stops you if it isn't one of YOUR team's gates
+  function blocksTeam(b, team) { return !!b && !(b.gate && b.team === team); }
+
+  function circleVsBlocks(x, y, r, team) {
     const [gx0, gy0] = worldToGrid(x - r, y - r);
     const [gx1, gy1] = worldToGrid(x + r, y + r);
     for (let gx = gx0; gx <= gx1; gx++) for (let gy = gy0; gy <= gy1; gy++) {
       const b = getBlock(gx, gy);
-      if (!b) continue;
+      if (!blocksTeam(b, team)) continue;
       const rect = gridRect(gx, gy);
       const nx = clamp(x, rect.x, rect.x + rect.w);
       const ny = clamp(y, rect.y, rect.y + rect.h);
@@ -451,20 +549,20 @@
       p.vx = mx * sp; p.vy = my * sp;
     }
     let nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
-    if (circleVsBlocks(nx, p.y, PLAYER_R)) nx = p.x;
-    if (circleVsBlocks(p.x, ny, PLAYER_R)) ny = p.y;
+    if (circleVsBlocks(nx, p.y, WALL_R, p.team)) nx = p.x;
+    if (circleVsBlocks(p.x, ny, WALL_R, p.team)) ny = p.y;
     p.x = clamp(nx, PLAYER_R, ARENA_W - PLAYER_R);
     p.y = clamp(ny, PLAYER_R, ARENA_H - PLAYER_R);
   }
 
   // find the nearest spot around (x,y) where a player can actually stand (no wall overlap)
-  function freeSpotNear(x, y) {
-    if (!circleVsBlocks(x, y, PLAYER_R)) return { x, y };
+  function freeSpotNear(x, y, team) {
+    if (!circleVsBlocks(x, y, WALL_R, team)) return { x, y };
     for (let r = GRID * 0.75; r <= GRID * 14; r += GRID * 0.5) {
       for (let a = 0; a < Math.PI * 2; a += Math.PI / 10) {
         const nx = clamp(x + Math.cos(a) * r, PLAYER_R, ARENA_W - PLAYER_R);
         const ny = clamp(y + Math.sin(a) * r, PLAYER_R, ARENA_H - PLAYER_R);
-        if (!circleVsBlocks(nx, ny, PLAYER_R)) return { x: nx, y: ny };
+        if (!circleVsBlocks(nx, ny, WALL_R, team)) return { x: nx, y: ny };
       }
     }
     return null;
@@ -486,29 +584,31 @@
         // reaching the arena edge means they're not sealed in
         if (nx * GRID < 0 || ny * GRID < 0 || nx * GRID > ARENA_W || ny * GRID > ARENA_H) { enclosed = false; continue; }
         const key = nx + ',' + ny;
-        if (seen.has(key) || getBlock(nx, ny)) continue;
+        // your own gates are doors, not walls — flood right through them
+        if (seen.has(key) || blocksTeam(getBlock(nx, ny), h.team)) continue;
         seen.add(key);
         q.push([nx, ny]);
       }
       if (seen.size > CAP) { enclosed = false; break; }
       if (!enclosed) break;
     }
-    if (!enclosed) return freeSpotNear(h.x, h.y);   // open ground — just resolve any overlap
+    if (!enclosed) return freeSpotNear(h.x, h.y, h.team);   // open ground — just resolve any overlap
     // sealed in: spiral outward for the nearest empty cell OUTSIDE the trapped pocket
     for (let r = 1; r <= 24; r++) {
       for (let a = 0; a < Math.PI * 2; a += Math.PI / 24) {
         const gx = Math.round(cgx + Math.cos(a) * r), gy = Math.round(cgy + Math.sin(a) * r);
         if (seen.has(gx + ',' + gy) || getBlock(gx, gy)) continue;
-        const spot = freeSpotNear(gx * GRID + GRID/2, gy * GRID + GRID/2);
+        const spot = freeSpotNear(gx * GRID + GRID/2, gy * GRID + GRID/2, h.team);
         if (spot) return spot;
       }
     }
-    return freeSpotNear(h.x, h.y);
+    return freeSpotNear(h.x, h.y, h.team);
   }
 
   // is the path a short step ahead in this direction blocked by a wall?
+  // (your own gates don't count — you can walk through those)
   function blockedAhead(p, dx, dy, dist) {
-    return !!circleVsBlocks(p.x + dx * dist, p.y + dy * dist, PLAYER_R + 2);
+    return !!circleVsBlocks(p.x + dx * dist, p.y + dy * dist, WALL_R + 1, p.team);
   }
   // move toward (dirX,dirY) but steer around walls, and shake loose if pinned
   function moveSmart(p, dt, dirX, dirY) {
@@ -525,17 +625,34 @@
       return;
     }
 
-    // pick the first clear heading, sweeping wider than before
+    // Once a detour has been chosen, HOLD it for a moment. Re-picking a heading every
+    // frame is what makes bots shake in place — the wall check flips between two
+    // near-equal options 60 times a second and they vibrate instead of walking.
     const probe = PLAYER_R + 32;
     let hx = dirX, hy = dirY;
     if (blockedAhead(p, dirX, dirY, probe)) {
-      const base = Math.atan2(dirY, dirX);
-      let found = false;
-      for (const off of [0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.6, -1.6, 2.1, -2.1, 2.6, -2.6]) {
-        const a = base + off;
-        if (!blockedAhead(p, Math.cos(a), Math.sin(a), probe)) { hx = Math.cos(a); hy = Math.sin(a); found = true; break; }
+      if (p.detourT > 0 && !blockedAhead(p, p.detourX, p.detourY, probe)) {
+        // still committed to the last detour and it's still clear — keep walking it
+        p.detourT -= dt;
+        hx = p.detourX; hy = p.detourY;
+      } else {
+        const base = Math.atan2(dirY, dirX);
+        let found = false;
+        for (const off of [0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.6, -1.6, 2.1, -2.1, 2.6, -2.6]) {
+          const a = base + off;
+          if (!blockedAhead(p, Math.cos(a), Math.sin(a), probe)) { hx = Math.cos(a); hy = Math.sin(a); found = true; break; }
+        }
+        if (!found) {
+          // boxed in with no good answer: rather than trembling against the wall, just
+          // PICK a direction at random and commit to it long enough to actually go there
+          const a = Math.random() * Math.PI * 2;
+          hx = Math.cos(a); hy = Math.sin(a);
+        }
+        p.detourX = hx; p.detourY = hy;
+        p.detourT = 0.4 + Math.random() * 0.3;
       }
-      if (!found) { hx = dirX; hy = dirY; } // fully boxed — push and let it slide
+    } else {
+      p.detourT = 0;   // clear road ahead — forget the detour
     }
 
     const bx = p.x, by = p.y;
@@ -552,6 +669,7 @@
         p.unstickX = Math.cos(a); p.unstickY = Math.sin(a);
         p.unstickT = 0.45;
         p.stuckT = 0;
+        p.detourT = 0;
       }
     } else {
       p.stuckT = 0;
@@ -617,6 +735,14 @@
     p.hp -= dmg;
     p.hurtT = 0.3;
     p.lastDmgFrom = src;
+    // fight back: whoever just hit us becomes the target immediately — bots never stand
+    // there soaking hits because their next "think" tick is a second and a half away
+    if (src && src.alive && src.team !== p.team && p.isBot) {
+      p.retaliateT = 4;
+      p.task = 'hunt';
+      p.target = src;
+      p.aiTimer = Math.max(p.aiTimer, 1.5);   // don't let the think tick overwrite it
+    }
     spawnHitBurst(p.x, p.y, p.team.color);
     floater(p.x, p.y - 22, `-${dmg}`, p.team.color);
     if (p === state.human) state.shake = Math.max(state.shake || 0, 8);
@@ -626,6 +752,14 @@
   function killPlayer(p, src) {
     p.alive = false;
     spawnDeathBurst(p.x, p.y, p.team.color);
+    // save a kill cam for the two deaths worth looking back at: your president's, and
+    // your own. (If you WERE the president, that's one death, so it's one clip.)
+    const myTeam = state.human ? state.human.team : state.specTeam;
+    if (p === state.human) {
+      state.myClip = captureClip(p, p.isPrez ? 'YOUR DEATH — you were the president' : 'YOUR DEATH');
+    } else if (p.isPrez && p.team === myTeam) {
+      state.prezClip = captureClip(p, `${p.team.name} PRESIDENT'S DEATH`);
+    }
     if (p.isPrez) {
       // entire team eliminated
       p.team.alive = false;
@@ -634,7 +768,8 @@
       tone(120, 0.5, 'sawtooth', 0.08);
       noise(0.5, 0.07);
       if (state.human && p === state.human) {
-        // human was the prez (shouldn't be, human is grunt, but defend)
+        // you ran for president and lost the gamble — the whole team goes down with you
+        showToast('YOU WERE THE PRESIDENT — your team falls with you');
       }
     } else {
       // grunt down — game continues
@@ -689,6 +824,46 @@
     state.floaters.push({ x, y, text, color, life:0.9, ttl:0.9 });
   }
 
+  // ---------- kill cam
+  // A rolling history of the last few seconds, sampled a few times a frame's worth
+  // apart. When someone important dies we freeze a copy of it as a clip you can watch
+  // back on the end screen.
+  const CLIP_SECONDS = 5;
+  const CLIP_FPS = 20;
+
+  function recordClipFrame(dt) {
+    state.clipT -= dt;
+    if (state.clipT > 0) return;
+    state.clipT = 1 / CLIP_FPS;
+    const players = [];
+    for (const t of state.teams) for (const p of t.players) {
+      if (!p.alive) continue;
+      players.push({ x: p.x, y: p.y, color: t.color, dim: t.dim, isPrez: p.isPrez, ref: p });
+    }
+    state.clipBuf.push({
+      players,
+      arrows: state.arrows.map(a => ({ x: a.x, y: a.y, color: a.owner.team.color })),
+    });
+    if (state.clipBuf.length > CLIP_SECONDS * CLIP_FPS) state.clipBuf.shift();
+  }
+
+  function captureClip(victim, title) {
+    return {
+      title,
+      frames: state.clipBuf.slice(),
+      // walls as they stood at the moment of death — good enough for a short look back
+      blocks: [...state.blocks.values()].map(b => ({ gx: b.gx, gy: b.gy, color: b.team.color, dim: b.team.dim, gate: b.gate })),
+      victim, vx: victim.x, vy: victim.y,
+    };
+  }
+
+  function playClip(clip) {
+    if (!clip || !clip.frames.length) return;
+    document.getElementById('endOv').classList.add('hidden');
+    document.getElementById('hud').classList.add('hidden');   // clear the screen for the clip
+    state.replay = { clip, i: 0, t: 0 };
+  }
+
   function checkWin() {
     const aliveTeams = state.teams.filter(t => t.alive);
     if (aliveTeams.length <= 1) endGame(aliveTeams[0]);
@@ -717,11 +892,18 @@
     }
     let line = winnerTeam ? `<b style="color:${winnerTeam.color}">${winnerTeam.name}</b> team wins.<br>` : 'All teams wiped out.<br>';
     if (state.human) {
-      line += state.human.alive ? 'You survived.' : 'You were eliminated as a grunt.';
+      const roleName = state.human.isPrez ? 'the president' : 'a grunt';
+      line += state.human.alive ? `You survived as ${roleName}.` : `You were eliminated as ${roleName}.`;
     } else if (state.spectate) {
       line += 'You were spectating.';
     }
     txt.innerHTML = line;
+    // only offer a review button for a death that actually happened
+    const revPrez = document.getElementById('revPrez');
+    const revMe = document.getElementById('revMe');
+    revPrez.classList.toggle('hidden', !state.prezClip);
+    revMe.classList.toggle('hidden', !state.myClip);
+    if (state.myClip) revMe.textContent = state.myClip.title.startsWith('YOUR DEATH — ') ? '▶ REVIEW YOUR DEATH (PRESIDENT)' : '▶ REVIEW MY DEATH';
     ov.classList.remove('hidden');
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('hudB').classList.add('hidden');
@@ -763,24 +945,43 @@
     return nearestEnemy(p, e => e.isPrez);
   }
 
-  // pick the best empty cell on a defensive ring around the anchor (the president):
-  // nearest to the builder so the wall fills efficiently, but skip one doorway cell.
-  function bestWallCell(anchor, p) {
+  // Work out the next thing to do on the defensive rings around the anchor (the
+  // president). Rings are sealed solid except for ONE gate per ring, and every ring's
+  // gate faces the middle of the arena — so they line up into a single corridor the
+  // team can march out through. Returns { gx, gy, gate, convert } or null when done.
+  function ringPlan(anchor, p, maxR) {
     const [agx, agy] = worldToGrid(anchor.x, anchor.y);
-    const R = 2;                    // ring radius in cells
-    const doorway = 5;              // leave one perimeter slot open as an entrance
-    let best = null, bestD = Infinity, idx = 0;
-    for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) {
-      if (Math.max(Math.abs(dx), Math.abs(dy)) !== R) continue;   // perimeter only
-      idx++;
-      if (idx % doorway === 0) continue;                          // keep a gap
-      const gx = agx + dx, gy = agy + dy;
-      if (getBlock(gx, gy)) continue;
-      const cx = gx * GRID + GRID/2, cy = gy * GRID + GRID/2;
-      const d = Math.hypot(cx - p.x, cy - p.y);
-      if (d < bestD) { bestD = d; best = { gx, gy }; }
+    const outAng = Math.atan2(ARENA_H/2 - anchor.y, ARENA_W/2 - anchor.x);
+    for (let R = 2; R <= (maxR || 2); R++) {
+      const cells = [];
+      let gateKey = null, gateBest = Infinity;
+      for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== R) continue;   // perimeter only
+        const gx = agx + dx, gy = agy + dy;
+        cells.push({ gx, gy });
+        // how close this cell sits to the outward (arena-centre) heading
+        const ang = Math.atan2(dy, dx);
+        const off = Math.abs(Math.atan2(Math.sin(ang - outAng), Math.cos(ang - outAng)));
+        if (off < gateBest) { gateBest = off; gateKey = gx + ',' + gy; }
+      }
+      // the doorway comes first — a sealed ring with no gate would trap the whole team
+      for (const c of cells) {
+        if (c.gx + ',' + c.gy !== gateKey) continue;
+        const b = getBlock(c.gx, c.gy);
+        if (!b) return { gx: c.gx, gy: c.gy, gate: true, convert: false };
+        if (!b.gate && b.team === p.team) return { gx: c.gx, gy: c.gy, gate: true, convert: true };
+      }
+      // then fill the rest of the perimeter with solid wall, nearest cell first
+      let best = null, bestD = Infinity;
+      for (const c of cells) {
+        if (getBlock(c.gx, c.gy)) continue;
+        const cx = c.gx * GRID + GRID/2, cy = c.gy * GRID + GRID/2;
+        const d = Math.hypot(cx - p.x, cy - p.y);
+        if (d < bestD) { bestD = d; best = { gx: c.gx, gy: c.gy, gate: false, convert: false }; }
+      }
+      if (best) return best;   // this ring still has holes — finish it before going outward
     }
-    return best;
+    return null;
   }
 
   // the enemy president the whole team should focus — nearest to our flag, so all
@@ -797,28 +998,62 @@
     return best;
   }
 
-  // walk to and place the nearest missing wall on the defensive ring around `anchor`
-  // ({x,y}). Returns true while there's still ring to build.
-  function buildRing(p, anchor, dt) {
-    const cell = bestWallCell(anchor, p);
-    if (!cell) { movePlayer(p, dt, 0, 0); return false; }   // ring complete
+  // walk to and build the next piece of the defensive rings around `anchor` ({x,y}).
+  // Returns true while there's still work to do.
+  function buildRing(p, anchor, dt, maxR) {
+    const cell = ringPlan(anchor, p, maxR);
+    if (!cell) { movePlayer(p, dt, 0, 0); return false; }          // walls complete
+    if (p.blocks <= 0 && !cell.convert) { movePlayer(p, dt, 0, 0); return false; }  // out of blocks
     const cellX = cell.gx * GRID + GRID/2, cellY = cell.gy * GRID + GRID/2;
     const dd = Math.hypot(cellX - p.x, cellY - p.y);
     if (dd > PLACE_RANGE) {
       moveSmart(p, dt, (cellX - p.x) / dd, (cellY - p.y) / dd);
-    } else if (p.placeT <= 0 && p.blocks > 0) {
-      if (tryPlaceBlock(p, cell.gx, cell.gy)) p.placeT = 0.5;
+    } else if (p.placeT <= 0) {
+      const ok = cell.convert ? tryMakeGate(p, cell.gx, cell.gy)
+                              : tryPlaceBlock(p, cell.gx, cell.gy, cell.gate);
+      if (ok) p.placeT = state.peace > 0 ? PEACE_PLACE_CD : PLACE_CD;
     } else {
       movePlayer(p, dt, 0, 0);
     }
     return true;
   }
 
-  // the living grunt standing closest to its own president — the designated bodyguard
+  // ---------- offense quota
+  // Half of every team's living grunts are on offense at any moment, and at least one
+  // ALWAYS is — the "vanguard", who never breaks off to guard, build, or run away.
+  // No team gets to sit inside its walls and wait the match out.
+  function attackSquad(team) {
+    // bots only: the human plays however they like, so bots fill the quota themselves
+    const grunts = team.players.filter(q => !q.isPrez && q.alive && q.isBot);
+    if (!grunts.length) return [];
+    grunts.sort((a, b) => a.slot - b.slot);   // stable roles — no flip-flopping mid-fight
+    const n = Math.max(MIN_ATTACKERS, Math.round(grunts.length * attackShare(team)));
+    return grunts.slice(0, n);
+  }
+
+  // How hard a team pushes, set by its doctrine:
+  //   blood    — everyone charges, all the time
+  //   swoop    — dig in and build, keep only the one required harasser out there, then
+  //              commit everything the moment the field has thinned out
+  //   balanced — the standing half-and-half split
+  function attackShare(team) {
+    if (team.doctrine === 'blood') return 1;
+    if (team.doctrine === 'swoop') return swoopTime(team) ? 1 : 0;
+    return ATTACK_SHARE;
+  }
+
+  // a swooping team sits tight until it's down to two teams — then the whole army goes in
+  function swoopTime(team) {
+    return state.teams.filter(t => t.alive).length <= 2;
+  }
+
+  // the living defender standing closest to its own president — the bodyguard.
+  // Grunts on attack duty are never picked.
   function closestGuard(team, prez) {
+    const squad = attackSquad(team);
     let best = null, bestD = Infinity;
     for (const pl of team.players) {
-      if (pl.isPrez || !pl.alive) continue;
+      if (pl.isPrez || !pl.alive || squad.includes(pl)) continue;
       const d = Math.hypot(pl.x - prez.x, pl.y - prez.y);
       if (d < bestD) { bestD = d; best = pl; }
     }
@@ -854,12 +1089,16 @@
     const cfg = state.cfg;
     const peace = state.peace > 0;
     if (p.isPrez) {
-      // during the opening peace the prez just hunkers down by the flag
+      // during the opening truce the prez mucks in too — everyone builds the base
       if (peace) {
-        const dxF = p.team.flagX - p.x, dyF = p.team.flagY - p.y;
-        const distF = Math.hypot(dxF, dyF);
-        if (distF > 40) moveSmart(p, dt, dxF / distF, dyF / distF);
-        else movePlayer(p, dt, 0, 0);
+        p.placeT = Math.max(0, p.placeT - dt);
+        if (!buildRing(p, { x: p.team.flagX, y: p.team.flagY }, dt, BASE_RINGS)) {
+          // nothing left to build — settle back onto the flag
+          const dxF = p.team.flagX - p.x, dyF = p.team.flagY - p.y;
+          const distF = Math.hypot(dxF, dyF);
+          if (distF > 40) moveSmart(p, dt, dxF / distF, dyF / distF);
+          else movePlayer(p, dt, 0, 0);
+        }
         return;
       }
       // hurt president grabs a nearby healing pack if one is within a safe dash
@@ -884,10 +1123,12 @@
           return;
         }
       }
-      // if the president is the last one standing on the team, there's no one left
-      // to protect them — so they go on the offensive and hunt instead of hiding.
+      // Presidents play defence the entire match — home, behind the walls — right up
+      // until the field narrows to the last two teams. Only in that final showdown do
+      // they come out and hunt (and even then, only once their grunts are gone).
+      const endgame = state.teams.filter(t => t.alive).length <= 2;
       const gruntsLeft = p.team.players.some(q => !q.isPrez && q.alive);
-      if (!gruntsLeft) {
+      if (endgame && !gruntsLeft) {
         p.swordT = Math.max(0, p.swordT - dt);
         p.bowT = Math.max(0, p.bowT - dt);
         const foe = nearestEnemyPrez(p) || nearestEnemy(p, null);
@@ -900,7 +1141,9 @@
             moveSmart(p, dt, dx / d * 0.3, dy / d * 0.3);
           } else {
             // press the attack, but keep some spacing to use the bow
-            if (d > 240) moveSmart(p, dt, dx / d, dy / d);
+            if (p.closeIn && d < 190) p.closeIn = false;
+            else if (!p.closeIn && d > 290) p.closeIn = true;
+            if (p.closeIn) moveSmart(p, dt, dx / d, dy / d);
             else { const px = -dy / d, py = dx / d; moveSmart(p, dt, dx/d*0.3 + px*p.strafeDir*0.6, dy/d*0.3 + py*p.strafeDir*0.6); }
             if (sight && p.arrows > 0 && p.bowT <= 0) shootBow(p);
           }
@@ -913,7 +1156,12 @@
       const dxF = p.team.flagX - p.x, dyF = p.team.flagY - p.y;
       const distF = Math.hypot(dxF, dyF);
       const enemy = nearestEnemy(p, null);
-      const enemyClose = enemy && Math.hypot(enemy.x - p.x, enemy.y - p.y) < 240;
+      // deadband again: back off at 240, stop backing off only past 330, so the prez
+      // doesn't twitch back and forth on the edge of the danger radius
+      const foeD = enemy ? Math.hypot(enemy.x - p.x, enemy.y - p.y) : Infinity;
+      if (foeD < 240) p.panic = true;
+      else if (foeD > 330) p.panic = false;
+      const enemyClose = enemy && p.panic;
       let mx = 0, my = 0;
       if (enemyClose) {
         // run opposite direction, bounded by flag
@@ -951,9 +1199,26 @@
       }
     }
 
-    // FLEE: when hurt, break off — run for a healing pack if one's near,
-    // otherwise fall back toward home — instead of trading blows.
-    if (!peace && p.hp <= p.hpMax * 0.45) {
+    const squad = attackSquad(p.team);
+    const iAttack = squad.includes(p);
+    const vanguard = squad[0] === p;   // the one grunt who is ALWAYS on the attack
+
+    // RETALIATE: if someone is hitting us, hit them back — no standing there taking it.
+    p.retaliateT = Math.max(0, p.retaliateT - dt);
+    if (p.retaliateT > 0 && p.lastDmgFrom && p.lastDmgFrom.alive) {
+      p.task = 'hunt';
+      p.target = p.lastDmgFrom;
+    }
+    const beingHit = p.retaliateT > 0 && p.lastDmgFrom && p.lastDmgFrom.alive;
+
+    // FLEE: when hurt, break off — run for a healing pack if one's near, otherwise fall
+    // back toward home. Hysteresis (bail at 45%, only rejoin at 75%) keeps them from
+    // shivering on the threshold. The vanguard never runs, and nobody flees from a fight
+    // they're already in — they turn and swing instead.
+    if (peace || vanguard || beingHit) p.fleeing = false;
+    else if (p.hp <= p.hpMax * 0.45) p.fleeing = true;
+    else if (p.hp >= p.hpMax * 0.75) p.fleeing = false;
+    if (p.fleeing) {
       const foe = nearestEnemy(p, null);
       // is there a healing pack within reach to make for?
       let heal = null, healD = 900;
@@ -988,11 +1253,11 @@
       return;
     }
 
-    // DEFEND: only the single closest bodyguard peels back to protect the president;
-    // everyone else keeps pushing the attack so the team isn't just turtling at base.
+    // DEFEND: a defender intercepts anything closing on the president. Attackers never
+    // peel back — that's what keeps the offense quota honest.
     let defending = false;
     const myPrez = p.team.prez;
-    if (!peace && myPrez && myPrez.alive && myPrez !== p) {
+    if (!peace && !iAttack && myPrez && myPrez.alive && myPrez !== p) {
       const threat = nearestEnemy(myPrez, null);
       if (threat && Math.hypot(threat.x - myPrez.x, threat.y - myPrez.y) < 300 && closestGuard(p.team, myPrez) === p) {
         p.task = 'hunt';
@@ -1001,21 +1266,24 @@
       }
     }
 
-    // one grunt is the bodyguard (builds/repairs the ring, guards the prez) — but
-    // ONLY if the team can spare it. With just one grunt left, it fights, not hides.
-    const livingGrunts = p.team.players.filter(q => !q.isPrez && q.alive).length;
-    const iAmGuard = !peace && myPrez && myPrez.alive && livingGrunts >= 2 && closestGuard(p.team, myPrez) === p;
+    // everyone off attack duty is a builder-bodyguard: they never stop working on the
+    // base, walling the president in and patching what the enemy chews through.
+    const iAmGuard = !peace && !iAttack;
 
     if (peace) {
       // opening truce: everyone digs in and walls up around the president
       p.task = 'build';
+    } else if (beingHit) {
+      // already retaliating — leave the target alone
     } else if (defending) {
       // p.task/target already set to intercept the threat
     } else if (iAmGuard) {
       p.task = 'guard';
     } else if (p.aiTimer <= 0) {
-      // attackers gang up on the team's shared focus president
-      if (p.lastDmgFrom && p.lastDmgFrom.alive && Math.random() < 0.55) {
+      // attackers gang up on the team's shared focus president. Going for blood means
+      // exactly that — straight at the enemy president, no detours to pick fights.
+      const blood = p.team.doctrine === 'blood';
+      if (!blood && p.lastDmgFrom && p.lastDmgFrom.alive && Math.random() < 0.55) {
         p.task = 'hunt';
         p.target = p.lastDmgFrom;
       } else {
@@ -1027,11 +1295,14 @@
     }
 
     if (p.task === 'build' || p.task === 'guard') {
-      // build/repair the defensive RING around the president (with a doorway)
+      // Build the base: concentric rings around the president, sealed except for the
+      // gate. The anchor is the FLAG, not the president — a moving anchor would smear
+      // the walls around the arena. Builders never quit: blocks regenerate, so when the
+      // base is finished they just keep patching whatever gets broken.
+      const anchor = { x: p.team.flagX, y: p.team.flagY };
+      // the truce is for getting the full base up; after that they keep adding to it
+      const building = buildRing(p, anchor, dt, peace ? BASE_RINGS : LATE_RINGS);
       const prez = p.team.prez;
-      const anchor = prez && prez.alive ? { x: prez.x, y: prez.y }
-                                        : { x: p.team.flagX, y: p.team.flagY };
-      const building = p.blocks > 0 && buildRing(p, anchor, dt);
       if (p.task === 'guard') {
         // the guard also shoots at anything threatening home
         const foe = nearestEnemy(p, null);
@@ -1085,12 +1356,16 @@
         moveSmart(p, dt, dx/d * 0.6 + px * perp * 0.6, dy/d * 0.6 + py * perp * 0.6);
       }
     } else {
-      // close distance partway, keep some range for bow
-      if (d > 280) moveSmart(p, dt, dx/d, dy/d);
+      // Close distance partway, then hold at bow range. The two thresholds are a
+      // deadband: without it they'd cross one line, turn around, cross it back, and
+      // shudder on the spot forever.
+      if (p.closeIn && d < 200) p.closeIn = false;
+      else if (!p.closeIn && d > 300) p.closeIn = true;
+      if (p.closeIn) moveSmart(p, dt, dx/d, dy/d);
       else {
         const px = -dy / d, py = dx / d;
         const dir = p.strafeDir;
-        movePlayer(p, dt, dx/d * 0.2 + px * dir * 0.7, dy/d * 0.2 + py * dir * 0.7);
+        moveSmart(p, dt, dx/d * 0.2 + px * dir * 0.7, dy/d * 0.2 + py * dir * 0.7);
       }
     }
   }
@@ -1119,9 +1394,32 @@
 
   // ---------- update + render
   function update(dt) {
-    if (!state || state.ended) return;
+    if (!state) return;
+    // watching a kill cam: step the clip at half speed, then hand back to the end screen
+    if (state.replay) {
+      const r = state.replay;
+      r.t += dt * 0.5;
+      r.i = Math.floor(r.t * CLIP_FPS);
+      if (r.i >= r.clip.frames.length) {
+        state.replay = null;
+        document.getElementById('endOv').classList.remove('hidden');
+        document.getElementById('hud').classList.remove('hidden');
+      }
+      return;
+    }
+    if (state.ended) return;
+    recordClipFrame(dt);
     state.elapsed += dt;
     if (state.shake) state.shake = Math.max(0, state.shake - dt * 60);
+    if (state.unstickCd) state.unstickCd = Math.max(0, state.unstickCd - dt);
+
+    // announce the swoop the moment the field narrows to two teams
+    for (const t of state.teams) {
+      if (!t.alive || t.doctrine !== 'swoop' || t.swooped || !swoopTime(t)) continue;
+      t.swooped = true;
+      const mine = state.human ? state.human.team === t : state.specTeam === t;
+      if (mine) { showToast('🛡️➡️🩸 SWOOP! Your whole army is going in'); tone(600, 0.3, 'triangle', 0.07); }
+    }
 
     // opening peace: tick it down, then sound the charge
     if (state.peace > 0) {
@@ -1146,6 +1444,14 @@
     // remove taken / expired pickups
     state.pickups = state.pickups.filter(pu => !pu.taken && (!pu.drop || pu.life > 0));
     for (const pu of state.pickups) if (pu.drop) pu.life -= dt;
+
+    // block resupply — everyone slowly gets more blocks, so nobody (bots included)
+    // is ever left standing around unable to build or patch their base
+    for (const t of state.teams) for (const pl of t.players) {
+      if (!pl.alive || pl.blocks >= BLOCK_CAP) continue;
+      pl.blockRegenT = (pl.blockRegenT || 0) + dt;
+      if (pl.blockRegenT >= BLOCK_REGEN) { pl.blockRegenT = 0; pl.blocks++; }
+    }
 
     // human input
     const h = state.human;
@@ -1176,11 +1482,27 @@
       if (mouseDown || justClicked) {
         if (h.weapon === 'sword') { if (h.swordT <= 0) swingSword(h); }
         else if (h.weapon === 'bow') { if (h.bowT <= 0 && h.arrows > 0) shootBow(h); }
-        else if (h.weapon === 'blocks' && justClicked) {
-          if (h.blocks > 0 && state.placeGhost && h.placeT <= 0) {
-            if (tryPlaceBlock(h, state.placeGhost.gx, state.placeGhost.gy)) {
-              h.placeT = 0.12;
+        else if (h.weapon === 'blocks' && justClicked && state.placeGhost) {
+          // Build mode: one click puts a block down. Click that SAME square a second
+          // time (a click, then another click) and the block turns into a gate — the
+          // one square of your wall your team can walk through.
+          const g = state.placeGhost;
+          const cellKey = g.gx + ',' + g.gy;
+          const now = performance.now();
+          const secondClick = (now - lastClickT < DOUBLE_CLICK_MS) && lastClickCell === cellKey;
+          lastClickT = now; lastClickCell = cellKey;
+          if (secondClick) {
+            if (tryMakeGate(h, g.gx, g.gy)) {
+              showToast('GATE — your team walks through, nobody else does');
+              lastClickT = 0;               // don't let a third click re-trigger
+            } else {
+              const there = getBlock(g.gx, g.gy);
+              if (there && there.gate) showToast('Already a gate');
+              else if (there && there.team !== h.team) showToast("That's an enemy wall — you can't gate it");
+              else showToast('Too far away — get closer to make a gate');
             }
+          } else if (h.blocks > 0 && h.placeT <= 0) {
+            if (tryPlaceBlock(h, g.gx, g.gy)) h.placeT = 0.12;
           }
         }
       }
@@ -1286,6 +1608,7 @@
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       return;
     }
+    if (state.replay) { renderReplay(); return; }
     ctx.fillStyle = '#1a1a26';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save();
@@ -1346,12 +1669,38 @@
     }
 
     // blocks
+    const myTeam = state.human ? state.human.team : state.specTeam;
     for (const b of state.blocks.values()) {
       const r = gridRect(b.gx, b.gy);
-      ctx.fillStyle = b.team.dim;
-      ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.fillStyle = b.team.color;
-      ctx.fillRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4);
+      if (b.gate) {
+        // GATES are drawn as a big cross so you can spot the way out at a glance:
+        // hollow frame + a bright X. Your own gates glow white — those you can walk
+        // through. Enemy gates stay dark: to you they're just another wall.
+        const mine = b.team === myTeam;
+        ctx.fillStyle = b.team.dim;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.strokeStyle = b.team.color;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4);
+        ctx.strokeStyle = mine ? '#fff' : b.team.color;
+        ctx.lineWidth = mine ? 5 : 3;
+        ctx.beginPath();
+        ctx.moveTo(r.x + 6, r.y + 6);            ctx.lineTo(r.x + r.w - 6, r.y + r.h - 6);
+        ctx.moveTo(r.x + r.w - 6, r.y + 6);      ctx.lineTo(r.x + 6, r.y + r.h - 6);
+        ctx.stroke();
+        if (mine) {
+          // soft glow so your doorway reads instantly from across the base
+          ctx.globalAlpha = 0.25 + Math.sin(state.elapsed * 4) * 0.12;
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6);
+          ctx.globalAlpha = 1;
+        }
+      } else {
+        ctx.fillStyle = b.team.dim;
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.fillStyle = b.team.color;
+        ctx.fillRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4);
+      }
       // hp bar if damaged
       const hpRatio = b.hp / BLOCK_HP;
       if (hpRatio < 1) {
@@ -1363,13 +1712,16 @@
     }
 
     // place ghost
-    if (state.placeGhost && state.human && state.human.alive && state.human.weapon === 'blocks' && state.human.blocks > 0) {
+    if (state.placeGhost && state.human && state.human.alive && state.human.weapon === 'blocks') {
       const g = state.placeGhost;
       const r = gridRect(g.gx, g.gy);
       const cellX = r.x + r.w/2, cellY = r.y + r.h/2;
       const inRange = Math.hypot(cellX - state.human.x, cellY - state.human.y) < PLACE_RANGE;
-      const occupied = !!getBlock(g.gx, g.gy);
-      const valid = inRange && !occupied;
+      const there = getBlock(g.gx, g.gy);
+      // hovering one of your own walls? then the only thing you can do here is cut a
+      // gate into it — so preview the cross and spell out the double-click
+      const gateable = there && there.team === state.human.team && !there.gate && inRange;
+      const valid = inRange && (!there || gateable) && (there || state.human.blocks > 0);
       ctx.globalAlpha = 0.45;
       ctx.fillStyle = valid ? state.human.team.color : '#ff5050';
       ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -1377,6 +1729,19 @@
       ctx.strokeStyle = valid ? '#fff' : '#ff5050';
       ctx.lineWidth = 2;
       ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      if (gateable) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(r.x + 6, r.y + 6);       ctx.lineTo(r.x + r.w - 6, r.y + r.h - 6);
+        ctx.moveTo(r.x + r.w - 6, r.y + 6); ctx.lineTo(r.x + 6, r.y + r.h - 6);
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('DOUBLE-CLICK = GATE', cellX, r.y - 6);
+        ctx.textAlign = 'left';
+      }
     }
 
     // arrows
@@ -1564,9 +1929,13 @@
     const hR = document.getElementById('hudR');
     const hB = document.getElementById('hudB');
     if (h && h.alive) {
-      hL.innerHTML = `<b style="color:${h.team.color}">${h.team.name} GRUNT</b> &nbsp;
+      const doc = h.team.doctrine === 'blood' ? '<b style="color:#ff5050">🩸 GO FOR BLOOD</b>'
+                : h.team.doctrine === 'swoop' ? `<b style="color:#39e3ff">🛡️ SWOOP IN</b>${swoopTime(h.team) ? ' <b style="color:#7eff5a">— GOING IN!</b>' : ''}`
+                : '<b style="color:#bbb">BALANCED</b>';
+      hL.innerHTML = `<b style="color:${h.team.color}">${h.team.name} ${h.isPrez ? 'PRESIDENT ★' : 'GRUNT'}</b> &nbsp;
         HP <b>${Math.ceil(h.hp)}/${h.hpMax}</b> &nbsp;
-        SWORD <b style="color:${SWORD[h.sword].color}">${SWORD[h.sword].name}</b>`;
+        SWORD <b style="color:${SWORD[h.sword].color}">${SWORD[h.sword].name}</b><br>
+        <span style="font-size:12px">PLAN ${doc} <span style="color:#8aa">[Q] switch</span></span>`;
     } else {
       // spectating (either you were knocked out, or you chose spectate mode)
       const t = state.specTarget;
@@ -1584,6 +1953,70 @@
         <div class="slot ${h.weapon==='blocks'?'active':''}"><b>3</b> <span>BLOCKS ${h.blocks}</span></div>
       `;
     } else hB.innerHTML = '';
+  }
+
+  // ---------- kill-cam playback: the same scene, replayed from the saved frames,
+  // camera locked on whoever went down
+  function renderReplay() {
+    const r = state.replay;
+    const clip = r.clip;
+    const frame = clip.frames[Math.min(r.i, clip.frames.length - 1)];
+    ctx.fillStyle = '#12121c';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(-(clip.vx - innerWidth/2), -(clip.vy - innerHeight/2));
+
+    // walls as they stood
+    for (const b of clip.blocks) {
+      const rect = gridRect(b.gx, b.gy);
+      ctx.fillStyle = b.dim;
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      if (b.gate) {
+        ctx.strokeStyle = b.color; ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(rect.x + 6, rect.y + 6);            ctx.lineTo(rect.x + rect.w - 6, rect.y + rect.h - 6);
+        ctx.moveTo(rect.x + rect.w - 6, rect.y + 6);   ctx.lineTo(rect.x + 6, rect.y + rect.h - 6);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = b.color;
+        ctx.fillRect(rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4);
+      }
+    }
+    // arrows in flight
+    for (const a of frame.arrows) {
+      ctx.fillStyle = a.color;
+      ctx.beginPath(); ctx.arc(a.x, a.y, 3, 0, Math.PI*2); ctx.fill();
+    }
+    // everyone who was still standing at that moment
+    for (const pl of frame.players) {
+      ctx.fillStyle = pl.color;
+      ctx.beginPath(); ctx.arc(pl.x, pl.y, PLAYER_R, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#0a0a14'; ctx.lineWidth = 2; ctx.stroke();
+      if (pl.isPrez) {   // gold star ring on presidents
+        ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(pl.x, pl.y, PLAYER_R + 5, 0, Math.PI*2); ctx.stroke();
+      }
+      if (pl.ref === clip.victim) {   // ring the player this clip is about
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(pl.x, pl.y, PLAYER_R + 11, 0, Math.PI*2); ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // banner + progress bar
+    ctx.fillStyle = 'rgba(10,12,20,0.85)';
+    ctx.fillRect(0, 0, canvas.width, 56);
+    ctx.fillStyle = '#ff5050';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('● REPLAY — ' + clip.title, canvas.width/2, 26);
+    ctx.fillStyle = '#8aa';
+    ctx.font = '12px monospace';
+    ctx.fillText('half speed · last ' + CLIP_SECONDS + ' seconds', canvas.width/2, 45);
+    ctx.textAlign = 'left';
+    const prog = Math.min(1, r.i / Math.max(1, clip.frames.length - 1));
+    ctx.fillStyle = '#39e3ff';
+    ctx.fillRect(0, 54, canvas.width * prog, 3);
   }
 
   let last = performance.now();
