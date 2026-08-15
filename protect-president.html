@@ -949,6 +949,28 @@
   // president). Rings are sealed solid except for ONE gate per ring, and every ring's
   // gate faces the middle of the arena — so they line up into a single corridor the
   // team can march out through. Returns { gx, gy, gate, convert } or null when done.
+  // you can't drop a block into a square somebody is standing in
+  function cellClearOfPlayers(gx, gy) {
+    const r = gridRect(gx, gy);
+    for (const team of state.teams) for (const pp of team.players) {
+      if (!pp.alive) continue;
+      const nx = clamp(pp.x, r.x, r.x + r.w);
+      const ny = clamp(pp.y, r.y, r.y + r.h);
+      if ((pp.x - nx)**2 + (pp.y - ny)**2 < (PLAYER_R - 1)**2) return false;
+    }
+    return true;
+  }
+
+  // Gate duty falls to ONE member of the team. If everybody chased the same doorway
+  // square they'd pile onto it, and a square with bodies in it can't be built into —
+  // which is how a whole team ends up standing around having laid four blocks.
+  function gateBuilder(team) {
+    // a grunt if there's one to spare, otherwise the president does it himself
+    return team.players.find(q => q.alive && q.isBot && !q.isPrez)
+        || team.players.find(q => q.alive && q.isBot)
+        || null;
+  }
+
   function ringPlan(anchor, p, maxR) {
     const [agx, agy] = worldToGrid(anchor.x, anchor.y);
     const outAng = Math.atan2(ARENA_H/2 - anchor.y, ARENA_W/2 - anchor.x);
@@ -964,22 +986,31 @@
         const off = Math.abs(Math.atan2(Math.sin(ang - outAng), Math.cos(ang - outAng)));
         if (off < gateBest) { gateBest = off; gateKey = gx + ',' + gy; }
       }
-      // the doorway comes first — a sealed ring with no gate would trap the whole team
-      for (const c of cells) {
-        if (c.gx + ',' + c.gy !== gateKey) continue;
-        const b = getBlock(c.gx, c.gy);
-        if (!b) return { gx: c.gx, gy: c.gy, gate: true, convert: false };
-        if (!b.gate && b.team === p.team) return { gx: c.gx, gy: c.gy, gate: true, convert: true };
+      const [ggx, ggy] = gateKey.split(',').map(Number);
+      const gateBlock = getBlock(ggx, ggy);
+      const gateMissing = !gateBlock || (!gateBlock.gate && gateBlock.team === p.team);
+      // the doorway matters most — a sealed ring with no gate traps the whole team —
+      // but only the one nominated builder goes for it
+      if (gateMissing && gateBuilder(p.team) === p && (gateBlock || cellClearOfPlayers(ggx, ggy))) {
+        return { gx: ggx, gy: ggy, gate: true, convert: !!gateBlock };
       }
-      // then fill the rest of the perimeter with solid wall, nearest cell first
+      // everyone else fills the rest of the perimeter: nearest square to THEM that is
+      // both empty and free of bodies, so builders naturally fan out around the ring
       let best = null, bestD = Infinity;
       for (const c of cells) {
         if (getBlock(c.gx, c.gy)) continue;
+        if (c.gx === ggx && c.gy === ggy) continue;          // leave the doorway alone
+        if (!cellClearOfPlayers(c.gx, c.gy)) continue;       // somebody's standing there
         const cx = c.gx * GRID + GRID/2, cy = c.gy * GRID + GRID/2;
         const d = Math.hypot(cx - p.x, cy - p.y);
         if (d < bestD) { bestD = d; best = { gx: c.gx, gy: c.gy, gate: false, convert: false }; }
       }
       if (best) return best;   // this ring still has holes — finish it before going outward
+      // ring's walls are done: if the nominated builder died before cutting the gate,
+      // whoever is here does it instead
+      if (gateMissing && (gateBlock || cellClearOfPlayers(ggx, ggy))) {
+        return { gx: ggx, gy: ggy, gate: true, convert: !!gateBlock };
+      }
     }
     return null;
   }
@@ -1012,8 +1043,18 @@
       const ok = cell.convert ? tryMakeGate(p, cell.gx, cell.gy)
                               : tryPlaceBlock(p, cell.gx, cell.gy, cell.gate);
       if (ok) p.placeT = state.peace > 0 ? PEACE_PLACE_CD : PLACE_CD;
+      else {
+        // couldn't build (usually because we're standing in the square ourselves) —
+        // back off it and try again in a moment rather than freezing on the spot
+        p.placeT = 0.15;
+        const ax = p.x - cellX, ay = p.y - cellY, am = Math.hypot(ax, ay) || 1;
+        moveSmart(p, dt, ax / am, ay / am);
+      }
     } else {
-      movePlayer(p, dt, 0, 0);
+      // waiting out the place cooldown: drift just off the square we're filling
+      const ax = p.x - cellX, ay = p.y - cellY, am = Math.hypot(ax, ay);
+      if (am < GRID * 0.9) moveSmart(p, dt, ax / (am || 1), ay / (am || 1));
+      else movePlayer(p, dt, 0, 0);
     }
     return true;
   }
