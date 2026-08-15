@@ -1067,6 +1067,9 @@
     // bots only: the human plays however they like, so bots fill the quota themselves
     const grunts = team.players.filter(q => !q.isPrez && q.alive && q.isBot);
     if (!grunts.length) return [];
+    // swooping means EVERYONE stays home behind the walls — not even a harasser goes
+    // out — right up until the swoop fires and the whole army leaves at once
+    if (team.doctrine === 'swoop' && !swoopTime(team)) return [];
     grunts.sort((a, b) => a.slot - b.slot);   // stable roles — no flip-flopping mid-fight
     const n = Math.max(MIN_ATTACKERS, Math.round(grunts.length * attackShare(team)));
     return grunts.slice(0, n);
