@@ -30,6 +30,28 @@
   .hint { color:#888; font-size:12px; line-height:1.5; margin-top:8px; }
   .back { position:fixed; top:8px; left:8px; padding:6px 10px; font-size:12px; background:#222; border:1px solid #444; color:#aab; text-decoration:none; border-radius:6px; z-index:10; }
   .back:hover { color:#fff; }
+
+  /* red-vs-blue score bar across the top of the screen */
+  .teambar { position:fixed; top:8px; left:50%; transform:translateX(-50%); width:min(560px, 70vw); pointer-events:none; z-index:6; }
+  .teambar .nums { display:flex; justify-content:space-between; font-size:20px; font-weight:bold; letter-spacing:1px; text-shadow:0 0 8px #000; }
+  .teambar .nums .red { color:#ff3b47; }
+  .teambar .nums .blue { color:#3a8bff; }
+  .teambar .track { position:relative; height:14px; margin-top:3px; border:2px solid #000; border-radius:7px; overflow:hidden; background:#3a8bff; box-shadow:0 0 14px rgba(0,0,0,0.7); }
+  .teambar .fill { position:absolute; inset:0; width:50%; background:#ff3b47; transition:width 0.25s; }
+  .teambar .mid { position:absolute; left:50%; top:0; bottom:0; width:2px; background:rgba(255,255,255,0.5); }
+  .teambar .clock { text-align:center; font-size:15px; margin-top:3px; color:#dde; text-shadow:0 0 6px #000; }
+
+  /* the 3-second black-out you get when you're tagged */
+  .blackout { position:fixed; inset:0; background:#000; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .blackout .big { font-size:44px; font-weight:bold; letter-spacing:6px; color:#ff3b47; text-shadow:0 0 22px #ff3b47; }
+  .blackout .sub { margin-top:14px; font-size:17px; color:#889; letter-spacing:2px; }
+  .blackout .count { margin-top:8px; font-size:60px; font-weight:bold; color:#fff; }
+
+  .teampick { display:flex; gap:10px; margin-top:6px; }
+  .teampick button { flex:1; padding:12px; font-size:15px; background:#232535; border:2px solid #333; }
+  .teampick button[data-t=red].sel { background:#ff3b47; border-color:#fff; }
+  .teampick button[data-t=blue].sel { background:#3a8bff; border-color:#fff; }
+  .teampick button[data-t=none].sel { background:#7a4fd0; border-color:#fff; }
 </style>
 </head>
 <body>
@@ -45,15 +67,39 @@
     <h1>LASER TAG ARENA</h1>
     <div class="hint">
       WASD/arrows to move &nbsp;•&nbsp; mouse aims &nbsp;•&nbsp; click or space to shoot &nbsp;•&nbsp; R reloads<br>
-      Take cover behind crates. Grab power-ups. Last shooter standing wins.
+      Red vs Blue. One hit tags you — your screen goes black for 3 seconds while
+      whoever tagged you slips away.
     </div>
     <label>YOUR NAME</label>
     <input type="text" id="name" maxlength="14" value="Player">
-    <label>COLOR</label>
-    <div class="colors" id="colors"></div>
-    <div style="margin-top:8px; display:flex; align-items:center; gap:10px;">
-      <input type="color" id="customColor" value="#ff3366" style="width:42px; height:32px; border:1px solid #444; background:#11131e; border-radius:6px; cursor:pointer; padding:0;">
-      <span style="color:#888; font-size:12px;">or pick any color</span>
+    <label>YOUR TEAM</label>
+    <div class="teampick" id="teamPick">
+      <button data-t="red" class="sel">RED</button>
+      <button data-t="blue">BLUE</button>
+      <button data-t="none">NO TEAMS</button>
+    </div>
+    <div style="color:#888; font-size:12px; margin-top:6px;">No teams: everyone for themselves, every player their own colour.</div>
+    <label>GAME MODE</label>
+    <div class="row" id="mode">
+      <button data-m="timer" class="sel">TIMER</button>
+      <button data-m="knockout">KNOCKOUT</button>
+    </div>
+    <div id="timerOpts">
+      <label>MATCH LENGTH</label>
+      <div class="row" id="dur">
+        <button data-s="60">1 MIN</button>
+        <button data-s="180" class="sel">3 MIN</button>
+        <button data-s="300">5 MIN</button>
+      </div>
+      <div style="color:#888; font-size:12px; margin-top:6px;">Most hits wins — but every hit you take costs you half a point.</div>
+    </div>
+    <div id="knockoutOpts" class="hidden">
+      <label>KNOCKOUT RULES</label>
+      <div class="row" id="ko">
+        <button data-k="revenge" class="sel">REVENGE</button>
+        <button data-k="elimination">ELIMINATION</button>
+      </div>
+      <div style="color:#888; font-size:12px; margin-top:6px;" id="koBlurb"></div>
     </div>
     <label>DIFFICULTY</label>
     <div class="row" id="diff">
@@ -71,6 +117,42 @@
       <button id="start">START</button>
     </div>
   </div>
+</div>
+
+<!-- pops up the moment you choose KNOCKOUT -->
+<div class="overlay hidden" id="koOv" style="background:rgba(0,0,0,0.75); z-index:30;">
+  <div class="panel" style="max-width:460px;">
+    <h1 style="font-size:24px;">KNOCKOUT — PICK YOUR RULES</h1>
+    <div style="margin:16px 0;">
+      <button id="koRevenge" style="width:100%; text-align:left; padding:14px 18px;">
+        REVENGE
+        <div style="font-weight:normal; font-size:12px; color:#ffd0d8; margin-top:4px; letter-spacing:0;">
+          Tagged and you're out — until whoever tagged you gets tagged. Then you're back in.
+        </div>
+      </button>
+    </div>
+    <div style="margin:16px 0;">
+      <button id="koElim" style="width:100%; text-align:left; padding:14px 18px;">
+        ELIMINATION
+        <div style="font-weight:normal; font-size:12px; color:#ffd0d8; margin-top:4px; letter-spacing:0;">
+          One hit and you're out for good. Last team with anyone left standing wins.
+        </div>
+      </button>
+    </div>
+    <div style="text-align:center;"><button id="koCancel" style="background:#333;">BACK</button></div>
+  </div>
+</div>
+
+<div class="teambar hidden" id="teamBar">
+  <div class="nums"><span class="red" id="redScore">0</span><span class="blue" id="blueScore">0</span></div>
+  <div class="track"><div class="fill" id="barFill"></div><div class="mid"></div></div>
+  <div class="clock" id="clock"></div>
+</div>
+
+<div class="blackout hidden" id="blackout">
+  <div class="big">RESPAWNING</div>
+  <div class="count" id="boCount">3</div>
+  <div class="sub" id="boSub"></div>
 </div>
 
 <div class="overlay hidden" id="endOv">
@@ -115,24 +197,59 @@
     } catch(e){}
   }
 
-  const PALETTE = ['#ff3366','#ffaa00','#ffd700','#7eff5a','#39e3ff','#5a8bff','#b66bff','#ff66cc','#ffffff','#ff9966'];
-  const colorsEl = document.getElementById('colors');
-  let selColor = PALETTE[0];
-  PALETTE.forEach((c,i) => {
-    const d = document.createElement('div');
-    d.className = 'swatch' + (i===0 ? ' sel' : '');
-    d.style.background = c;
-    d.onclick = () => {
-      colorsEl.querySelectorAll('.swatch').forEach(s=>s.classList.remove('sel'));
-      d.classList.add('sel'); selColor = c;
-      document.getElementById('customColor').value = c;
-    };
-    colorsEl.appendChild(d);
-  });
-  document.getElementById('customColor').oninput = e => {
-    selColor = e.target.value;
-    colorsEl.querySelectorAll('.swatch').forEach(s=>s.classList.remove('sel'));
+  // two sides, and everyone wears their side's colour so you can tell friend from foe
+  const TEAM = {
+    red:  { name:'RED',  color:'#ff3b47', dim:'#7a1a20', glow:'#ff6b73' },
+    blue: { name:'BLUE', color:'#3a8bff', dim:'#16386e', glow:'#7cb4ff' },
   };
+  // free-for-all colours, used when teams are switched off
+  const PALETTE = ['#ff3366','#ffaa00','#ffd700','#7eff5a','#39e3ff','#5a8bff','#b66bff','#ff66cc','#ffffff','#ff9966'];
+  let myTeam = 'red';                       // 'red' | 'blue' | 'none' (no teams)
+  const teamsOn = () => myTeam !== 'none';
+  document.querySelectorAll('#teamPick button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#teamPick button').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel'); myTeam = b.dataset.t;
+    };
+  });
+
+  // mode: a timed points match, or knockout with one of two rulesets
+  let mode = 'timer';
+  let koRule = 'revenge';
+  let matchSecs = 180;
+  const koOv = document.getElementById('koOv');
+  const koBlurb = document.getElementById('koBlurb');
+  function setKoRule(r) {
+    koRule = r;
+    document.querySelectorAll('#ko button').forEach(x => x.classList.toggle('sel', x.dataset.k === r));
+    koBlurb.textContent = r === 'revenge'
+      ? "You're out when tagged — and back in the moment the player who tagged you is tagged."
+      : 'One hit and you are out for good. Last team standing wins.';
+  }
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll('#mode button').forEach(x => x.classList.toggle('sel', x.dataset.m === m));
+    document.getElementById('timerOpts').classList.toggle('hidden', m !== 'timer');
+    document.getElementById('knockoutOpts').classList.toggle('hidden', m !== 'knockout');
+  }
+  document.querySelectorAll('#mode button').forEach(b => {
+    b.onclick = () => {
+      // choosing knockout opens the rules window right away
+      if (b.dataset.m === 'knockout') koOv.classList.remove('hidden');
+      else setMode('timer');
+    };
+  });
+  document.getElementById('koRevenge').onclick = () => { setMode('knockout'); setKoRule('revenge'); koOv.classList.add('hidden'); };
+  document.getElementById('koElim').onclick    = () => { setMode('knockout'); setKoRule('elimination'); koOv.classList.add('hidden'); };
+  document.getElementById('koCancel').onclick  = () => { koOv.classList.add('hidden'); setMode(mode); };
+  document.querySelectorAll('#ko button').forEach(b => { b.onclick = () => setKoRule(b.dataset.k); });
+  document.querySelectorAll('#dur button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#dur button').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel'); matchSecs = parseInt(b.dataset.s);
+    };
+  });
+  setKoRule('revenge');
 
   let diff = 'easy';
   document.querySelectorAll('#diff button').forEach(b => {
@@ -157,7 +274,6 @@
   const RELOAD_TIME = 1.1;
   const MAX_AMMO = 8;
   const FIRE_COOLDOWN = 0.14;
-  const HP_MAX = 4;
 
   const DIFF = {
     easy:   { botSpeed: 0.45, botAccuracy: 0.32, botFireDelay: 2.4, time: 180 },
@@ -165,7 +281,14 @@
     hard:   { botSpeed: 0.78, botAccuracy: 0.78, botFireDelay: 1.0, time: 120 },
   };
 
-  const BOT_NAMES = ['Vex','Nova','Rio','Kade','Zane','Pip','Jet','Lux','Onyx','Sable','Wren','Cyra'];
+  // call signs, so the scoreboard reads like a squad instead of a phone book
+  const BOT_NAMES = [
+    'Viper','Ghost','Reaper','Blaze','Frostbite','Havoc','Talon','Wraith',
+    'Ironclad','Nitro','Shadowfax','Vandal','Rampart','Bandit','Cobra','Ricochet',
+    'Deadbolt','Mirage','Warhound','Static','Grimlock','Torch','Bulwark','Nightjar',
+  ];
+  const HIT_TAKEN_PENALTY = 0.5;   // every hit you take costs you half a point
+  const RESPAWN_SECS = 3;          // how long your screen stays black after being tagged
 
   let state = null;
   const cam = { x:0, y:0 };
@@ -262,14 +385,21 @@
     return { x: 100, y: 100 };
   }
 
-  function makePlayer(name, color, isBot) {
+  let nextId = 0;
+  function makePlayer(name, team, isBot) {
     return {
-      name, color, isBot,
+      name, team, isBot,
+      id: nextId++,                                   // stable identity, even in a free-for-all
+      color: (TEAM[team] && TEAM[team].color) || '#fff',   // solo players get a palette colour instead
       x:0, y:0, vx:0, vy:0,
-      hp: HP_MAX, ammo: MAX_AMMO,
+      ammo: MAX_AMMO,
       reloadT: 0, fireT: 0,
       aim: 0,
       alive: true,
+      hits: 0, taken: 0,     // tags landed / tags received — the timer-mode scoreline
+      downT: 0,              // seconds left of the black-out before respawning
+      out: false,            // knockout: sitting the round out
+      taggedBy: null,        // who put us here (revenge mode watches this)
       eliminatedAt: 0,
       rapid: 0, overcharge: 0,
       moveTarget: null,
@@ -289,18 +419,33 @@
     const cfg = DIFF[diff];
     const walls = buildArena();
     const players = [];
-    const human = makePlayer((document.getElementById('name').value.trim() || 'Player').slice(0,14), selColor, false);
+    const teamed = teamsOn();
+    const myName = (document.getElementById('name').value.trim() || 'Player').slice(0,14);
+
+    // shuffle the call signs so you don't face the same six every round
+    const names = BOT_NAMES.slice();
+    for (let i = names.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [names[i], names[j]] = [names[j], names[i]];
+    }
+
+    const human = makePlayer(myName, teamed ? myTeam : 'solo0', false);
+    if (!teamed) human.color = PALETTE[0];
     const sp = spawnPoint(walls, []);
     human.x = sp.x; human.y = sp.y;
     players.push(human);
 
-    const usedColors = new Set([selColor]);
+    // with teams on, split the bots evenly around the human so the sides stay level
+    const other = myTeam === 'red' ? 'blue' : 'red';
+    let mine = 1, theirs = 0;
     for (let i=0;i<botCount;i++) {
-      let c;
-      const free = PALETTE.filter(p => !usedColors.has(p));
-      if (free.length) { c = free[Math.floor(Math.random()*free.length)]; usedColors.add(c); }
-      else c = PALETTE[Math.floor(Math.random()*PALETTE.length)];
-      const bot = makePlayer(BOT_NAMES[i % BOT_NAMES.length], c, true);
+      let team;
+      if (teamed) {
+        team = theirs < mine ? other : myTeam;
+        if (team === myTeam) mine++; else theirs++;
+      } else team = 'solo' + (i + 1);
+      const bot = makePlayer(names[i % names.length], team, true);
+      if (!teamed) bot.color = PALETTE[(i + 1) % PALETTE.length];
       const sp2 = spawnPoint(walls, players);
       bot.x = sp2.x; bot.y = sp2.y;
       players.push(bot);
@@ -311,10 +456,15 @@
       bolts: [], particles: [], floaters: [],
       pickups: [],
       pickupT: 5,
-      cfg, time: cfg.time, elapsed: 0,
+      cfg, elapsed: 0,
+      teamed,
+      mode, koRule,
+      time: mode === 'timer' ? matchSecs : 0,   // knockout runs until a side is wiped out
       ended: false,
       humanIdx: 0,
     };
+
+    document.getElementById('teamBar').classList.remove('hidden');
 
     cam.x = human.x - innerWidth/2;
     cam.y = human.y - innerHeight/2;
@@ -325,6 +475,10 @@
     document.getElementById('endOv').classList.add('hidden');
     document.getElementById('titleOv').classList.remove('hidden');
     document.getElementById('ch').classList.add('hidden');
+    document.getElementById('teamBar').classList.add('hidden');
+    document.getElementById('blackout').classList.add('hidden');
+    document.getElementById('hud').classList.add('hidden');
+    state = null;
   };
 
   function movePlayer(p, dt, mx, my) {
@@ -354,7 +508,7 @@
       vx: Math.cos(p.aim) * BOLT_SPEED,
       vy: Math.sin(p.aim) * BOLT_SPEED,
       owner: p, life: 1.5, color: p.color,
-      power: p.overcharge > 0 ? HP_MAX : 1,
+      power: p.overcharge > 0 ? 2 : 1,   // overcharge only makes the bolt fatter/faster-looking
     });
     p.ammo--;
     p.fireT = FIRE_COOLDOWN * (p.rapid > 0 ? 0.5 : 1);
@@ -366,6 +520,7 @@
     let target = null, bestD = Infinity;
     for (const o of state.players) {
       if (!o.alive || o === b) continue;
+      if (friendly(o, b)) continue;                 // never draw a bead on your own side
       if (!lineOfSight(state.walls, b.x, b.y, o.x, o.y)) continue;
       const d = Math.hypot(o.x - b.x, o.y - b.y);
       if (d < bestD) { bestD = d; target = o; }
@@ -413,16 +568,64 @@
     }
   }
 
-  function elim(p, by) {
-    p.alive = false;
+  // are these two on the same side? (with teams off, only you are on your own side)
+  function friendly(a, b) { return a === b || (state.teamed && a.team === b.team); }
+
+  // TAGGED. There's no health — one hit does it. In a timed match your screen goes
+  // black for three seconds and you come back somewhere else, which is exactly long
+  // enough for whoever tagged you to disappear. In knockout you're out of the round.
+  function tagPlayer(p, by) {
+    p.taken++;
+    if (by) by.hits++;
+    p.taggedBy = by || null;
     p.eliminatedAt = state.elapsed;
-    p.killedBy = by || null;
-    state.particles.push(...burst(p.x, p.y, p.color, 40));
-    state.particles.push(...burst(p.x, p.y, '#ffd700', 14));
-    state.floaters.push({ x:p.x, y:p.y - 24, text:`${p.name} OUT`, color:p.color, life:1.6, ttl:1.6 });
-    state.shake = Math.max(state.shake || 0, p === state.players[state.humanIdx] ? 22 : 8);
+    state.particles.push(...burst(p.x, p.y, p.color, 34));
+    state.particles.push(...burst(p.x, p.y, '#ffd700', 12));
+    const isHuman = p === state.players[state.humanIdx];
+    state.shake = Math.max(state.shake || 0, isHuman ? 22 : 8);
     noise(0.3, 0.07);
     tone(180, 0.25, 'sawtooth', 0.06);
+
+    if (state.mode === 'knockout') {
+      p.alive = false;
+      p.out = true;
+      state.floaters.push({ x:p.x, y:p.y - 24, text:`${p.name} OUT`, color:p.color, life:1.6, ttl:1.6 });
+      if (state.koRule === 'revenge') {
+        // whoever tagged them now carries their revenge: if that shooter goes down,
+        // everyone waiting on them comes straight back in
+        state.floaters.push({ x:p.x, y:p.y - 40, text:'awaiting revenge', color:'#ffd54f', life:1.8, ttl:1.8 });
+        avengeFor(p);
+      }
+    } else {
+      p.alive = false;
+      p.downT = RESPAWN_SECS;
+      state.floaters.push({ x:p.x, y:p.y - 24, text:'TAGGED', color:p.color, life:1.4, ttl:1.4 });
+    }
+  }
+
+  // revenge: anyone knocked out by `victim` is released the moment `victim` is tagged
+  function avengeFor(victim) {
+    for (const q of state.players) {
+      if (q.out && q.taggedBy === victim) {
+        respawn(q);
+        q.out = false;
+        q.taggedBy = null;
+        state.floaters.push({ x:q.x, y:q.y - 24, text:'REVENGE — BACK IN', color:'#7eff5a', life:1.8, ttl:1.8 });
+        if (q === state.players[state.humanIdx]) tone(760, 0.18, 'triangle', 0.06);
+      }
+    }
+  }
+
+  function respawn(p) {
+    const sp = spawnPoint(state.walls, state.players.filter(q => q.alive && !friendly(q, p)));
+    p.x = sp.x; p.y = sp.y;
+    p.vx = p.vy = 0;
+    p.alive = true;
+    p.downT = 0;
+    p.ammo = MAX_AMMO;
+    p.reloadT = 0; p.fireT = 0;
+    p.rapid = 0; p.overcharge = 0;
+    state.particles.push(...burst(p.x, p.y, p.color, 16));
   }
 
   function burst(x, y, color, n) {
@@ -436,16 +639,16 @@
   }
 
   function spawnPickup() {
-    const types = ['heal','rapid','overcharge'];
+    const types = ['ammo','rapid','overcharge'];
     const t = types[Math.floor(Math.random() * types.length)];
     const sp = spawnPoint(state.walls, state.players);
     state.pickups.push({ x: sp.x, y: sp.y, type: t, life: 22 });
   }
 
   function applyPickup(p, type) {
-    if (type === 'heal') {
-      p.hp = Math.min(HP_MAX, p.hp + 1);
-      state.floaters.push({ x:p.x, y:p.y - 24, text:'+1 HP', color:'#7eff5a', life:1.2, ttl:1.2 });
+    if (type === 'ammo') {
+      p.ammo = MAX_AMMO; p.reloadT = 0;
+      state.floaters.push({ x:p.x, y:p.y - 24, text:'FULL MAG', color:'#7eff5a', life:1.2, ttl:1.2 });
     } else if (type === 'rapid') {
       p.rapid = 6;
       state.floaters.push({ x:p.x, y:p.y - 24, text:'RAPID', color:'#39e3ff', life:1.2, ttl:1.2 });
@@ -490,6 +693,13 @@
       if (b.alive) botThink(b, dt);
     }
 
+    // count down everyone's black-out and put them back in when it runs out
+    for (const p of state.players) {
+      if (p.alive || p.out || p.downT <= 0) continue;
+      p.downT -= dt;
+      if (p.downT <= 0) respawn(p);
+    }
+
     for (const p of state.players) {
       if (!p.alive) continue;
       p.fireT = Math.max(0, p.fireT - dt);
@@ -519,13 +729,11 @@
         if (dead) break;
         for (const p of state.players) {
           if (!p.alive || p === b.owner) continue;
+          if (friendly(p, b.owner)) continue;          // bolts pass straight through team-mates
           const dx = p.x - b.x, dy = p.y - b.y;
           if (dx*dx + dy*dy < (PLAYER_R + BOLT_R) * (PLAYER_R + BOLT_R)) {
-            p.hp -= b.power;
             state.particles.push(...burst(b.x, b.y, b.color, 10));
-            state.floaters.push({ x:p.x, y:p.y - 24, text:`-${b.power}`, color:b.color, life:0.8, ttl:0.8 });
-            if (p === state.players[state.humanIdx]) state.shake = Math.max(state.shake || 0, 10);
-            if (p.hp <= 0) elim(p, b.owner);
+            tagPlayer(p, b.owner);
             dead = true;
             break;
           }
@@ -563,61 +771,106 @@
       if (f.life <= 0) state.floaters.splice(i, 1);
     }
 
-    const followTarget = human.alive ? human : state.players.find(p => p.alive) || human;
+    // While you're blacked out the camera holds where you fell — you can't peek at where
+    // your attacker ran off to. Knocked out of a knockout round, you spectate a team-mate.
+    const followTarget = human.alive ? human
+      : (human.out ? (state.players.find(p => p.alive && friendly(p, human)) || human) : human);
     cam.x = clamp(followTarget.x - innerWidth / 2, 0, Math.max(0, ARENA_W - innerWidth));
     cam.y = clamp(followTarget.y - innerHeight / 2, 0, Math.max(0, ARENA_H - innerHeight));
     if (ARENA_W < innerWidth) cam.x = (ARENA_W - innerWidth) / 2;
     if (ARENA_H < innerHeight) cam.y = (ARENA_H - innerHeight) / 2;
 
-    state.time -= dt;
     if (state.shake) state.shake = Math.max(0, state.shake - dt * 60);
-    const alive = state.players.filter(p => p.alive);
 
-    // End immediately when the human is down — take them back to the end screen.
-    // Delay slightly so the eliminate VFX gets to play.
-    if (!human.alive && !state.endTimer) state.endTimer = 1.2;
-    if (state.endTimer) {
-      state.endTimer -= dt;
-      if (state.endTimer <= 0) {
-        state.ended = true;
-        const winners = alive.length ? alive : [human];
-        showEnd(winners, human.killedBy);
-      }
+    if (state.mode === 'timer') {
+      state.time -= dt;
+      if (state.time <= 0) { state.time = 0; state.ended = true; showEnd(); }
       return;
     }
 
-    if (alive.length <= 1 || state.time <= 0) {
+    // knockout: the round ends when only one side still has anybody in it
+    const sidesLeft = new Set(state.players.filter(p => !p.out).map(p => sideKey(p)));
+    if (sidesLeft.size <= 1) {
       state.ended = true;
-      let winners;
-      if (alive.length === 1) winners = alive;
-      else if (alive.length === 0) {
-        const maxT = state.players.reduce((m,q) => Math.max(m, q.eliminatedAt), 0);
-        winners = state.players.filter(p => p.eliminatedAt === maxT);
-      } else winners = alive;
-      showEnd(winners);
+      showEnd();
     }
   }
 
-  function showEnd(winners, killer) {
+  // the key a player scores under: their team, or themselves when teams are off
+  function sideKey(p) { return state.teamed ? p.team : p.id; }
+  function sideName(k) {
+    if (state.teamed) return TEAM[k].name;
+    const p = state.players.find(q => q.id === k);
+    return p ? p.name : '?';
+  }
+  function sideColor(k) {
+    if (state.teamed) return TEAM[k].color;
+    const p = state.players.find(q => q.id === k);
+    return p ? p.color : '#fff';
+  }
+
+  function teamScore(key) {
+    let s = 0;
+    for (const p of state.players) {
+      if (sideKey(p) !== key) continue;
+      s += p.hits - p.taken * HIT_TAKEN_PENALTY;
+    }
+    return s;
+  }
+
+  function sideKeys() {
+    return state.teamed ? ['red','blue'] : state.players.map(p => p.id);
+  }
+
+  function showEnd() {
     const ov = document.getElementById('endOv');
     const t = document.getElementById('endTitle');
     const txt = document.getElementById('endText');
     const human = state.players[state.humanIdx];
-    const youWin = winners.includes(human);
-    t.textContent = youWin ? (winners.length > 1 ? 'YOU SURVIVED' : 'VICTORY') : 'DOWN';
-    t.style.color = youWin ? '#7eff5a' : '#ff3366';
-    t.style.textShadow = `0 0 14px ${youWin ? '#7eff5a' : '#ff3366'}`;
-    let line = '';
-    if (!human.alive && killer) {
-      line = `Eliminated by <b style="color:${killer.color}">${killer.name}</b>. `;
+    const mySide = sideKey(human);
+
+    // who won: most points on the clock, or the last side standing in knockout
+    let winners;
+    if (state.mode === 'timer') {
+      const scored = sideKeys().map(k => ({ k, s: teamScore(k) }));
+      const top = Math.max(...scored.map(x => x.s));
+      winners = scored.filter(x => x.s === top).map(x => x.k);
+    } else {
+      winners = [...new Set(state.players.filter(p => !p.out).map(p => sideKey(p)))];
+      if (!winners.length) winners = [mySide];   // everyone out at once — call it yours
     }
-    if (winners.length === 1) line += `${winners[0].name} wins the round.`;
-    else line += `Tie — ${winners.map(w => w.name).join(', ')}`;
+    const youWin = winners.includes(mySide);
+    const tie = winners.length > 1;
+
+    t.textContent = youWin ? (tie ? 'DRAW' : 'VICTORY') : 'DEFEAT';
+    const col = youWin ? (tie ? '#ffd54f' : '#7eff5a') : '#ff3366';
+    t.style.color = col;
+    t.style.textShadow = `0 0 14px ${col}`;
+
+    const label = k => `<b style="color:${sideColor(k)}">${sideName(k)}</b>`;
+    let line = tie ? `Dead heat — ${winners.map(label).join(' and ')}.`
+                   : `${label(winners[0])} takes it.`;
+    if (state.mode === 'timer') {
+      if (state.teamed) {
+        line += `<br>RED <b>${fmtScore(teamScore('red'))}</b> &nbsp;—&nbsp; BLUE <b>${fmtScore(teamScore('blue'))}</b>`;
+      }
+      line += `<br><span style="color:#9ab">You landed <b>${human.hits}</b> and took <b>${human.taken}</b>` +
+              ` — <b>${fmtScore(human.hits - human.taken * HIT_TAKEN_PENALTY)}</b> points.</span>`;
+    } else {
+      const left = state.players.filter(p => !p.out && sideKey(p) === mySide).length;
+      line += `<br><span style="color:#9ab">${state.koRule === 'revenge' ? 'Revenge' : 'Elimination'} rules` +
+              ` — you tagged <b>${human.hits}</b>. ${human.out ? 'You were knocked out.' : `Still standing with ${left - 1} team-mate${left === 2 ? '' : 's'}.`}</span>`;
+    }
     txt.innerHTML = line;
     ov.classList.remove('hidden');
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('ch').classList.add('hidden');
+    document.getElementById('teamBar').classList.add('hidden');
+    document.getElementById('blackout').classList.add('hidden');
   }
+
+  // scores can land on halves, so show 3.5 but not 4.0
+  function fmtScore(v) { return Number.isInteger(v) ? String(v) : v.toFixed(1); }
 
   function drawArenaBg() {
     ctx.fillStyle = '#0a0a14';
@@ -666,7 +919,7 @@
 
     // pickups
     for (const pu of state.pickups) {
-      const col = pu.type === 'heal' ? '#7eff5a' : pu.type === 'rapid' ? '#39e3ff' : '#ffd700';
+      const col = pu.type === 'ammo' ? '#7eff5a' : pu.type === 'rapid' ? '#39e3ff' : '#ffd700';
       const pulse = 0.55 + 0.35 * Math.sin(state.elapsed * 5);
       ctx.save();
       ctx.globalAlpha = pulse;
@@ -679,7 +932,7 @@
       ctx.font = 'bold 14px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const ch = pu.type === 'heal' ? '+' : pu.type === 'rapid' ? 'R' : '!';
+      const ch = pu.type === 'ammo' ? '+' : pu.type === 'rapid' ? 'R' : '!';
       ctx.fillText(ch, pu.x, pu.y + 1);
     }
 
@@ -733,20 +986,27 @@
       ctx.lineTo(p.x + Math.cos(p.aim) * (PLAYER_R + 14), p.y + Math.sin(p.aim) * (PLAYER_R + 14));
       ctx.stroke();
 
+      // you get a white ring; team-mates get a soft one, so a glance tells you who
+      // you're allowed to shoot
+      const me = state.players[state.humanIdx];
+      if (p === me) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(p.x, p.y, PLAYER_R + 6, 0, Math.PI*2); ctx.stroke();
+      } else if (friendly(p, me)) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.arc(p.x, p.y, PLAYER_R + 5, 0, Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
       // name
-      ctx.fillStyle = p === state.players[state.humanIdx] ? '#fff' : '#cfd';
-      ctx.font = (p === state.players[state.humanIdx] ? 'bold ' : '') + '12px monospace';
+      ctx.fillStyle = p === me ? '#fff' : (friendly(p, me) ? '#cfd' : '#ffd0d0');
+      ctx.font = (p === me ? 'bold ' : '') + '12px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(p.name, p.x, p.y - PLAYER_R - 14);
-
-      // hp pips
-      const pipW = 8, pipH = 4, gap = 2;
-      const totalW = HP_MAX * pipW + (HP_MAX - 1) * gap;
-      for (let i=0;i<HP_MAX;i++) {
-        ctx.fillStyle = i < p.hp ? '#7eff5a' : '#3a3a4a';
-        ctx.fillRect(p.x - totalW/2 + i * (pipW + gap), p.y - PLAYER_R - 9, pipW, pipH);
-      }
     }
 
     // floaters
@@ -766,6 +1026,7 @@
 
     drawMinimap();
     drawHUD();
+    drawBlackout();
   }
 
   function drawMinimap() {
@@ -782,7 +1043,7 @@
     ctx.fillStyle = '#2a2c44';
     for (const w of state.walls) ctx.fillRect(mx + w.x * sx, my + w.y * sy, Math.max(1, w.w * sx), Math.max(1, w.h * sy));
     for (const pu of state.pickups) {
-      const col = pu.type === 'heal' ? '#7eff5a' : pu.type === 'rapid' ? '#39e3ff' : '#ffd700';
+      const col = pu.type === 'ammo' ? '#7eff5a' : pu.type === 'rapid' ? '#39e3ff' : '#ffd700';
       ctx.fillStyle = col;
       ctx.fillRect(mx + pu.x * sx - 2, my + pu.y * sy - 2, 4, 4);
     }
@@ -815,12 +1076,77 @@
       const buffs = [];
       if (human.rapid > 0) buffs.push(`<span style="color:#39e3ff">RAPID ${Math.ceil(human.rapid)}</span>`);
       if (human.overcharge > 0) buffs.push(`<span style="color:#ffd700">OVERCHARGE ${Math.ceil(human.overcharge)}</span>`);
-      hudL.innerHTML = `<b style="color:${human.color}">${human.name}</b> &nbsp; HP ${human.hp}/${HP_MAX} &nbsp; ${ammoStr} ${buffs.length ? '&nbsp; ' + buffs.join(' ') : ''}`;
+      hudL.innerHTML = `<b style="color:${human.color}">${human.name}</b> &nbsp; ${ammoStr}` +
+        ` &nbsp; TAGS <b>${human.hits}</b> / TAKEN <b>${human.taken}</b>` +
+        (buffs.length ? '&nbsp; ' + buffs.join(' ') : '');
+    } else if (human.out) {
+      hudL.innerHTML = state.koRule === 'revenge' && human.taggedBy
+        ? `<b style="color:#ffd54f">OUT</b> — back in if <b style="color:${human.taggedBy.color}">${human.taggedBy.name}</b> gets tagged`
+        : `<b style="color:#ff3366">OUT OF THE ROUND</b>`;
     } else {
-      hudL.innerHTML = `<b style="color:#ff3366">SPECTATING</b>`;
+      hudL.innerHTML = `<b style="color:#ff3366">TAGGED</b>`;
     }
-    const aliveCount = state.players.filter(p => p.alive).length;
-    hudR.innerHTML = `<b>${aliveCount}</b> ALIVE &nbsp; TIME <b>${Math.max(0, Math.ceil(state.time))}</b>s`;
+    if (state.mode === 'timer') {
+      hudR.innerHTML = `<b>${state.players.filter(p => p.alive).length}</b> IN PLAY`;
+    } else {
+      const left = state.players.filter(p => !p.out).length;
+      hudR.innerHTML = `<b>${left}</b> STILL IN &nbsp; <span style="color:#9ab">${state.koRule === 'revenge' ? 'REVENGE' : 'ELIMINATION'}</span>`;
+    }
+    drawTeamBar();
+  }
+
+  // the red-vs-blue bar across the top (or your score vs the leader, with teams off)
+  function drawTeamBar() {
+    const redEl = document.getElementById('redScore');
+    const blueEl = document.getElementById('blueScore');
+    const fill = document.getElementById('barFill');
+    const clock = document.getElementById('clock');
+    let a, b, aLabel, bLabel, aCol, bCol;
+    if (state.teamed) {
+      a = state.mode === 'timer' ? teamScore('red') : state.players.filter(p => !p.out && p.team === 'red').length;
+      b = state.mode === 'timer' ? teamScore('blue') : state.players.filter(p => !p.out && p.team === 'blue').length;
+      aLabel = `RED ${fmtScore(a)}`; bLabel = `${fmtScore(b)} BLUE`;
+      aCol = TEAM.red.color; bCol = TEAM.blue.color;
+    } else {
+      // free-for-all: you against whoever is top of the pile
+      const human = state.players[state.humanIdx];
+      const score = p => state.mode === 'timer' ? p.hits - p.taken * HIT_TAKEN_PENALTY : (p.out ? -1 : p.hits);
+      const rivals = state.players.filter(p => p !== human);
+      const leader = rivals.reduce((m, p) => score(p) > score(m) ? p : m, rivals[0] || human);
+      a = score(human); b = score(leader);
+      aLabel = `YOU ${fmtScore(a)}`; bLabel = `${fmtScore(b)} ${leader.name}`;
+      aCol = human.color; bCol = leader.color;
+    }
+    redEl.textContent = aLabel; redEl.style.color = aCol;
+    blueEl.textContent = bLabel; blueEl.style.color = bCol;
+    // the split is relative, and never collapses to nothing so both sides stay readable
+    const lo = Math.min(a, b, 0);
+    const ta = a - lo, tb = b - lo;
+    const pct = (ta + tb) <= 0 ? 50 : clamp(ta / (ta + tb) * 100, 6, 94);
+    fill.style.width = pct + '%';
+    fill.style.background = aCol;
+    fill.parentElement.style.background = bCol;
+    clock.textContent = state.mode === 'timer'
+      ? fmtClock(Math.max(0, state.time))
+      : (state.koRule === 'revenge' ? 'REVENGE' : 'ELIMINATION');
+  }
+
+  function fmtClock(s) {
+    const m = Math.floor(s / 60), r = Math.floor(s % 60);
+    return `${m}:${String(r).padStart(2,'0')}`;
+  }
+
+  // the black screen you sit behind for three seconds after being tagged
+  function drawBlackout() {
+    const bo = document.getElementById('blackout');
+    const human = state.players[state.humanIdx];
+    const show = !!state && !state.ended && !human.alive && !human.out && human.downT > 0;
+    bo.classList.toggle('hidden', !show);
+    if (!show) return;
+    document.getElementById('boCount').textContent = Math.ceil(human.downT);
+    document.getElementById('boSub').innerHTML = human.taggedBy
+      ? `tagged by <b style="color:${human.taggedBy.color}">${human.taggedBy.name}</b> — they're getting away`
+      : '';
   }
 
   let last = performance.now();
