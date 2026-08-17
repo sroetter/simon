@@ -289,6 +289,7 @@
   ];
   const HIT_TAKEN_PENALTY = 0.5;   // every hit you take costs you half a point
   const RESPAWN_SECS = 3;          // how long your screen stays black after being tagged
+  const INVULN_SECS = 5;           // ...and how long you can't be tagged once you're back
 
   let state = null;
   const cam = { x:0, y:0 };
@@ -398,6 +399,7 @@
       alive: true,
       hits: 0, taken: 0,     // tags landed / tags received — the timer-mode scoreline
       downT: 0,              // seconds left of the black-out before respawning
+      invuln: 0,             // seconds of spawn protection still running
       out: false,            // knockout: sitting the round out
       taggedBy: null,        // who put us here (revenge mode watches this)
       eliminatedAt: 0,
@@ -435,15 +437,14 @@
     human.x = sp.x; human.y = sp.y;
     players.push(human);
 
-    // with teams on, split the bots evenly around the human so the sides stay level
+    // The other side always fields one player more than yours — you're worth more than a
+    // bot. With 6 bots that's you plus 2 against 4.
     const other = myTeam === 'red' ? 'blue' : 'red';
-    let mine = 1, theirs = 0;
+    const myBots = Math.max(0, Math.floor((botCount - 2) / 2));
     for (let i=0;i<botCount;i++) {
       let team;
-      if (teamed) {
-        team = theirs < mine ? other : myTeam;
-        if (team === myTeam) mine++; else theirs++;
-      } else team = 'solo' + (i + 1);
+      if (teamed) team = i < myBots ? myTeam : other;
+      else team = 'solo' + (i + 1);
       const bot = makePlayer(names[i % names.length], team, true);
       if (!teamed) bot.color = PALETTE[(i + 1) % PALETTE.length];
       const sp2 = spawnPoint(walls, players);
@@ -521,6 +522,7 @@
     for (const o of state.players) {
       if (!o.alive || o === b) continue;
       if (friendly(o, b)) continue;                 // never draw a bead on your own side
+      if (o.invuln > 0) continue;                   // no point shooting a spawn shield
       if (!lineOfSight(state.walls, b.x, b.y, o.x, o.y)) continue;
       const d = Math.hypot(o.x - b.x, o.y - b.y);
       if (d < bestD) { bestD = d; target = o; }
@@ -622,10 +624,12 @@
     p.vx = p.vy = 0;
     p.alive = true;
     p.downT = 0;
+    p.invuln = INVULN_SECS;     // untouchable for a few seconds so you're not spawn-camped
     p.ammo = MAX_AMMO;
     p.reloadT = 0; p.fireT = 0;
     p.rapid = 0; p.overcharge = 0;
     state.particles.push(...burst(p.x, p.y, p.color, 16));
+    if (p === state.players[state.humanIdx]) tone(520, 0.12, 'triangle', 0.05);
   }
 
   function burst(x, y, color, n) {
@@ -710,6 +714,12 @@
       }
       if (p.rapid > 0) p.rapid -= dt;
       if (p.overcharge > 0) p.overcharge -= dt;
+      if (p.invuln > 0) {
+        p.invuln = Math.max(0, p.invuln - dt);
+        if (p.invuln === 0 && p === state.players[state.humanIdx]) {
+          state.floaters.push({ x:p.x, y:p.y - 30, text:'SHIELD DOWN', color:'#ff3366', life:1.2, ttl:1.2 });
+        }
+      }
     }
 
     for (let i=state.bolts.length - 1; i >= 0; i--) {
@@ -730,6 +740,7 @@
         for (const p of state.players) {
           if (!p.alive || p === b.owner) continue;
           if (friendly(p, b.owner)) continue;          // bolts pass straight through team-mates
+          if (p.invuln > 0) continue;                  // ...and through anyone still spawn-shielded
           const dx = p.x - b.x, dy = p.y - b.y;
           if (dx*dx + dy*dy < (PLAYER_R + BOLT_R) * (PLAYER_R + BOLT_R)) {
             state.particles.push(...burst(b.x, b.y, b.color, 10));
@@ -772,9 +783,15 @@
     }
 
     // While you're blacked out the camera holds where you fell — you can't peek at where
-    // your attacker ran off to. Knocked out of a knockout round, you spectate a team-mate.
-    const followTarget = human.alive ? human
-      : (human.out ? (state.players.find(p => p.alive && friendly(p, human)) || human) : human);
+    // your attacker ran off to. Once you're out of a knockout round the fight carries on
+    // without you, so follow a team-mate (or anyone still shooting) and watch it play out.
+    let followTarget = human;
+    if (!human.alive && human.out) {
+      followTarget = state.players.find(p => p.alive && friendly(p, human))
+                  || state.players.find(p => p.alive)
+                  || human;
+      state.specTarget = followTarget;
+    }
     cam.x = clamp(followTarget.x - innerWidth / 2, 0, Math.max(0, ARENA_W - innerWidth));
     cam.y = clamp(followTarget.y - innerHeight / 2, 0, Math.max(0, ARENA_H - innerHeight));
     if (ARENA_W < innerWidth) cam.x = (ARENA_W - innerWidth) / 2;
@@ -978,6 +995,19 @@
       ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(p.x, p.y, PLAYER_R, 0, Math.PI*2); ctx.stroke();
 
+      // spawn shield: a bright bubble that pulses faster as it runs out
+      if (p.invuln > 0) {
+        const urgency = 1 + (1 - p.invuln / INVULN_SECS) * 3;
+        ctx.save();
+        ctx.globalAlpha = 0.45 + 0.35 * Math.abs(Math.sin(state.elapsed * 4 * urgency));
+        ctx.strokeStyle = '#9fe8ff';
+        ctx.shadowColor = '#9fe8ff';
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(p.x, p.y, PLAYER_R + 9, 0, Math.PI*2); ctx.stroke();
+        ctx.restore();
+      }
+
       // barrel
       ctx.strokeStyle = p.overcharge > 0 ? '#ffd700' : '#fff';
       ctx.lineWidth = 5;
@@ -1076,13 +1106,16 @@
       const buffs = [];
       if (human.rapid > 0) buffs.push(`<span style="color:#39e3ff">RAPID ${Math.ceil(human.rapid)}</span>`);
       if (human.overcharge > 0) buffs.push(`<span style="color:#ffd700">OVERCHARGE ${Math.ceil(human.overcharge)}</span>`);
+      if (human.invuln > 0) buffs.unshift(`<span style="color:#9fe8ff">SHIELD ${human.invuln.toFixed(1)}s</span>`);
       hudL.innerHTML = `<b style="color:${human.color}">${human.name}</b> &nbsp; ${ammoStr}` +
         ` &nbsp; TAGS <b>${human.hits}</b> / TAKEN <b>${human.taken}</b>` +
         (buffs.length ? '&nbsp; ' + buffs.join(' ') : '');
     } else if (human.out) {
-      hudL.innerHTML = state.koRule === 'revenge' && human.taggedBy
+      const watching = state.specTarget && state.specTarget !== human
+        ? ` &nbsp; <span style="color:#9ab">watching <b style="color:${state.specTarget.color}">${state.specTarget.name}</b></span>` : '';
+      hudL.innerHTML = (state.koRule === 'revenge' && human.taggedBy
         ? `<b style="color:#ffd54f">OUT</b> — back in if <b style="color:${human.taggedBy.color}">${human.taggedBy.name}</b> gets tagged`
-        : `<b style="color:#ff3366">OUT OF THE ROUND</b>`;
+        : `<b style="color:#ff3366">OUT OF THE ROUND</b>`) + watching;
     } else {
       hudL.innerHTML = `<b style="color:#ff3366">TAGGED</b>`;
     }
