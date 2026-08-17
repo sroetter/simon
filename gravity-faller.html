@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gravity Faller</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; background:#05060f; color:#e8ecff; font-family:'Courier New', monospace; overflow:hidden; }
+  canvas { display:block; }
+
+  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(3,4,12,0.86); z-index:20; }
+  .panel { background:rgba(10,14,30,0.96); border:2px solid #4fd6ff; padding:22px 30px; border-radius:16px; max-width:620px; max-height:88vh; overflow-y:auto; box-shadow:0 0 44px rgba(79,214,255,0.3); }
+  h1 { color:#4fd6ff; text-shadow:0 0 18px #4fd6ff; letter-spacing:3px; font-size:34px; text-align:center; }
+  h2 { color:#ffd54f; font-size:17px; letter-spacing:2px; margin:14px 0 6px; }
+  .sub { text-align:center; color:#8fa; font-size:13px; letter-spacing:1px; margin-top:2px; }
+  .hint { color:#8894b8; font-size:12.5px; line-height:1.7; margin-top:12px; }
+  .hint b { color:#cfe; }
+  button { background:#4fd6ff; color:#04121c; border:none; padding:11px 24px; font:inherit; font-weight:bold; cursor:pointer; border-radius:9px; letter-spacing:1px; }
+  button:hover { background:#8ae6ff; }
+  button.ghost { background:#232a44; color:#bcd; }
+  button.ghost:hover { background:#333d63; }
+  button:disabled { background:#2a3048; color:#666f8c; cursor:not-allowed; }
+  .btnrow { display:flex; gap:10px; justify-content:center; margin-top:18px; flex-wrap:wrap; }
+
+  .hud { position:fixed; top:10px; left:10px; right:10px; display:flex; justify-content:space-between; pointer-events:none; z-index:5; font-size:14px; }
+  .hud div { background:rgba(6,9,22,0.8); padding:8px 14px; border-radius:9px; border:1px solid #223; }
+  .coins { color:#ffd54f; }
+
+  /* grav-brake meter down the left edge */
+  .meter { position:fixed; left:14px; bottom:16px; width:16px; height:150px; background:rgba(6,9,22,0.8); border:2px solid #223; border-radius:9px; overflow:hidden; z-index:5; }
+  .meter .fill { position:absolute; left:0; right:0; bottom:0; background:linear-gradient(#4fd6ff,#2b7fff); transition:height 0.06s linear; }
+  .meter-label { position:fixed; left:6px; bottom:172px; font-size:10px; color:#7f8ab0; letter-spacing:1px; z-index:5; }
+
+  .shop-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:12px; margin-top:10px; }
+  .suit { background:#141a30; border:2px solid #2a3352; border-radius:12px; padding:12px; text-align:center; cursor:pointer; }
+  .suit:hover { border-color:#4fd6ff; }
+  .suit.owned { border-color:#7eff9a; }
+  .suit.equipped { border-color:#ffd54f; box-shadow:0 0 16px rgba(255,213,79,0.35); }
+  .suit .orb { width:46px; height:46px; border-radius:50%; margin:0 auto 8px; border:2px solid rgba(255,255,255,0.5); }
+  .suit .nm { font-size:12.5px; font-weight:bold; letter-spacing:0.5px; }
+  .suit .ds { font-size:10.5px; color:#7f8ab0; margin-top:3px; line-height:1.35; min-height:28px; }
+  .suit .pr { font-size:12px; margin-top:6px; color:#ffd54f; }
+  .suit .pr.have { color:#7eff9a; }
+
+  .toast { position:fixed; top:70px; left:50%; transform:translateX(-50%); background:rgba(6,9,22,0.92); border:1px solid #4fd6ff; padding:8px 18px; border-radius:9px; font-size:14px; opacity:0; transition:opacity 0.25s; pointer-events:none; z-index:8; }
+  .toast.show { opacity:1; }
+
+  .hidden { display:none !important; }
+  .back { position:fixed; bottom:10px; right:10px; padding:7px 12px; font-size:12px; background:#141a30; border:1px solid #2a3352; color:#9ab; text-decoration:none; border-radius:7px; z-index:10; }
+  .back:hover { color:#fff; border-color:#4fd6ff; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud hidden" id="hud">
+  <div>TUBE <b id="hTube">1</b> &nbsp; BEST <b id="hBest">0</b></div>
+  <div class="coins">◈ <b id="hCoins">0</b> GRAVICOINS</div>
+</div>
+<div class="meter hidden" id="meter"><div class="fill" id="meterFill" style="height:100%"></div></div>
+<div class="meter-label hidden" id="meterLabel">BRAKE</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="overlay" id="titleOv">
+  <div class="panel">
+    <h1>GRAVITY FALLER</h1>
+    <div class="sub">FALL FAR. LAND WET.</div>
+    <div class="hint">
+      You drop down an endless stack of tubes. At the bottom of each one is a <b>small pool of water</b> —
+      that's the only safe landing. Everything else in the tube is trying to stop you, and touching any of it
+      is fatal. Splat and you're knocked <b>back two tubes</b>.<br><br>
+      <b>← →</b> or <b>A D</b> steer &nbsp;•&nbsp; <b>↑ / W</b> grav-brake (slow your fall) &nbsp;•&nbsp; <b>↓ / S</b> dive<br>
+      The brake drains its meter and refills as you fall — you can hang, but not forever.<br><br>
+      Deeper tubes pay more <b>gravicoins</b>. Spend them on suits.
+    </div>
+    <div class="btnrow">
+      <button id="btnPlay">DROP IN</button>
+      <button id="btnShop" class="ghost">SUIT LOCKER</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="shopOv">
+  <div class="panel" style="max-width:660px;">
+    <h1 style="font-size:26px;">SUIT LOCKER</h1>
+    <div class="sub">◈ <span id="shopCoins">0</span> GRAVICOINS &nbsp;·&nbsp; suits are pure style, no cheating gravity</div>
+    <div class="shop-grid" id="shopGrid"></div>
+    <div class="btnrow"><button id="btnShopBack">BACK</button></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="deadOv">
+  <div class="panel" style="text-align:center; max-width:460px;">
+    <h1 style="font-size:30px; color:#ff5b6e; text-shadow:0 0 18px #ff5b6e;" id="deadTitle">SPLAT</h1>
+    <p id="deadText" style="color:#aab6dd; margin:12px 0 4px; font-size:14px; line-height:1.7;"></p>
+    <div class="btnrow">
+      <button id="btnRetry">KEEP FALLING</button>
+      <button id="btnQuit" class="ghost">GIVE UP</button>
+    </div>
+  </div>
+</div>
+
+<a class="back" href="index.html">← GAME GALLERY</a>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
+  resize();
+  addEventListener('resize', resize);
+
+  // ---------- sound
+  let audio = null;
+  function actx() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); return audio; }
+  function tone(freq, dur=0.1, type='square', vol=0.05) {
+    try {
+      const a = actx();
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = type; o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, a.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+      o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+    } catch(e) {}
+  }
+  function noise(dur=0.2, vol=0.05) {
+    try {
+      const a = actx();
+      const b = a.createBuffer(1, a.sampleRate * dur, a.sampleRate);
+      const d = b.getChannelData(0);
+      for (let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * (1 - i/d.length);
+      const s = a.createBufferSource(); s.buffer = b;
+      const g = a.createGain(); g.gain.value = vol;
+      s.connect(g); g.connect(a.destination); s.start();
+    } catch(e) {}
+  }
+
+  // ---------- suits. Cosmetic only — every suit falls exactly the same.
+  const SUITS = [
+    { id:'gravity',  name:'GRAVITY SUIT', cost:0,    body:'#8b93a8', dark:'#5a6072', visor:'#39405a', trail:null,      glow:0,  desc:'Standard issue. Grey. Smells of old rope.' },
+    { id:'neon',     name:'NEON DIVER',   cost:150,  body:'#25ffd0', dark:'#0e8f78', visor:'#052b26', trail:'#25ffd0', glow:16, desc:'Hums on the way down. Leaves a streak.' },
+    { id:'bee',      name:'BUMBLEBEE',    cost:300,  body:'#ffd400', dark:'#1a1a1a', visor:'#2a2200', trail:'#ffd400', glow:8,  stripes:true, desc:'Stripes. Menacing to insects.' },
+    { id:'frost',    name:'FROSTBYTE',    cost:500,  body:'#bff0ff', dark:'#5aa9d6', visor:'#12384f', trail:'#eaffff', glow:14, flakes:true, desc:'Snows behind you. Chills the shaft.' },
+    { id:'magma',    name:'MAGMA SHELL',  cost:800,  body:'#ff6a1f', dark:'#8f2000', visor:'#3a0d00', trail:'#ffb03a', glow:20, embers:true, desc:'Cracked crust, molten seams, ember wake.' },
+    { id:'astro',    name:'ASTRO CADET',  cost:1200, body:'#f4f7ff', dark:'#b9c2d8', visor:'#ffb43a', trail:'#ffffff', glow:10, pack:true, desc:'Proper spacesuit. Gold visor. Little pack.' },
+    { id:'void',     name:'VOID WALKER',  cost:1800, body:'#100a22', dark:'#05030f', visor:'#a06bff', trail:'#a06bff', glow:22, stars:true, desc:'A hole in the shape of a person. Stars inside.' },
+    { id:'chrome',   name:'CHROME ACE',   cost:2500, body:'#dfe6f2', dark:'#7d8798', visor:'#20406a', trail:'#ffffff', glow:18, mirror:true, desc:'Mirror-polished. You can see the tube in it.' },
+    { id:'jelly',    name:'COSMIC JELLY', cost:3600, body:'#ff8ae0', dark:'#8a2f9e', visor:'#ffe6ff', trail:'#ff8ae0', glow:24, tentacles:true, desc:'Translucent, drifting, faintly rude.' },
+    { id:'gold',     name:'GOLDEN LEGEND',cost:5000, body:'#ffd24a', dark:'#a97400', visor:'#4a2f00', trail:'#fff2a8', glow:26, sparkle:true, desc:'For fallers who have fallen very far indeed.' },
+  ];
+
+  // ---------- save
+  const SAVE_KEY = 'gravityFallerSave';
+  let save = { coins:0, owned:['gravity'], suit:'gravity', best:0 };
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      save.coins = Math.max(0, s.coins | 0);
+      save.owned = Array.isArray(s.owned) && s.owned.length ? s.owned : ['gravity'];
+      if (!save.owned.includes('gravity')) save.owned.push('gravity');
+      save.suit = SUITS.some(x => x.id === s.suit) ? s.suit : 'gravity';
+      save.best = Math.max(0, s.best | 0);
+    }
+  } catch(e) {}
+  function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch(e) {} }
+  function suit() { return SUITS.find(s => s.id === save.suit) || SUITS[0]; }
+
+  // ---------- constants
+  const SHAFT_W = 470;          // inside width of a tube
+  const WALL = 26;              // drawn wall thickness either side
+  const R = 13;                 // faller's radius
+  const GRAV = 1250;
+  const V_FALL = 640;           // terminal speed, hands-off
+  const V_DIVE = 1080;          // holding dive
+  const V_BRAKE = 0;            // holding the grav-brake — a true hover, so you can wait
+                                // out a closed set of doors instead of drifting into them
+  const H_SPEED = 340;
+  const H_ACCEL = 2600;
+  const BRAKE_MAX = 4;          // seconds of brake in the tank
+  const BRAKE_DRAIN = 1;
+  const BRAKE_REFILL = 1;       // refills as fast as it drains, so you can always hover
+                                // roughly half the time — the tank paces you, it doesn't strand you
+
+  const keys = new Set();
+  addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    keys.add(k);
+    if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
+  });
+  addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+  addEventListener('blur', () => keys.clear());
+
+  const toastEl = document.getElementById('toast');
+  let toastT = 0;
+  function showToast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); toastT = 2; }
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function circleRect(cx, cy, r, x, y, w, h) {
+    const nx = clamp(cx, x, x + w), ny = clamp(cy, y, y + h);
+    return (cx - nx) ** 2 + (cy - ny) ** 2 < r * r;
+  }
+
+  // ---------- tube building
+  // Difficulty ramps with the tube index: more obstacles, meaner kinds, tighter gaps
+  // and a smaller pool to hit at the bottom.
+  function buildTube(n) {
+    const height = Math.min(3400, 1450 + n * 95);
+    const rows = Math.min(15, 3 + Math.floor(n * 0.75));
+    const top = 340, bottom = height - 330;
+    const span = (bottom - top) / Math.max(1, rows);
+
+    // which obstacles are unlocked at this depth
+    const pool = ['gap'];
+    if (n >= 1) pool.push('gap');
+    if (n >= 2) pool.push('slider');
+    if (n >= 4) pool.push('bridge');
+    if (n >= 6) pool.push('doors');
+    if (n >= 8) pool.push('cannons');
+    if (n >= 10) pool.push('slider', 'bridge');
+    if (n >= 13) pool.push('doors', 'cannons');
+
+    const obstacles = [];
+    let prev = null;
+    for (let i = 0; i < rows; i++) {
+      const y = top + i * span + Math.random() * span * 0.35;
+      let type = pool[Math.floor(Math.random() * pool.length)];
+      // Never stack two door rows in a row. Waiting out one closure eats most of the
+      // brake tank, and there isn't enough fall between rows to refill it — you'd
+      // arrive at the second set with nothing left and no way through.
+      if (type === 'doors' && prev === 'doors') {
+        const alt = pool.filter(t => t !== 'doors');
+        type = alt.length ? alt[Math.floor(Math.random() * alt.length)] : 'gap';
+      }
+      prev = type;
+      obstacles.push(makeObstacle(type, y, n));
+    }
+
+    const poolW = Math.max(72, 210 - n * 7);
+    const poolX = 30 + Math.random() * (SHAFT_W - 60 - poolW);
+    return { n, height, obstacles, poolX, poolW, floorY: height };
+  }
+
+  function makeObstacle(type, y, n) {
+    const o = { type, y };
+    if (type === 'gap') {
+      o.h = 22;
+      o.gapW = Math.max(76, 190 - n * 5);
+      o.gapX = 10 + Math.random() * (SHAFT_W - 20 - o.gapW);
+    } else if (type === 'slider') {
+      o.h = 22;
+      o.w = Math.min(SHAFT_W - 150, 120 + n * 6);
+      o.x = Math.random() * (SHAFT_W - o.w);
+      o.dir = Math.random() < 0.5 ? 1 : -1;
+      o.speed = 90 + n * 9 + Math.random() * 50;
+    } else if (type === 'bridge') {
+      // a long deck sliding left-right: only the sliver at one end is passable
+      o.h = 26;
+      o.w = SHAFT_W - Math.max(84, 150 - n * 4);
+      o.x = Math.random() * (SHAFT_W - o.w);
+      o.dir = Math.random() < 0.5 ? 1 : -1;
+      o.speed = 70 + n * 6;
+    } else if (type === 'doors') {
+      // open five seconds, shut for three — the whole shaft, no way round it
+      o.h = 26;
+      o.openFor = 5; o.shutFor = 3; o.slide = 0.4;
+      o.t = Math.random() * (o.openFor + o.shutFor);
+      o.amt = 1;   // 1 = wide open, 0 = sealed
+    } else if (type === 'cannons') {
+      o.h = 20;
+      o.side = Math.random() < 0.5 ? -1 : 1;   // -1 fires from the left wall
+      o.both = n >= 12 && Math.random() < 0.5;
+      o.interval = Math.max(0.85, 2.1 - n * 0.05);
+      o.t = Math.random() * o.interval;
+      o.speed = 300 + n * 12;
+      o.balls = [];
+    }
+    return o;
+  }
+
+  // where an obstacle currently is, as solid rectangles
+  function obstacleRects(o) {
+    if (o.type === 'gap') {
+      return [
+        { x: 0, y: o.y, w: o.gapX, h: o.h },
+        { x: o.gapX + o.gapW, y: o.y, w: SHAFT_W - (o.gapX + o.gapW), h: o.h },
+      ];
+    }
+    if (o.type === 'slider' || o.type === 'bridge') return [{ x: o.x, y: o.y, w: o.w, h: o.h }];
+    if (o.type === 'doors') {
+      const panel = (SHAFT_W / 2) * (1 - o.amt);
+      if (panel <= 0.5) return [];
+      return [
+        { x: 0, y: o.y, w: panel, h: o.h },
+        { x: SHAFT_W - panel, y: o.y, w: panel, h: o.h },
+      ];
+    }
+    if (o.type === 'cannons') {
+      // the barrels themselves are solid stubs against the wall
+      const r = [];
+      if (o.side === -1 || o.both) r.push({ x: 0, y: o.y - 2, w: 22, h: o.h + 4 });
+      if (o.side === 1 || o.both) r.push({ x: SHAFT_W - 22, y: o.y - 2, w: 22, h: o.h + 4 });
+      return r;
+    }
+    return [];
+  }
+
+  function updateObstacle(o, dt) {
+    if (o.type === 'slider' || o.type === 'bridge') {
+      o.x += o.dir * o.speed * dt;
+      if (o.x <= 0) { o.x = 0; o.dir = 1; }
+      if (o.x + o.w >= SHAFT_W) { o.x = SHAFT_W - o.w; o.dir = -1; }
+    } else if (o.type === 'doors') {
+      o.t += dt;
+      const cycle = o.openFor + o.shutFor;
+      if (o.t > cycle) o.t -= cycle;
+      // ease between wide open and sealed at each end of the cycle
+      if (o.t < o.openFor - o.slide) o.amt = 1;
+      else if (o.t < o.openFor) o.amt = 1 - (o.t - (o.openFor - o.slide)) / o.slide;
+      else if (o.t < cycle - o.slide) o.amt = 0;
+      else o.amt = (o.t - (cycle - o.slide)) / o.slide;
+      o.amt = clamp(o.amt, 0, 1);
+    } else if (o.type === 'cannons') {
+      o.t -= dt;
+      if (o.t <= 0) {
+        o.t = o.interval;
+        if (o.side === -1 || o.both) o.balls.push({ x: 24, y: o.y + o.h / 2, vx: o.speed });
+        if (o.side === 1 || o.both) o.balls.push({ x: SHAFT_W - 24, y: o.y + o.h / 2, vx: -o.speed });
+        if (state && Math.abs(o.y - state.p.y) < innerHeight) tone(200, 0.06, 'square', 0.03);
+      }
+      for (let i = o.balls.length - 1; i >= 0; i--) {
+        const b = o.balls[i];
+        b.x += b.vx * dt;
+        if (b.x < -20 || b.x > SHAFT_W + 20) o.balls.splice(i, 1);
+      }
+    }
+  }
+
+  // ---------- game state
+  let state = null;
+
+  function startRun(fromTube) {
+    const n = Math.max(0, fromTube | 0);
+    state = {
+      tubeIdx: n,
+      runMax: n,           // deepest tube reached this run — stops coin farming on repeats
+      tube: buildTube(n),
+      p: { x: SHAFT_W / 2, y: 60, vx: 0, vy: 0 },
+      brake: BRAKE_MAX,
+      parts: [],
+      elapsed: 0,
+      dead: false,
+      cleared: false,
+      shake: 0,
+    };
+    document.getElementById('hud').classList.remove('hidden');
+    document.getElementById('meter').classList.remove('hidden');
+    document.getElementById('meterLabel').classList.remove('hidden');
+    hideOverlays();
+  }
+
+  function hideOverlays() {
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('shopOv').classList.add('hidden');
+    document.getElementById('deadOv').classList.add('hidden');
+  }
+
+  function nextTube() {
+    const n = state.tubeIdx + 1;
+    // only pay for ground you haven't already been paid for this run
+    if (n > state.runMax) {
+      const reward = 4 + state.tubeIdx * 2;
+      save.coins += reward;
+      state.runMax = n;
+      showToast(`TUBE ${state.tubeIdx + 1} CLEARED  ·  +${reward} ◈`);
+    } else {
+      showToast(`TUBE ${state.tubeIdx + 1} CLEARED`);
+    }
+    if (n > save.best) save.best = n;
+    persist();
+    state.tubeIdx = n;
+    state.tube = buildTube(n);
+    state.p = { x: clamp(state.p.x, 40, SHAFT_W - 40), y: 60, vx: 0, vy: 0 };
+    state.brake = BRAKE_MAX;
+    state.cleared = false;
+    tone(760, 0.12, 'sine', 0.06);
+    tone(1040, 0.14, 'sine', 0.05);
+  }
+
+  function die(reason) {
+    if (state.dead) return;
+    state.dead = true;
+    state.deadReason = reason;
+    state.shake = 26;
+    for (let i=0;i<34;i++) {
+      const a = Math.random() * Math.PI * 2, s = 90 + Math.random() * 300;
+      state.parts.push({ x: state.p.x, y: state.p.y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 0.7, ttl: 0.9, c: suit().body });
+    }
+    noise(0.35, 0.07);
+    tone(120, 0.4, 'sawtooth', 0.07);
+    const back = Math.max(0, state.tubeIdx - 2);
+    state.backTo = back;
+    setTimeout(() => {
+      if (!state || !state.dead) return;
+      document.getElementById('deadTitle').textContent = reason.title;
+      document.getElementById('deadText').innerHTML =
+        `${reason.text}<br><br>You got to <b>tube ${state.tubeIdx + 1}</b>.` +
+        (back < state.tubeIdx
+          ? ` Knocked back to <b>tube ${back + 1}</b>.`
+          : ` Starting over at <b>tube 1</b>.`);
+      document.getElementById('deadOv').classList.remove('hidden');
+    }, 700);
+  }
+
+  // ---------- simulation
+  function update(dt) {
+    if (!state) return;
+    state.elapsed += dt;
+    if (state.shake) state.shake = Math.max(0, state.shake - dt * 60);
+
+    for (let i = state.parts.length - 1; i >= 0; i--) {
+      const q = state.parts[i];
+      q.life -= dt;
+      if (q.life <= 0) { state.parts.splice(i, 1); continue; }
+      q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 500 * dt;
+      q.vx *= 0.96;
+    }
+
+    // obstacles keep moving even while the death animation plays
+    for (const o of state.tube.obstacles) updateObstacle(o, dt);
+    if (state.dead || state.cleared) return;
+
+    const p = state.p;
+    const left = keys.has('arrowleft') || keys.has('a');
+    const right = keys.has('arrowright') || keys.has('d');
+    const braking = (keys.has('arrowup') || keys.has('w')) && state.brake > 0;
+    const diving = keys.has('arrowdown') || keys.has('s');
+
+    // horizontal steering
+    const want = (right ? 1 : 0) - (left ? 1 : 0);
+    const target = want * H_SPEED;
+    if (p.vx < target) p.vx = Math.min(target, p.vx + H_ACCEL * dt);
+    else if (p.vx > target) p.vx = Math.max(target, p.vx - H_ACCEL * dt);
+
+    // the grav-brake: burns the tank, refills whenever you're not using it
+    if (braking) {
+      state.brake = Math.max(0, state.brake - BRAKE_DRAIN * dt);
+      p.vy += (V_BRAKE - p.vy) * Math.min(1, dt * 7);
+    } else {
+      state.brake = Math.min(BRAKE_MAX, state.brake + BRAKE_REFILL * dt);
+      const cap = diving ? V_DIVE : V_FALL;
+      p.vy = Math.min(cap, p.vy + GRAV * dt);
+      if (p.vy > cap) p.vy = cap;
+    }
+
+    // Move in small steps. At full dive you cross 18px a frame — big enough to
+    // teleport straight through a 22px beam if we moved in one go.
+    const dist = Math.hypot(p.vx, p.vy) * dt;
+    const steps = Math.max(1, Math.ceil(dist / 5));
+    const sdt = dt / steps;
+    for (let s = 0; s < steps && !state.dead && !state.cleared; s++) {
+      p.x += p.vx * sdt;
+      p.y += p.vy * sdt;
+      if (p.x < R) { p.x = R; p.vx = 0; }
+      if (p.x > SHAFT_W - R) { p.x = SHAFT_W - R; p.vx = 0; }
+      checkHits();
+    }
+
+    // camera
+    const targetCam = p.y - innerHeight * 0.34;
+    state.camY = clamp(targetCam, 0, Math.max(0, state.tube.height + 120 - innerHeight));
+  }
+
+  function checkHits() {
+    const p = state.p, t = state.tube;
+    for (const o of t.obstacles) {
+      if (Math.abs(o.y - p.y) > 200) continue;         // nowhere near it
+      for (const r of obstacleRects(o)) {
+        if (circleRect(p.x, p.y, R, r.x, r.y, r.w, r.h)) {
+          die(DEATHS[o.type] || DEATHS.gap);
+          return;
+        }
+      }
+      if (o.type === 'cannons') {
+        for (const b of o.balls) {
+          if ((b.x - p.x) ** 2 + (b.y - p.y) ** 2 < (R + 8) ** 2) { die(DEATHS.shot); return; }
+        }
+      }
+    }
+    // the bottom: water or concrete
+    if (p.y + R >= t.floorY) {
+      const inPool = p.x > t.poolX + 6 && p.x < t.poolX + t.poolW - 6;
+      if (inPool) {
+        state.cleared = true;
+        for (let i=0;i<26;i++) {
+          const a = -Math.PI/2 + (Math.random()-0.5) * 2.1, s = 120 + Math.random()*260;
+          state.parts.push({ x:p.x, y:t.floorY, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:0.6, ttl:0.8, c:'#7fd8ff' });
+        }
+        noise(0.25, 0.05);
+        setTimeout(() => { if (state && state.cleared) nextTube(); }, 480);
+      } else {
+        die(DEATHS.floor);
+      }
+    }
+  }
+
+  const DEATHS = {
+    gap:     { title:'SPLAT',        text:'You clipped a beam on the way past.' },
+    slider:  { title:'SPLAT',        text:'The slider caught you mid-drop.' },
+    bridge:  { title:'BRIDGED',      text:'The moving bridge slid right into your path.' },
+    doors:   { title:'SHUT OUT',     text:'The doors closed while you were in them. Brake next time.' },
+    cannons: { title:'CLUNK',        text:'You went headfirst into a cannon barrel.' },
+    shot:    { title:'DIRECT HIT',   text:'A cannonball got you clean across the shaft.' },
+    floor:   { title:'MISSED THE WATER', text:'Concrete. You needed the little pool.' },
+  };
+
+  // ---------- drawing
+  function shaftLeft() { return Math.round((canvas.width - SHAFT_W) / 2); }
+
+  function render() {
+    ctx.fillStyle = '#05060f';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!state) return;
+
+    const camY = state.camY || 0;
+    const L = shaftLeft();
+    ctx.save();
+    const sh = state.shake || 0;
+    ctx.translate(L + (sh ? (Math.random()-0.5)*sh : 0), -camY + (sh ? (Math.random()-0.5)*sh : 0));
+
+    drawShaft(camY);
+    for (const o of state.tube.obstacles) {
+      if (o.y - camY < -260 || o.y - camY > innerHeight + 260) continue;
+      drawObstacle(o);
+    }
+    drawBottom();
+
+    for (const q of state.parts) {
+      ctx.globalAlpha = Math.max(0, q.life / q.ttl);
+      ctx.fillStyle = q.c;
+      ctx.beginPath(); ctx.arc(q.x, q.y, 3, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    if (!state.dead) drawFaller();
+    ctx.restore();
+
+    drawEdgeGlow();
+    drawHUD();
+  }
+
+  function drawShaft(camY) {
+    const depthHue = (state.tubeIdx * 26) % 360;
+    // tube interior
+    const g = ctx.createLinearGradient(0, camY, SHAFT_W, camY);
+    g.addColorStop(0, `hsl(${depthHue},34%,9%)`);
+    g.addColorStop(0.5, `hsl(${depthHue},28%,14%)`);
+    g.addColorStop(1, `hsl(${depthHue},34%,9%)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, camY - 40, SHAFT_W, innerHeight + 80);
+
+    // ribs down the tube, every 120px, to sell the sense of speed
+    ctx.strokeStyle = `hsla(${depthHue},40%,60%,0.13)`;
+    ctx.lineWidth = 2;
+    const first = Math.floor((camY - 120) / 120) * 120;
+    ctx.beginPath();
+    for (let y = first; y < camY + innerHeight + 120; y += 120) {
+      ctx.moveTo(0, y); ctx.lineTo(SHAFT_W, y);
+    }
+    ctx.stroke();
+
+    // walls
+    for (const wx of [-WALL, SHAFT_W]) {
+      const wg = ctx.createLinearGradient(wx, 0, wx + WALL, 0);
+      wg.addColorStop(0, '#161b30');
+      wg.addColorStop(0.5, '#232a48');
+      wg.addColorStop(1, '#161b30');
+      ctx.fillStyle = wg;
+      ctx.fillRect(wx, camY - 40, WALL, innerHeight + 80);
+    }
+    ctx.fillStyle = 'rgba(120,150,220,0.22)';
+    for (let y = first; y < camY + innerHeight + 120; y += 60) {
+      ctx.fillRect(-WALL + 9, y, 7, 7);
+      ctx.fillRect(SHAFT_W + 10, y, 7, 7);
+    }
+
+    // depth marks
+    ctx.fillStyle = 'rgba(150,180,255,0.3)';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    for (let y = first; y < camY + innerHeight + 120; y += 240) {
+      if (y <= 0) continue;
+      ctx.fillText(`${Math.round(y)}m`, SHAFT_W + 4, y + 4);
+    }
+  }
+
+  function drawObstacle(o) {
+    if (o.type === 'cannons') {
+      for (const r of obstacleRects(o)) {
+        ctx.fillStyle = '#3c4668';
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.fillStyle = '#59668f';
+        ctx.fillRect(r.x + (r.x === 0 ? r.w - 6 : 0), r.y + 3, 6, r.h - 6);
+      }
+      for (const b of o.balls) {
+        ctx.save();
+        ctx.shadowColor = '#ff7b3a'; ctx.shadowBlur = 12;
+        ctx.fillStyle = '#ff9b4a';
+        ctx.beginPath(); ctx.arc(b.x, b.y, 8, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = '#ffe0b0';
+        ctx.beginPath(); ctx.arc(b.x - Math.sign(b.vx)*2, b.y - 2, 3, 0, Math.PI*2); ctx.fill();
+      }
+      return;
+    }
+
+    const rects = obstacleRects(o);
+    for (const r of rects) {
+      if (o.type === 'doors') {
+        ctx.fillStyle = o.amt < 0.35 ? '#ff5b6e' : '#8c94b8';
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        for (let x = r.x + 6; x < r.x + r.w - 4; x += 14) ctx.fillRect(x, r.y + 4, 6, r.h - 8);
+      } else if (o.type === 'bridge') {
+        ctx.fillStyle = '#6b5330';
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.fillStyle = '#8d6f42';
+        for (let x = r.x + 3; x < r.x + r.w - 5; x += 18) ctx.fillRect(x, r.y + 3, 13, r.h - 6);
+        ctx.strokeStyle = '#4a3720'; ctx.lineWidth = 2;
+        ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+      } else if (o.type === 'slider') {
+        ctx.fillStyle = '#c2455f';
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.fillRect(r.x, r.y, r.w, 5);
+        // hazard chevrons
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        for (let x = r.x + 4; x < r.x + r.w - 8; x += 16) ctx.fillRect(x, r.y + 8, 8, 7);
+      } else {
+        ctx.fillStyle = '#4a5378';
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.fillStyle = '#5f6b98';
+        ctx.fillRect(r.x, r.y, r.w, 5);
+      }
+    }
+
+    // countdown pips so the doors are readable before you commit
+    if (o.type === 'doors') {
+      const cycle = o.openFor + o.shutFor;
+      const shut = o.t >= o.openFor - o.slide;
+      // time until the panels start moving the other way
+      const left = Math.max(0, shut ? (cycle - o.slide - o.t) : (o.openFor - o.slide - o.t));
+      ctx.fillStyle = shut ? '#ff5b6e' : '#7eff9a';
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(shut ? `OPENS ${left.toFixed(1)}` : `SHUTS ${left.toFixed(1)}`, SHAFT_W/2, o.y - 10);
+    }
+  }
+
+  function drawBottom() {
+    const t = state.tube;
+    const y = t.floorY;
+    // concrete either side of the pool
+    ctx.fillStyle = '#2b3150';
+    ctx.fillRect(0, y, t.poolX, 150);
+    ctx.fillRect(t.poolX + t.poolW, y, SHAFT_W - (t.poolX + t.poolW), 150);
+    ctx.fillStyle = '#3c4468';
+    ctx.fillRect(0, y, t.poolX, 6);
+    ctx.fillRect(t.poolX + t.poolW, y, SHAFT_W - (t.poolX + t.poolW), 6);
+
+    // the water you actually want
+    ctx.fillStyle = '#0d3f66';
+    ctx.fillRect(t.poolX, y, t.poolW, 150);
+    ctx.save();
+    ctx.shadowColor = '#4fd6ff'; ctx.shadowBlur = 18;
+    ctx.fillStyle = '#2aa9e6';
+    ctx.beginPath();
+    ctx.moveTo(t.poolX, y + 4);
+    for (let x = 0; x <= t.poolW; x += 8) {
+      ctx.lineTo(t.poolX + x, y + 4 + Math.sin(state.elapsed * 3 + x * 0.12) * 3);
+    }
+    ctx.lineTo(t.poolX + t.poolW, y + 26);
+    ctx.lineTo(t.poolX, y + 26);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // a guide line so you can line the landing up from above
+    ctx.strokeStyle = 'rgba(79,214,255,0.35)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 10]);
+    ctx.beginPath();
+    ctx.moveTo(t.poolX + t.poolW/2, y - Math.min(560, y));
+    ctx.lineTo(t.poolX + t.poolW/2, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#4fd6ff';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('LAND HERE', t.poolX + t.poolW/2, y - 14);
+  }
+
+  function drawFaller() {
+    const p = state.p, s = suit();
+    const tilt = clamp(p.vx / H_SPEED, -1, 1) * 0.42;
+    const braking = (keys.has('arrowup') || keys.has('w')) && state.brake > 0;
+
+    // trail
+    if (s.trail) {
+      for (let i = 1; i <= 7; i++) {
+        ctx.globalAlpha = 0.16 * (1 - i / 8);
+        ctx.fillStyle = s.trail;
+        ctx.beginPath(); ctx.arc(p.x - p.vx * 0.006 * i, p.y - p.vy * 0.011 * i, R * (1 - i * 0.07), 0, Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(tilt);
+    if (s.glow) { ctx.shadowColor = s.trail || s.body; ctx.shadowBlur = s.glow; }
+
+    // body
+    ctx.fillStyle = s.body;
+    ctx.beginPath(); ctx.ellipse(0, 0, R * 0.86, R * 1.12, 0, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    if (s.stripes) {
+      ctx.fillStyle = s.dark;
+      for (let i = -1; i <= 1; i++) ctx.fillRect(-R*0.86, i * 7 - 2, R * 1.72, 4);
+    }
+    if (s.stars) {
+      ctx.fillStyle = '#fff';
+      for (let i = 0; i < 7; i++) {
+        const a = state.elapsed * 0.6 + i * 1.9;
+        ctx.globalAlpha = 0.45 + 0.45 * Math.sin(state.elapsed * 3 + i);
+        ctx.fillRect(Math.cos(a) * R * 0.5, Math.sin(a * 1.3) * R * 0.7, 1.6, 1.6);
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (s.mirror) {
+      const mg = ctx.createLinearGradient(-R, -R, R, R);
+      mg.addColorStop(0, 'rgba(255,255,255,0.75)');
+      mg.addColorStop(0.45, 'rgba(255,255,255,0.05)');
+      mg.addColorStop(1, 'rgba(160,190,255,0.6)');
+      ctx.fillStyle = mg;
+      ctx.beginPath(); ctx.ellipse(0, 0, R * 0.86, R * 1.12, 0, 0, Math.PI*2); ctx.fill();
+    }
+    if (s.tentacles) {
+      ctx.strokeStyle = s.dark; ctx.lineWidth = 2;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * 4, R * 0.9);
+        ctx.quadraticCurveTo(i * 5 + Math.sin(state.elapsed * 6 + i) * 4, R * 1.6, i * 4, R * 2.2);
+        ctx.stroke();
+      }
+    }
+    if (s.pack) {
+      ctx.fillStyle = s.dark;
+      ctx.fillRect(-R * 0.95, -R * 0.4, 5, R * 0.9);
+      ctx.fillRect(R * 0.5, -R * 0.4, 5, R * 0.9);
+    }
+
+    // visor
+    ctx.fillStyle = s.visor;
+    ctx.beginPath(); ctx.ellipse(0, -R * 0.28, R * 0.56, R * 0.42, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath(); ctx.ellipse(-R*0.2, -R*0.4, R*0.16, R*0.11, 0, 0, Math.PI*2); ctx.fill();
+
+    // outline
+    ctx.strokeStyle = s.dark; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, 0, R * 0.86, R * 1.12, 0, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+
+    if (s.sparkle || s.embers || s.flakes) {
+      for (let i = 0; i < 3; i++) {
+        const a = state.elapsed * 4 + i * 2.1;
+        ctx.globalAlpha = 0.5 + 0.4 * Math.sin(a * 2);
+        ctx.fillStyle = s.sparkle ? '#fff6c0' : s.embers ? '#ff9b3a' : '#eaffff';
+        ctx.fillRect(p.x + Math.cos(a) * 17, p.y - 8 - i * 9 + Math.sin(a) * 4, 2.5, 2.5);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // brake thrusters
+    if (braking) {
+      ctx.save();
+      ctx.globalAlpha = 0.6 + Math.random() * 0.3;
+      ctx.fillStyle = '#4fd6ff';
+      ctx.shadowColor = '#4fd6ff'; ctx.shadowBlur = 14;
+      for (const dx of [-7, 7]) {
+        ctx.beginPath();
+        ctx.moveTo(p.x + dx - 3, p.y + R * 0.9);
+        ctx.lineTo(p.x + dx + 3, p.y + R * 0.9);
+        ctx.lineTo(p.x + dx, p.y + R * 0.9 + 12 + Math.random() * 8);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // vignette that tightens the faster you fall
+  function drawEdgeGlow() {
+    const p = state.p;
+    const speed = clamp((p.vy - V_FALL * 0.6) / (V_DIVE - V_FALL * 0.6), 0, 1);
+    if (speed <= 0.02) return;
+    const g = ctx.createRadialGradient(canvas.width/2, canvas.height/2, canvas.height*0.25,
+                                       canvas.width/2, canvas.height/2, canvas.height*0.72);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, `rgba(20,60,120,${0.42 * speed})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function drawHUD() {
+    document.getElementById('hTube').textContent = state.tubeIdx + 1;
+    document.getElementById('hBest').textContent = save.best;
+    document.getElementById('hCoins').textContent = save.coins;
+    document.getElementById('meterFill').style.height = (state.brake / BRAKE_MAX * 100) + '%';
+  }
+
+  // ---------- shop
+  function renderShop() {
+    document.getElementById('shopCoins').textContent = save.coins;
+    const grid = document.getElementById('shopGrid');
+    grid.innerHTML = '';
+    for (const s of SUITS) {
+      const owned = save.owned.includes(s.id);
+      const equipped = save.suit === s.id;
+      const d = document.createElement('div');
+      d.className = 'suit' + (owned ? ' owned' : '') + (equipped ? ' equipped' : '');
+      d.innerHTML =
+        `<div class="orb" style="background:radial-gradient(circle at 34% 30%, ${s.body}, ${s.dark});` +
+        (s.glow ? `box-shadow:0 0 14px ${s.trail || s.body};` : '') + `"></div>` +
+        `<div class="nm">${s.name}</div>` +
+        `<div class="ds">${s.desc}</div>` +
+        `<div class="pr ${owned ? 'have' : ''}">${equipped ? 'WEARING' : owned ? 'TAP TO WEAR' : '◈ ' + s.cost}</div>`;
+      d.onclick = () => {
+        if (equipped) return;
+        if (owned) {
+          save.suit = s.id; persist(); renderShop();
+          tone(660, 0.1, 'sine', 0.05);
+        } else if (save.coins >= s.cost) {
+          save.coins -= s.cost;
+          save.owned.push(s.id);
+          save.suit = s.id;
+          persist(); renderShop();
+          tone(880, 0.12, 'sine', 0.06); tone(1180, 0.14, 'sine', 0.05);
+        } else {
+          showToast(`Need ${s.cost - save.coins} more gravicoins`);
+          tone(160, 0.15, 'sawtooth', 0.05);
+        }
+      };
+      grid.appendChild(d);
+    }
+  }
+
+  // ---------- wiring
+  document.getElementById('btnPlay').onclick = () => { actx(); startRun(0); };
+  document.getElementById('btnShop').onclick = () => {
+    renderShop();
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('shopOv').classList.remove('hidden');
+  };
+  document.getElementById('btnShopBack').onclick = () => {
+    document.getElementById('shopOv').classList.add('hidden');
+    document.getElementById('titleOv').classList.remove('hidden');
+  };
+  document.getElementById('btnRetry').onclick = () => { startRun(state ? state.backTo : 0); };
+  document.getElementById('btnQuit').onclick = () => {
+    state = null;
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('meter').classList.add('hidden');
+    document.getElementById('meterLabel').classList.add('hidden');
+    document.getElementById('deadOv').classList.add('hidden');
+    document.getElementById('titleOv').classList.remove('hidden');
+  };
+
+  // ---------- loop
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('show'); }
+    update(dt);
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

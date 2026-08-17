@@ -41,12 +41,6 @@
   .teambar .mid { position:absolute; left:50%; top:0; bottom:0; width:2px; background:rgba(255,255,255,0.5); }
   .teambar .clock { text-align:center; font-size:15px; margin-top:3px; color:#dde; text-shadow:0 0 6px #000; }
 
-  /* the 3-second black-out you get when you're tagged */
-  .blackout { position:fixed; inset:0; background:#000; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-  .blackout .big { font-size:44px; font-weight:bold; letter-spacing:6px; color:#ff3b47; text-shadow:0 0 22px #ff3b47; }
-  .blackout .sub { margin-top:14px; font-size:17px; color:#889; letter-spacing:2px; }
-  .blackout .count { margin-top:8px; font-size:60px; font-weight:bold; color:#fff; }
-
   .teampick { display:flex; gap:10px; margin-top:6px; }
   .teampick button { flex:1; padding:12px; font-size:15px; background:#232535; border:2px solid #333; }
   .teampick button[data-t=red].sel { background:#ff3b47; border-color:#fff; }
@@ -67,8 +61,8 @@
     <h1>LASER TAG ARENA</h1>
     <div class="hint">
       WASD/arrows to move &nbsp;•&nbsp; mouse aims &nbsp;•&nbsp; click or space to shoot &nbsp;•&nbsp; R reloads<br>
-      Red vs Blue. One hit tags you — your screen goes black for 3 seconds while
-      whoever tagged you slips away.
+      Red vs Blue, or nobody's team but your own. One hit is a tag — in a timed match it
+      just goes on the board and you keep playing; in knockout it ends your round.
     </div>
     <label>YOUR NAME</label>
     <input type="text" id="name" maxlength="14" value="Player">
@@ -147,12 +141,6 @@
   <div class="nums"><span class="red" id="redScore">0</span><span class="blue" id="blueScore">0</span></div>
   <div class="track"><div class="fill" id="barFill"></div><div class="mid"></div></div>
   <div class="clock" id="clock"></div>
-</div>
-
-<div class="blackout hidden" id="blackout">
-  <div class="big">RESPAWNING</div>
-  <div class="count" id="boCount">3</div>
-  <div class="sub" id="boSub"></div>
 </div>
 
 <div class="overlay hidden" id="endOv">
@@ -288,8 +276,8 @@
     'Deadbolt','Mirage','Warhound','Static','Grimlock','Torch','Bulwark','Nightjar',
   ];
   const HIT_TAKEN_PENALTY = 0.5;   // every hit you take costs you half a point
-  const RESPAWN_SECS = 3;          // how long your screen stays black after being tagged
-  const INVULN_SECS = 5;           // ...and how long you can't be tagged once you're back
+  const INVULN_SECS = 5;           // spawn shield after coming back into a knockout round
+  const TAG_COOLDOWN = 1;          // brief immunity after a tag in a timed match
 
   let state = null;
   const cam = { x:0, y:0 };
@@ -398,7 +386,6 @@
       aim: 0,
       alive: true,
       hits: 0, taken: 0,     // tags landed / tags received — the timer-mode scoreline
-      downT: 0,              // seconds left of the black-out before respawning
       invuln: 0,             // seconds of spawn protection still running
       out: false,            // knockout: sitting the round out
       taggedBy: null,        // who put us here (revenge mode watches this)
@@ -477,7 +464,6 @@
     document.getElementById('titleOv').classList.remove('hidden');
     document.getElementById('ch').classList.add('hidden');
     document.getElementById('teamBar').classList.add('hidden');
-    document.getElementById('blackout').classList.add('hidden');
     document.getElementById('hud').classList.add('hidden');
     state = null;
   };
@@ -599,9 +585,11 @@
         avengeFor(p);
       }
     } else {
-      p.alive = false;
-      p.downT = RESPAWN_SECS;
+      // Timed match: play never stops. The tag goes on the board and you carry on —
+      // just a moment of immunity so one burst can't rack up five hits at once.
+      p.invuln = TAG_COOLDOWN;
       state.floaters.push({ x:p.x, y:p.y - 24, text:'TAGGED', color:p.color, life:1.4, ttl:1.4 });
+      if (by) state.floaters.push({ x:by.x, y:by.y - 24, text:'+1', color:by.color, life:1, ttl:1 });
     }
   }
 
@@ -623,7 +611,6 @@
     p.x = sp.x; p.y = sp.y;
     p.vx = p.vy = 0;
     p.alive = true;
-    p.downT = 0;
     p.invuln = INVULN_SECS;     // untouchable for a few seconds so you're not spawn-camped
     p.ammo = MAX_AMMO;
     p.reloadT = 0; p.fireT = 0;
@@ -695,13 +682,6 @@
     for (let i=1;i<state.players.length;i++) {
       const b = state.players[i];
       if (b.alive) botThink(b, dt);
-    }
-
-    // count down everyone's black-out and put them back in when it runs out
-    for (const p of state.players) {
-      if (p.alive || p.out || p.downT <= 0) continue;
-      p.downT -= dt;
-      if (p.downT <= 0) respawn(p);
     }
 
     for (const p of state.players) {
@@ -883,7 +863,6 @@
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('ch').classList.add('hidden');
     document.getElementById('teamBar').classList.add('hidden');
-    document.getElementById('blackout').classList.add('hidden');
   }
 
   // scores can land on halves, so show 3.5 but not 4.0
@@ -1056,7 +1035,6 @@
 
     drawMinimap();
     drawHUD();
-    drawBlackout();
   }
 
   function drawMinimap() {
@@ -1169,18 +1147,6 @@
     return `${m}:${String(r).padStart(2,'0')}`;
   }
 
-  // the black screen you sit behind for three seconds after being tagged
-  function drawBlackout() {
-    const bo = document.getElementById('blackout');
-    const human = state.players[state.humanIdx];
-    const show = !!state && !state.ended && !human.alive && !human.out && human.downT > 0;
-    bo.classList.toggle('hidden', !show);
-    if (!show) return;
-    document.getElementById('boCount').textContent = Math.ceil(human.downT);
-    document.getElementById('boSub').innerHTML = human.taggedBy
-      ? `tagged by <b style="color:${human.taggedBy.color}">${human.taggedBy.name}</b> — they're getting away`
-      : '';
-  }
 
   let last = performance.now();
   function loop(now) {
