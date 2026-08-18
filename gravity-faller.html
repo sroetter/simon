@@ -213,11 +213,8 @@
     { id:'line',   name:'SAFETY LINE',   max:1, costs:[2600],
       desc:'Splat and you only lose ONE tube instead of two.',
       effect:l => l ? 'back 1 tube' : 'back 2 tubes' },
-    { id:'bubble', name:'CRASH BUBBLE',  max:1, costs:[3400],
-      desc:'Survive one hit per tube. It pops, bounces you clear, and recharges at the next pool.',
-      effect:l => l ? '1 hit per tube' : 'none' },
   ];
-  const NO_UP = { tank:0, refill:0, steer:0, slim:0, payday:0, line:0, bubble:0 };
+  const NO_UP = { tank:0, refill:0, steer:0, slim:0, payday:0, line:0 };
 
   // ---------- save
   const SAVE_KEY = 'gravityFallerSave';
@@ -265,7 +262,6 @@
       r:        R - u.slim * 1.5,
       pay:      1 + u.payday * 0.25,
       back:     u.line ? 1 : 2,
-      bubble:   u.bubble > 0,
     };
   }
 
@@ -437,8 +433,6 @@
       zone: zoneFor(n),
       p: { x: SHAFT_W / 2, y: 60, vx: 0, vy: 0 },
       brake: m.brakeMax,
-      bubble: m.bubble,    // one free hit per tube, if you bought the thing
-      iframes: 0,
       parts: [],
       elapsed: 0,
       dead: false,
@@ -480,31 +474,11 @@
     }
     state.p = { x: clamp(state.p.x, 40, SHAFT_W - 40), y: 60, vx: 0, vy: 0 };
     state.brake = state.m.brakeMax;
-    state.bubble = state.m.bubble;   // the crash bubble comes back at every pool
-    state.iframes = 0;
     state.cleared = false;
     tone(760, 0.12, 'sine', 0.06);
     tone(1040, 0.14, 'sine', 0.05);
   }
 
-  // The crash bubble takes one hit per tube: it pops, throws you back up clear of
-  // whatever you touched, and leaves you briefly untouchable so you don't just
-  // land straight back on it.
-  function popBubble(obstacleY) {
-    if (!state.bubble) return false;
-    state.bubble = false;
-    state.iframes = 1.1;
-    state.p.y = Math.max(20, obstacleY - 78);
-    state.p.vy = -180;
-    state.shake = 14;
-    for (let i=0;i<22;i++) {
-      const a = Math.random() * Math.PI * 2, s = 100 + Math.random() * 220;
-      state.parts.push({ x: state.p.x, y: state.p.y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 0.5, ttl: 0.7, c: '#7ff0ff' });
-    }
-    showToast('CRASH BUBBLE POPPED — back at the next pool');
-    tone(520, 0.16, 'sine', 0.06);
-    return true;
-  }
 
   function die(reason) {
     if (state.dead) return;
@@ -555,8 +529,6 @@
     const braking = (keys.has('arrowup') || keys.has('w')) && state.brake > 0;
     const diving = keys.has('arrowdown') || keys.has('s');
 
-    if (state.iframes > 0) state.iframes = Math.max(0, state.iframes - dt);
-
     // horizontal steering
     const want = (right ? 1 : 0) - (left ? 1 : 0);
     const target = want * state.m.hspeed;
@@ -595,24 +567,17 @@
 
   function checkHits() {
     const p = state.p, t = state.tube, R = state.m.r;
-    if (state.iframes <= 0) {
-      for (const o of t.obstacles) {
-        if (Math.abs(o.y - p.y) > 200) continue;         // nowhere near it
-        for (const r of obstacleRects(o)) {
-          if (circleRect(p.x, p.y, R, r.x, r.y, r.w, r.h)) {
-            if (popBubble(o.y)) return;
-            die(DEATHS[o.type] || DEATHS.gap);
-            return;
-          }
+    for (const o of t.obstacles) {
+      if (Math.abs(o.y - p.y) > 200) continue;         // nowhere near it
+      for (const r of obstacleRects(o)) {
+        if (circleRect(p.x, p.y, R, r.x, r.y, r.w, r.h)) {
+          die(DEATHS[o.type] || DEATHS.gap);
+          return;
         }
-        if (o.type === 'cannons') {
-          for (const b of o.balls) {
-            if ((b.x - p.x) ** 2 + (b.y - p.y) ** 2 < (R + 8) ** 2) {
-              if (popBubble(o.y)) return;
-              die(DEATHS.shot);
-              return;
-            }
-          }
+      }
+      if (o.type === 'cannons') {
+        for (const b of o.balls) {
+          if ((b.x - p.x) ** 2 + (b.y - p.y) ** 2 < (R + 8) ** 2) { die(DEATHS.shot); return; }
         }
       }
     }
@@ -1137,18 +1102,6 @@
         ctx.fillRect(p.x + Math.cos(a) * 17, p.y - 8 - i * 9 + Math.sin(a) * 4, 2.5, 2.5);
       }
       ctx.globalAlpha = 1;
-    }
-
-    // the crash bubble, and the flicker while it's still protecting you
-    if (state.bubble || state.iframes > 0) {
-      ctx.save();
-      ctx.globalAlpha = state.bubble ? 0.4 + 0.12 * Math.sin(state.elapsed * 4)
-                                     : 0.25 + 0.3 * Math.abs(Math.sin(state.elapsed * 18));
-      ctx.strokeStyle = '#7ff0ff';
-      ctx.shadowColor = '#7ff0ff'; ctx.shadowBlur = 14;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(p.x, p.y, R + 9, 0, Math.PI*2); ctx.stroke();
-      ctx.restore();
     }
 
     // brake thrusters
