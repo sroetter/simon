@@ -80,7 +80,7 @@
     <div class="hint">
       You drop down an endless stack of tubes. At the bottom of each one is a <b>small pool of water</b> —
       that's the only safe landing. Everything else in the tube is trying to stop you, and touching any of it
-      is fatal. Splat and you're knocked <b>back two tubes</b>.<br><br>
+      is fatal. Splat and you're knocked <b>back a tube</b>.<br><br>
       <b>← →</b> or <b>A D</b> steer &nbsp;•&nbsp; <b>↑ / W</b> grav-brake (slow your fall) &nbsp;•&nbsp; <b>↓ / S</b> dive<br>
       The brake drains its meter and refills as you fall — you can hang, but not forever.<br><br>
       Deeper tubes pay more <b>gravicoins</b>. Spend them on suits.
@@ -211,8 +211,8 @@
       desc:'Every tube you clear pays out more gravicoins.',
       effect:l => `+${l*25}% coins` },
     { id:'line',   name:'SAFETY LINE',   max:1, costs:[2600],
-      desc:'Splat and you only lose ONE tube instead of two.',
-      effect:l => l ? 'back 1 tube' : 'back 2 tubes' },
+      desc:'Splat and you keep your place — you retry the same tube instead of losing one.',
+      effect:l => l ? 'same tube' : 'back 1 tube' },
   ];
   const NO_UP = { tank:0, refill:0, steer:0, slim:0, payday:0, line:0 };
 
@@ -261,7 +261,7 @@
       hspeed:   H_SPEED + u.steer * 45,
       r:        R - u.slim * 1.5,
       pay:      1 + u.payday * 0.25,
-      back:     u.line ? 1 : 2,
+      back:     u.line ? 0 : 1,
     };
   }
 
@@ -503,7 +503,9 @@
         `${reason.text}<br><br>You got to <b>tube ${state.tubeIdx + 1}</b>.` +
         (back < state.tubeIdx
           ? ` Knocked back to <b>tube ${back + 1}</b>.`
-          : ` Starting over at <b>tube 1</b>.`);
+          : state.tubeIdx > 0
+            ? ` Safety line held — you're back on <b>tube ${back + 1}</b>.`
+            : ` Starting over at <b>tube 1</b>.`);
       document.getElementById('deadOv').classList.remove('hidden');
     }, 700);
   }
