@@ -201,13 +201,13 @@
   const UPGRADES = [
     { id:'tank',   name:'BIGGER TANK',   max:3, costs:[200,450,900],
       desc:'+1 second of grav-brake each level. Hang longer over shut doors.',
-      effect:l => `hover ${4 + l}s` },
+      effect:l => `hover ${5 + l}s` },
     { id:'refill', name:'FAST RECHARGE', max:3, costs:[250,550,1100],
       desc:'The brake tank refills faster while you fall.',
       effect:l => `+${(l*0.3).toFixed(1)}/s refill` },
     { id:'steer',  name:'SIDE THRUSTERS',max:3, costs:[200,400,800],
       desc:'More sideways punch — cross the shaft quicker.',
-      effect:l => `${340 + l*45} steer` },
+      effect:l => `${375 + l*45} steer` },
     { id:'slim',   name:'SLIMLINE SHELL',max:2, costs:[700,1600],
       desc:'A tighter suit. Smaller target, squeezes through meaner gaps.',
       effect:l => `${(13 - l*1.5)*2}px wide` },
@@ -246,13 +246,13 @@
   const WALL = 26;              // drawn wall thickness either side
   const R = 13;                 // faller's radius
   const GRAV = 1250;
-  const V_FALL = 640;           // terminal speed, hands-off
+  const V_FALL = 575;           // terminal speed, hands-off
   const V_DIVE = 1080;          // holding dive
   const V_BRAKE = 0;            // holding the grav-brake — a true hover, so you can wait
                                 // out a closed set of doors instead of drifting into them
-  const H_SPEED = 340;
+  const H_SPEED = 375;
   const H_ACCEL = 2600;
-  const BRAKE_MAX = 4;          // seconds of brake in the tank
+  const BRAKE_MAX = 5;          // seconds of brake in the tank
   const BRAKE_DRAIN = 1;
   const BRAKE_REFILL = 1;       // refills as fast as it drains, so you can always hover
                                 // roughly half the time — the tank paces you, it doesn't strand you
@@ -294,7 +294,7 @@
   // and a smaller pool to hit at the bottom.
   function buildTube(n) {
     const height = Math.min(3400, 1450 + n * 95);
-    const rows = Math.min(15, 3 + Math.floor(n * 0.75));
+    const rows = Math.min(12, 3 + Math.floor(n * 0.55));
     const top = 340, bottom = height - 330;
     const span = (bottom - top) / Math.max(1, rows);
 
@@ -324,7 +324,7 @@
       obstacles.push(makeObstacle(type, y, n));
     }
 
-    const poolW = Math.max(72, 210 - n * 7);
+    const poolW = Math.max(115, 235 - n * 5);
     const poolX = 30 + Math.random() * (SHAFT_W - 60 - poolW);
     return { n, height, obstacles, poolX, poolW, floorY: height };
   }
@@ -333,11 +333,11 @@
     const o = { type, y };
     if (type === 'gap') {
       o.h = 22;
-      o.gapW = Math.max(76, 190 - n * 5);
+      o.gapW = Math.max(104, 205 - n * 4);
       o.gapX = 10 + Math.random() * (SHAFT_W - 20 - o.gapW);
     } else if (type === 'slider') {
       o.h = 22;
-      o.w = Math.min(SHAFT_W - 150, 120 + n * 6);
+      o.w = Math.min(SHAFT_W - 190, 110 + n * 5);
       o.x = Math.random() * (SHAFT_W - o.w);
       o.dir = Math.random() < 0.5 ? 1 : -1;
       o.speed = 90 + n * 9 + Math.random() * 50;
@@ -360,10 +360,10 @@
     } else if (type === 'cannons') {
       o.h = 20;
       o.side = Math.random() < 0.5 ? -1 : 1;   // -1 fires from the left wall
-      o.both = n >= 12 && Math.random() < 0.5;
-      o.interval = Math.max(0.85, 2.1 - n * 0.05);
+      o.both = n >= 16 && Math.random() < 0.4;
+      o.interval = Math.max(1.25, 2.4 - n * 0.04);
       o.t = Math.random() * o.interval;
-      o.speed = 300 + n * 12;
+      o.speed = Math.min(500, 275 + n * 8);
       o.balls = [];
     }
     return o;
