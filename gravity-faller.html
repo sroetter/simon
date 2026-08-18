@@ -191,6 +191,15 @@
     { name:'NEON SPRAWL', sky:['#2a0a4a','#ff4fd0'], glass:'#a03fd0', accent:'#4ffff0', beam:'#7a3fa5', kind:'neon',   prop:'#12042a', lit:'#4ffff0' },
     { name:'ORBIT',       sky:['#050318','#2a2a7a'], glass:'#4a4aa0', accent:'#ffffff', beam:'#5a5ab0', kind:'space',  prop:'#0a0820', lit:'#ffffff' },
   ];
+  // Tube index each obstacle first appears at (0-based, so tube number is +1)
+  const UNLOCK = { slider: 3, bridge: 7, doors: 11, cannons: 15 };
+  const UNLOCK_NAME = {
+    slider:  'SLIDING BLOCKS — they track back and forth',
+    bridge:  'MOVING BRIDGES — go round whichever end is open',
+    doors:   'DOORS — open 5s, shut 3s. Hover and wait',
+    cannons: 'WALL CANNONS — the shots kill too',
+  };
+
   const ZONE_LEN = 3;   // tubes per zone
   function zoneFor(n) { return ZONES[Math.floor(n / ZONE_LEN) % ZONES.length]; }
   // Every new backdrop is a checkpoint. However badly it goes after it, you never get
@@ -298,15 +307,17 @@
     const top = 340, bottom = height - 330;
     const span = (bottom - top) / Math.max(1, rows);
 
-    // which obstacles are unlocked at this depth
-    const pool = ['gap'];
-    if (n >= 1) pool.push('gap');
-    if (n >= 2) pool.push('slider');
-    if (n >= 4) pool.push('bridge');
-    if (n >= 6) pool.push('doors');
-    if (n >= 8) pool.push('cannons');
-    if (n >= 10) pool.push('slider', 'bridge');
-    if (n >= 13) pool.push('doors', 'cannons');
+    // What can show up at this depth. The nastier the obstacle, the longer you get
+    // before it turns up at all — you should have the falling itself sorted out before
+    // the doors and the cannons start.
+    const pool = ['gap', 'gap'];
+    if (n >= UNLOCK.slider)  pool.push('slider');
+    if (n >= UNLOCK.bridge)  pool.push('bridge');
+    if (n >= UNLOCK.doors)   pool.push('doors');
+    if (n >= UNLOCK.cannons) pool.push('cannons');
+    // deeper down the mean ones get a second entry each, so they come up more often
+    if (n >= 18) pool.push('slider', 'bridge');
+    if (n >= 24) pool.push('doors', 'cannons');
 
     const obstacles = [];
     let prev = null;
@@ -360,7 +371,7 @@
     } else if (type === 'cannons') {
       o.h = 20;
       o.side = Math.random() < 0.5 ? -1 : 1;   // -1 fires from the left wall
-      o.both = n >= 16 && Math.random() < 0.4;
+      o.both = n >= 22 && Math.random() < 0.4;   // both walls firing is a late-game problem
       o.interval = Math.max(1.25, 2.4 - n * 0.04);
       o.t = Math.random() * o.interval;
       o.speed = Math.min(500, 275 + n * 8);
@@ -476,6 +487,10 @@
     state.tubeIdx = n;
     state.tube = buildTube(n);
     state.zone = zoneFor(n);
+    // warn once, on the tube where a new kind of obstacle starts turning up
+    for (const k in UNLOCK) {
+      if (UNLOCK[k] === n) { showToast('NEW: ' + UNLOCK_NAME[k]); tone(560, 0.18, 'square', 0.05); }
+    }
     if (state.zone !== wasZone) {
       // new backdrop, new checkpoint — and it sticks between runs
       if (n > (save.checkpoint | 0)) { save.checkpoint = n; persist(); }
