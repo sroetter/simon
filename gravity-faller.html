@@ -337,12 +337,15 @@
       o.dir = Math.random() < 0.5 ? 1 : -1;
       o.speed = 90 + n * 9 + Math.random() * 50;
     } else if (type === 'bridge') {
-      // a long deck sliding left-right: only the sliver at one end is passable
+      // A long deck sliding left-right; you go round whichever end is open. It keeps a
+      // generous opening and a capped speed — the bridge is meant to be read and timed,
+      // not threaded.
       o.h = 26;
-      o.w = SHAFT_W - Math.max(84, 150 - n * 4);
+      const opening = Math.max(140, 210 - n * 3);
+      o.w = SHAFT_W - opening;
       o.x = Math.random() * (SHAFT_W - o.w);
       o.dir = Math.random() < 0.5 ? 1 : -1;
-      o.speed = 70 + n * 6;
+      o.speed = Math.min(140, 55 + n * 4);
     } else if (type === 'doors') {
       // open five seconds, shut for three — the whole shaft, no way round it
       o.h = 26;
@@ -661,27 +664,38 @@
       const par = 0.10 + layer * 0.14;
       const off = -(camY * par) % 620;
       const scale = 0.55 + layer * 0.28;
-      ctx.globalAlpha = 0.30 + layer * 0.22;
+      ctx.globalAlpha = 0.42 + layer * 0.24;
       for (let rep = -1; rep <= Math.ceil(H / 620) + 1; rep++) {
         drawScenery(z, layer, off + rep * 620, scale, W, H);
       }
     }
     ctx.globalAlpha = 1;
 
-    // Knock the whole world back so it reads as scenery. Everything that can kill you
-    // lives in the bright, sharp foreground; everything that can't is dim behind glass.
-    ctx.fillStyle = 'rgba(2,3,10,0.42)';
+    // Knock the world back a little so it reads as scenery rather than competing with
+    // the hazards — but only a little. It should still be somewhere you'd look at.
+    ctx.fillStyle = 'rgba(2,3,10,0.2)';
     ctx.fillRect(0, 0, W, H);
 
-    // and darken hard towards the edges, so the eye sits in the tube
+    // Darken towards the edges so the eye sits in the tube, and lay the zone's own
+    // colour over the outer thirds — the dark is what makes the colour read as light.
     const L = shaftLeft(), Rr = L + SHAFT_W;
     const vg = ctx.createLinearGradient(0, 0, W, 0);
-    vg.addColorStop(0, 'rgba(2,3,10,0.72)');
-    vg.addColorStop(Math.max(0, (L - 90) / W), 'rgba(2,3,10,0.18)');
-    vg.addColorStop(Math.min(1, (Rr + 90) / W), 'rgba(2,3,10,0.18)');
-    vg.addColorStop(1, 'rgba(2,3,10,0.72)');
+    vg.addColorStop(0, 'rgba(2,3,10,0.66)');
+    vg.addColorStop(Math.max(0, (L - 110) / W), 'rgba(2,3,10,0.05)');
+    vg.addColorStop(Math.min(1, (Rr + 110) / W), 'rgba(2,3,10,0.05)');
+    vg.addColorStop(1, 'rgba(2,3,10,0.66)');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, W, H);
+
+    ctx.globalCompositeOperation = 'screen';
+    const cg = ctx.createLinearGradient(0, 0, W, 0);
+    cg.addColorStop(0, hexA(z.accent, 0.16));
+    cg.addColorStop(Math.max(0, (L - 40) / W), 'rgba(0,0,0,0)');
+    cg.addColorStop(Math.min(1, (Rr + 40) / W), 'rgba(0,0,0,0)');
+    cg.addColorStop(1, hexA(z.accent, 0.16));
+    ctx.fillStyle = cg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   function drawScenery(z, layer, yOff, scale, W, H) {
@@ -803,16 +817,28 @@
     const z = state.zone;
     // The tube itself is glass — the world outside shows through, just tinted and
     // smeared, so you always know you're sealed inside something.
-    // Dark inside, so the obstacles have something to stand out against — the world
-    // outside is only just visible through it.
-    ctx.fillStyle = 'rgba(4,6,16,0.62)';
+    // Dark down the middle so obstacles have something to stand against, but lit from
+    // both sides in the zone's colour — the tube is a lantern, not a drainpipe.
+    ctx.fillStyle = 'rgba(4,6,16,0.5)';
     ctx.fillRect(0, camY - 40, SHAFT_W, innerHeight + 80);
     const g = ctx.createLinearGradient(0, camY, SHAFT_W, camY);
-    g.addColorStop(0, hexA(z.glass, 0.5));
-    g.addColorStop(0.5, hexA(z.glass, 0.1));
-    g.addColorStop(1, hexA(z.glass, 0.5));
+    g.addColorStop(0, hexA(z.glass, 0.85));
+    g.addColorStop(0.34, hexA(z.glass, 0.16));
+    g.addColorStop(0.66, hexA(z.glass, 0.16));
+    g.addColorStop(1, hexA(z.glass, 0.85));
     ctx.fillStyle = g;
     ctx.fillRect(0, camY - 40, SHAFT_W, innerHeight + 80);
+
+    // neon strip light running down the inside of each pillar
+    for (const sx of [0, SHAFT_W - 5]) {
+      const lg = ctx.createLinearGradient(sx, 0, sx + (sx ? -60 : 60), 0);
+      lg.addColorStop(0, hexA(z.accent, 0.5));
+      lg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = lg;
+      ctx.fillRect(sx ? sx - 55 : 0, camY - 40, 60, innerHeight + 80);
+      ctx.fillStyle = hexA(z.accent, 0.9);
+      ctx.fillRect(sx, camY - 40, 5, innerHeight + 80);
+    }
 
     // a long highlight down the glass
     ctx.fillStyle = 'rgba(255,255,255,0.07)';
@@ -919,9 +945,12 @@
         ctx.fillRect(r.x, r.y + r.h - 6, r.w, 6);
       }
 
-      // white top edge + black outline on everything
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      // white top edge, black outline, and a lit underside in the zone's colour —
+      // colour that adds to the shape instead of muddying it
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
       ctx.fillRect(r.x, r.y, r.w, 3);
+      ctx.fillStyle = hexA(state.zone.accent, 0.85);
+      ctx.fillRect(r.x, r.y + r.h - 3, r.w, 3);
       ctx.strokeStyle = '#05060f';
       ctx.lineWidth = 3;
       ctx.strokeRect(r.x + 1.5, r.y + 1.5, r.w - 3, r.h - 3);
