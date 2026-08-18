@@ -31,6 +31,17 @@
   .meter .fill { position:absolute; left:0; right:0; bottom:0; background:linear-gradient(#4fd6ff,#2b7fff); transition:height 0.06s linear; }
   .meter-label { position:fixed; left:6px; bottom:172px; font-size:10px; color:#7f8ab0; letter-spacing:1px; z-index:5; }
 
+  .up-row { display:flex; align-items:center; gap:12px; background:#141a30; border:2px solid #2a3352; border-radius:12px; padding:11px 14px; margin-top:9px; }
+  .up-row.maxed { border-color:#7eff9a; }
+  .up-info { flex:1; }
+  .up-name { font-size:13.5px; font-weight:bold; letter-spacing:1px; color:#cfe; }
+  .up-desc { font-size:11px; color:#7f8ab0; margin-top:3px; line-height:1.4; }
+  .up-now { font-size:11px; color:#ffd54f; margin-top:3px; }
+  .pips { display:flex; gap:4px; margin-top:5px; }
+  .pip { width:22px; height:6px; border-radius:3px; background:#2a3352; }
+  .pip.on { background:#4fd6ff; box-shadow:0 0 7px #4fd6ff; }
+  .up-row button { padding:8px 14px; font-size:12px; white-space:nowrap; }
+
   .shop-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:12px; margin-top:10px; }
   .suit { background:#141a30; border:2px solid #2a3352; border-radius:12px; padding:12px; text-align:center; cursor:pointer; }
   .suit:hover { border-color:#4fd6ff; }
@@ -77,6 +88,7 @@
     <div class="btnrow">
       <button id="btnPlay">DROP IN</button>
       <button id="btnShop" class="ghost">SUIT LOCKER</button>
+      <button id="btnUp" class="ghost">UPGRADES</button>
     </div>
   </div>
 </div>
@@ -87,6 +99,15 @@
     <div class="sub">◈ <span id="shopCoins">0</span> GRAVICOINS &nbsp;·&nbsp; suits are pure style, no cheating gravity</div>
     <div class="shop-grid" id="shopGrid"></div>
     <div class="btnrow"><button id="btnShopBack">BACK</button></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="upOv">
+  <div class="panel" style="max-width:600px;">
+    <h1 style="font-size:26px;">UPGRADES</h1>
+    <div class="sub">◈ <span id="upCoins">0</span> GRAVICOINS &nbsp;·&nbsp; these ones actually change how you fall</div>
+    <div id="upList"></div>
+    <div class="btnrow"><button id="btnUpBack">BACK</button></div>
   </div>
 </div>
 
@@ -140,7 +161,12 @@
   const SUITS = [
     { id:'gravity',  name:'GRAVITY SUIT', cost:0,    body:'#8b93a8', dark:'#5a6072', visor:'#39405a', trail:null,      glow:0,  desc:'Standard issue. Grey. Smells of old rope.' },
     { id:'neon',     name:'NEON DIVER',   cost:150,  body:'#25ffd0', dark:'#0e8f78', visor:'#052b26', trail:'#25ffd0', glow:16, desc:'Hums on the way down. Leaves a streak.' },
+    { id:'chicken',  name:'CHICKEN SUIT', cost:250,  body:'#fffbe8', dark:'#e8a020', visor:'#ff7a1f', trail:null,      glow:0,  chicken:true, desc:'Wings that do absolutely nothing. Bawk.' },
     { id:'bee',      name:'BUMBLEBEE',    cost:300,  body:'#ffd400', dark:'#1a1a1a', visor:'#2a2200', trail:'#ffd400', glow:8,  stripes:true, desc:'Stripes. Menacing to insects.' },
+    { id:'cow',      name:'COW SUIT',     cost:400,  body:'#fdfaf3', dark:'#1a1a1a', visor:'#ff9db4', trail:null,      glow:0,  cow:true, desc:'Patches, horns, a wet pink nose. Moo.' },
+    { id:'soccer',   name:'SOCCER STAR',  cost:650,  body:'#ffffff', dark:'#141414', visor:'#2fbf4f', trail:'#7eff9a', glow:6,  soccer:true, desc:'You ARE the ball. Top corner, every time.' },
+    { id:'duck',     name:'RUBBER DUCK',  cost:950,  body:'#ffd93b', dark:'#e08a00', visor:'#ff7a00', trail:'#ffe98a', glow:8,  duck:true, desc:'Squeaks on impact. Very at home in the pool.' },
+    { id:'melon',    name:'WATERMELON',   cost:1400, body:'#ff5b74', dark:'#1f7a3a', visor:'#0f5f2a', trail:'#7eff9a', glow:6,  melon:true, desc:'Green rind, pink middle, pips. Deeply refreshing.' },
     { id:'frost',    name:'FROSTBYTE',    cost:500,  body:'#bff0ff', dark:'#5aa9d6', visor:'#12384f', trail:'#eaffff', glow:14, flakes:true, desc:'Snows behind you. Chills the shaft.' },
     { id:'magma',    name:'MAGMA SHELL',  cost:800,  body:'#ff6a1f', dark:'#8f2000', visor:'#3a0d00', trail:'#ffb03a', glow:20, embers:true, desc:'Cracked crust, molten seams, ember wake.' },
     { id:'astro',    name:'ASTRO CADET',  cost:1200, body:'#f4f7ff', dark:'#b9c2d8', visor:'#ffb43a', trail:'#ffffff', glow:10, pack:true, desc:'Proper spacesuit. Gold visor. Little pack.' },
@@ -150,9 +176,52 @@
     { id:'gold',     name:'GOLDEN LEGEND',cost:5000, body:'#ffd24a', dark:'#a97400', visor:'#4a2f00', trail:'#fff2a8', glow:26, sparkle:true, desc:'For fallers who have fallen very far indeed.' },
   ];
 
+  // ---------- zones
+  // The tube is glass. Outside it is somewhere real — a city at dusk, a reef, a
+  // canyon — rolling past at its own speed. You're in a box travelling through the
+  // world, and the world is very much not in the box with you.
+  const ZONES = [
+    { name:'DOWNTOWN',    sky:['#2b3f8f','#6f8fe0'], glass:'#5a72c8', accent:'#ffd54f', beam:'#6d7bb5', kind:'towers', prop:'#141b3a', lit:'#ffe9a0' },
+    { name:'THE CANOPY',  sky:['#0f4a26','#57c96f'], glass:'#3f9e5c', accent:'#eaff7a', beam:'#4f8f5c', kind:'trees',  prop:'#0b2c17', lit:'#9dff7a' },
+    { name:'THE DEEP',    sky:['#03304f','#1596c8'], glass:'#2f8fc0', accent:'#4fd6ff', beam:'#3f7fa5', kind:'reef',   prop:'#01202f', lit:'#7ff0ff' },
+    { name:'RED CANYON',  sky:['#6b2a12','#f0a14a'], glass:'#c46a30', accent:'#ffd27a', beam:'#a05a2c', kind:'mesas',  prop:'#3d1608', lit:'#ffcf8a' },
+    { name:'GLACIER',     sky:['#164a63','#9fe8ff'], glass:'#6fc4e0', accent:'#eaffff', beam:'#5f9ab5', kind:'peaks',  prop:'#0d2f42', lit:'#d8fbff' },
+    { name:'MAGMA WORKS', sky:['#3d0a06','#ff5a1f'], glass:'#c2401a', accent:'#ffb03a', beam:'#93361a', kind:'lava',   prop:'#1c0503', lit:'#ff9b3a' },
+    { name:'NEON SPRAWL', sky:['#2a0a4a','#ff4fd0'], glass:'#a03fd0', accent:'#4ffff0', beam:'#7a3fa5', kind:'neon',   prop:'#12042a', lit:'#4ffff0' },
+    { name:'ORBIT',       sky:['#050318','#2a2a7a'], glass:'#4a4aa0', accent:'#ffffff', beam:'#5a5ab0', kind:'space',  prop:'#0a0820', lit:'#ffffff' },
+  ];
+  const ZONE_LEN = 3;   // tubes per zone
+  function zoneFor(n) { return ZONES[Math.floor(n / ZONE_LEN) % ZONES.length]; }
+
+  // ---------- upgrades. These DO change how you fall, unlike the suits.
+  const UPGRADES = [
+    { id:'tank',   name:'BIGGER TANK',   max:3, costs:[200,450,900],
+      desc:'+1 second of grav-brake each level. Hang longer over shut doors.',
+      effect:l => `hover ${4 + l}s` },
+    { id:'refill', name:'FAST RECHARGE', max:3, costs:[250,550,1100],
+      desc:'The brake tank refills faster while you fall.',
+      effect:l => `+${(l*0.3).toFixed(1)}/s refill` },
+    { id:'steer',  name:'SIDE THRUSTERS',max:3, costs:[200,400,800],
+      desc:'More sideways punch — cross the shaft quicker.',
+      effect:l => `${340 + l*45} steer` },
+    { id:'slim',   name:'SLIMLINE SHELL',max:2, costs:[700,1600],
+      desc:'A tighter suit. Smaller target, squeezes through meaner gaps.',
+      effect:l => `${(13 - l*1.5)*2}px wide` },
+    { id:'payday', name:'PAYDAY CHIP',   max:3, costs:[400,900,1800],
+      desc:'Every tube you clear pays out more gravicoins.',
+      effect:l => `+${l*25}% coins` },
+    { id:'line',   name:'SAFETY LINE',   max:1, costs:[2600],
+      desc:'Splat and you only lose ONE tube instead of two.',
+      effect:l => l ? 'back 1 tube' : 'back 2 tubes' },
+    { id:'bubble', name:'CRASH BUBBLE',  max:1, costs:[3400],
+      desc:'Survive one hit per tube. It pops, bounces you clear, and recharges at the next pool.',
+      effect:l => l ? '1 hit per tube' : 'none' },
+  ];
+  const NO_UP = { tank:0, refill:0, steer:0, slim:0, payday:0, line:0, bubble:0 };
+
   // ---------- save
   const SAVE_KEY = 'gravityFallerSave';
-  let save = { coins:0, owned:['gravity'], suit:'gravity', best:0 };
+  let save = { coins:0, owned:['gravity'], suit:'gravity', best:0, up:{...NO_UP} };
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (raw) {
@@ -162,6 +231,9 @@
       if (!save.owned.includes('gravity')) save.owned.push('gravity');
       save.suit = SUITS.some(x => x.id === s.suit) ? s.suit : 'gravity';
       save.best = Math.max(0, s.best | 0);
+      if (s.up) for (const u of UPGRADES) {
+        save.up[u.id] = clamp(s.up[u.id] | 0, 0, u.max);
+      }
     }
   } catch(e) {}
   function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch(e) {} }
@@ -182,6 +254,20 @@
   const BRAKE_DRAIN = 1;
   const BRAKE_REFILL = 1;       // refills as fast as it drains, so you can always hover
                                 // roughly half the time — the tank paces you, it doesn't strand you
+
+  // everything the upgrades actually change, resolved once when a run starts
+  function mods() {
+    const u = save.up;
+    return {
+      brakeMax: BRAKE_MAX + u.tank,
+      refill:   BRAKE_REFILL + u.refill * 0.3,
+      hspeed:   H_SPEED + u.steer * 45,
+      r:        R - u.slim * 1.5,
+      pay:      1 + u.payday * 0.25,
+      back:     u.line ? 1 : 2,
+      bubble:   u.bubble > 0,
+    };
+  }
 
   const keys = new Set();
   addEventListener('keydown', e => {
@@ -342,12 +428,17 @@
 
   function startRun(fromTube) {
     const n = Math.max(0, fromTube | 0);
+    const m = mods();
     state = {
+      m,
       tubeIdx: n,
       runMax: n,           // deepest tube reached this run — stops coin farming on repeats
       tube: buildTube(n),
+      zone: zoneFor(n),
       p: { x: SHAFT_W / 2, y: 60, vx: 0, vy: 0 },
-      brake: BRAKE_MAX,
+      brake: m.brakeMax,
+      bubble: m.bubble,    // one free hit per tube, if you bought the thing
+      iframes: 0,
       parts: [],
       elapsed: 0,
       dead: false,
@@ -361,16 +452,16 @@
   }
 
   function hideOverlays() {
-    document.getElementById('titleOv').classList.add('hidden');
-    document.getElementById('shopOv').classList.add('hidden');
-    document.getElementById('deadOv').classList.add('hidden');
+    for (const id of ['titleOv','shopOv','upOv','deadOv']) {
+      document.getElementById(id).classList.add('hidden');
+    }
   }
 
   function nextTube() {
     const n = state.tubeIdx + 1;
     // only pay for ground you haven't already been paid for this run
     if (n > state.runMax) {
-      const reward = 4 + state.tubeIdx * 2;
+      const reward = Math.round((4 + state.tubeIdx * 2) * state.m.pay);
       save.coins += reward;
       state.runMax = n;
       showToast(`TUBE ${state.tubeIdx + 1} CLEARED  ·  +${reward} ◈`);
@@ -379,13 +470,40 @@
     }
     if (n > save.best) save.best = n;
     persist();
+    const wasZone = state.zone;
     state.tubeIdx = n;
     state.tube = buildTube(n);
+    state.zone = zoneFor(n);
+    if (state.zone !== wasZone) {
+      showToast(`ENTERING ${state.zone.name}`);
+      tone(300, 0.3, 'sine', 0.05);
+    }
     state.p = { x: clamp(state.p.x, 40, SHAFT_W - 40), y: 60, vx: 0, vy: 0 };
-    state.brake = BRAKE_MAX;
+    state.brake = state.m.brakeMax;
+    state.bubble = state.m.bubble;   // the crash bubble comes back at every pool
+    state.iframes = 0;
     state.cleared = false;
     tone(760, 0.12, 'sine', 0.06);
     tone(1040, 0.14, 'sine', 0.05);
+  }
+
+  // The crash bubble takes one hit per tube: it pops, throws you back up clear of
+  // whatever you touched, and leaves you briefly untouchable so you don't just
+  // land straight back on it.
+  function popBubble(obstacleY) {
+    if (!state.bubble) return false;
+    state.bubble = false;
+    state.iframes = 1.1;
+    state.p.y = Math.max(20, obstacleY - 78);
+    state.p.vy = -180;
+    state.shake = 14;
+    for (let i=0;i<22;i++) {
+      const a = Math.random() * Math.PI * 2, s = 100 + Math.random() * 220;
+      state.parts.push({ x: state.p.x, y: state.p.y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 0.5, ttl: 0.7, c: '#7ff0ff' });
+    }
+    showToast('CRASH BUBBLE POPPED — back at the next pool');
+    tone(520, 0.16, 'sine', 0.06);
+    return true;
   }
 
   function die(reason) {
@@ -399,7 +517,7 @@
     }
     noise(0.35, 0.07);
     tone(120, 0.4, 'sawtooth', 0.07);
-    const back = Math.max(0, state.tubeIdx - 2);
+    const back = Math.max(0, state.tubeIdx - state.m.back);
     state.backTo = back;
     setTimeout(() => {
       if (!state || !state.dead) return;
@@ -437,9 +555,11 @@
     const braking = (keys.has('arrowup') || keys.has('w')) && state.brake > 0;
     const diving = keys.has('arrowdown') || keys.has('s');
 
+    if (state.iframes > 0) state.iframes = Math.max(0, state.iframes - dt);
+
     // horizontal steering
     const want = (right ? 1 : 0) - (left ? 1 : 0);
-    const target = want * H_SPEED;
+    const target = want * state.m.hspeed;
     if (p.vx < target) p.vx = Math.min(target, p.vx + H_ACCEL * dt);
     else if (p.vx > target) p.vx = Math.max(target, p.vx - H_ACCEL * dt);
 
@@ -448,7 +568,7 @@
       state.brake = Math.max(0, state.brake - BRAKE_DRAIN * dt);
       p.vy += (V_BRAKE - p.vy) * Math.min(1, dt * 7);
     } else {
-      state.brake = Math.min(BRAKE_MAX, state.brake + BRAKE_REFILL * dt);
+      state.brake = Math.min(state.m.brakeMax, state.brake + state.m.refill * dt);
       const cap = diving ? V_DIVE : V_FALL;
       p.vy = Math.min(cap, p.vy + GRAV * dt);
       if (p.vy > cap) p.vy = cap;
@@ -462,8 +582,9 @@
     for (let s = 0; s < steps && !state.dead && !state.cleared; s++) {
       p.x += p.vx * sdt;
       p.y += p.vy * sdt;
-      if (p.x < R) { p.x = R; p.vx = 0; }
-      if (p.x > SHAFT_W - R) { p.x = SHAFT_W - R; p.vx = 0; }
+      const r = state.m.r;
+      if (p.x < r) { p.x = r; p.vx = 0; }
+      if (p.x > SHAFT_W - r) { p.x = SHAFT_W - r; p.vx = 0; }
       checkHits();
     }
 
@@ -473,18 +594,25 @@
   }
 
   function checkHits() {
-    const p = state.p, t = state.tube;
-    for (const o of t.obstacles) {
-      if (Math.abs(o.y - p.y) > 200) continue;         // nowhere near it
-      for (const r of obstacleRects(o)) {
-        if (circleRect(p.x, p.y, R, r.x, r.y, r.w, r.h)) {
-          die(DEATHS[o.type] || DEATHS.gap);
-          return;
+    const p = state.p, t = state.tube, R = state.m.r;
+    if (state.iframes <= 0) {
+      for (const o of t.obstacles) {
+        if (Math.abs(o.y - p.y) > 200) continue;         // nowhere near it
+        for (const r of obstacleRects(o)) {
+          if (circleRect(p.x, p.y, R, r.x, r.y, r.w, r.h)) {
+            if (popBubble(o.y)) return;
+            die(DEATHS[o.type] || DEATHS.gap);
+            return;
+          }
         }
-      }
-      if (o.type === 'cannons') {
-        for (const b of o.balls) {
-          if ((b.x - p.x) ** 2 + (b.y - p.y) ** 2 < (R + 8) ** 2) { die(DEATHS.shot); return; }
+        if (o.type === 'cannons') {
+          for (const b of o.balls) {
+            if ((b.x - p.x) ** 2 + (b.y - p.y) ** 2 < (R + 8) ** 2) {
+              if (popBubble(o.y)) return;
+              die(DEATHS.shot);
+              return;
+            }
+          }
         }
       }
     }
@@ -525,6 +653,7 @@
 
     const camY = state.camY || 0;
     const L = shaftLeft();
+    drawWorld(camY, state.zone);   // the place outside the glass, in screen space
     ctx.save();
     const sh = state.shake || 0;
     ctx.translate(L + (sh ? (Math.random()-0.5)*sh : 0), -camY + (sh ? (Math.random()-0.5)*sh : 0));
@@ -550,49 +679,199 @@
     drawHUD();
   }
 
+  // A deterministic wobble, so the scenery is the same every time you pass it
+  // instead of boiling about while you fall.
+  function hash(i) { const s = Math.sin(i * 12.9898) * 43758.5453; return s - Math.floor(s); }
+
+  function drawWorld(camY, z) {
+    const W = canvas.width, H = canvas.height;
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, z.sky[0]);
+    sky.addColorStop(1, z.sky[1]);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // three parallax layers, each drifting at its own fraction of the fall
+    for (let layer = 0; layer < 3; layer++) {
+      const par = 0.10 + layer * 0.14;
+      const off = -(camY * par) % 620;
+      const scale = 0.55 + layer * 0.28;
+      ctx.globalAlpha = 0.35 + layer * 0.26;
+      for (let rep = -1; rep <= Math.ceil(H / 620) + 1; rep++) {
+        drawScenery(z, layer, off + rep * 620, scale, W, H);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawScenery(z, layer, yOff, scale, W, H) {
+    const seed = layer * 97;
+    if (z.kind === 'towers' || z.kind === 'neon') {
+      for (let i = 0; i < 14; i++) {
+        const x = hash(seed + i) * W;
+        const w = (36 + hash(seed + i + 40) * 70) * scale;
+        const h = (120 + hash(seed + i + 80) * 320) * scale;
+        const y = yOff + hash(seed + i + 120) * 400;
+        ctx.fillStyle = z.prop;
+        ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = z.lit;
+        for (let wy = y + 10; wy < y + h - 8; wy += 18) {
+          for (let wx = x + 7; wx < x + w - 9; wx += 15) {
+            if (hash(wx * 3.1 + wy * 0.7 + seed) > 0.55) ctx.fillRect(wx, wy, 5, 7);
+          }
+        }
+        if (z.kind === 'neon') {
+          ctx.fillStyle = z.accent;
+          ctx.fillRect(x + 4, y + 8, w - 8, 3);
+          ctx.fillRect(x + 4, y + h * 0.5, w - 8, 3);
+        }
+      }
+    } else if (z.kind === 'trees') {
+      for (let i = 0; i < 16; i++) {
+        const x = hash(seed + i) * W;
+        const y = yOff + hash(seed + i + 33) * 560;
+        const r = (34 + hash(seed + i + 66) * 58) * scale;
+        ctx.fillStyle = z.prop;
+        ctx.beginPath();
+        for (let b = 0; b < 4; b++) {
+          const a = b * 1.7 + hash(i + b) * 2;
+          ctx.arc(x + Math.cos(a) * r * 0.5, y + Math.sin(a) * r * 0.4, r * 0.6, 0, Math.PI*2);
+        }
+        ctx.fill();
+        ctx.strokeStyle = z.lit; ctx.lineWidth = 2 * scale;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (hash(i) - 0.5) * 40, y + 150 * scale); ctx.stroke();
+      }
+    } else if (z.kind === 'reef') {
+      for (let i = 0; i < 20; i++) {
+        const x = hash(seed + i) * W;
+        const y = yOff + hash(seed + i + 21) * 600;
+        const r = (10 + hash(seed + i + 42) * 26) * scale;
+        ctx.fillStyle = i % 3 === 0 ? z.lit : z.prop;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+        if (i % 4 === 0) {   // a fish, roughly
+          ctx.fillStyle = z.accent;
+          ctx.beginPath();
+          ctx.ellipse(x + 40, y + 20, 11 * scale, 6 * scale, 0, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(x + 29 * scale, y + 20);
+          ctx.lineTo(x + 20 * scale, y + 14); ctx.lineTo(x + 20 * scale, y + 26);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+    } else if (z.kind === 'mesas') {
+      for (let i = 0; i < 9; i++) {
+        const x = hash(seed + i) * W;
+        const w = (90 + hash(seed + i + 12) * 150) * scale;
+        const h = (140 + hash(seed + i + 24) * 240) * scale;
+        const y = yOff + hash(seed + i + 36) * 460;
+        ctx.fillStyle = z.prop;
+        ctx.beginPath();
+        ctx.moveTo(x, y + h); ctx.lineTo(x + w * 0.13, y);
+        ctx.lineTo(x + w * 0.87, y); ctx.lineTo(x + w, y + h);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = z.lit;
+        ctx.fillRect(x + w * 0.13, y, w * 0.74, 4 * scale);
+      }
+    } else if (z.kind === 'peaks') {
+      for (let i = 0; i < 11; i++) {
+        const x = hash(seed + i) * W;
+        const w = (110 + hash(seed + i + 15) * 170) * scale;
+        const h = (150 + hash(seed + i + 30) * 260) * scale;
+        const y = yOff + hash(seed + i + 45) * 500;
+        ctx.fillStyle = z.prop;
+        ctx.beginPath();
+        ctx.moveTo(x, y + h); ctx.lineTo(x + w / 2, y); ctx.lineTo(x + w, y + h);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = z.lit;
+        ctx.beginPath();
+        ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w * 0.66, y + h * 0.3);
+        ctx.lineTo(x + w * 0.34, y + h * 0.3);
+        ctx.closePath(); ctx.fill();
+      }
+    } else if (z.kind === 'lava') {
+      for (let i = 0; i < 13; i++) {
+        const x = hash(seed + i) * W;
+        const y = yOff + hash(seed + i + 17) * 580;
+        const w = (60 + hash(seed + i + 34) * 160) * scale;
+        ctx.fillStyle = z.prop;
+        ctx.fillRect(x, y, w, 60 * scale);
+        const glow = ctx.createLinearGradient(0, y, 0, y + 60 * scale);
+        glow.addColorStop(0, z.lit);
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(x, y, w, 22 * scale);
+      }
+    } else {   // space
+      for (let i = 0; i < 46; i++) {
+        const x = hash(seed + i) * W;
+        const y = yOff + hash(seed + i + 60) * 620;
+        const r = (0.8 + hash(seed + i + 120) * 1.9) * scale;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(x, y, r * 2, r * 2);
+      }
+      const px = hash(seed + 5) * W, py = yOff + 260;
+      const pr = 54 * scale;
+      const pg = ctx.createRadialGradient(px - pr*0.3, py - pr*0.3, pr*0.2, px, py, pr);
+      pg.addColorStop(0, '#7a9cff');
+      pg.addColorStop(1, '#1a2260');
+      ctx.fillStyle = pg;
+      ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
   function drawShaft(camY) {
-    const depthHue = (state.tubeIdx * 26) % 360;
-    // tube interior
+    const z = state.zone;
+    // The tube itself is glass — the world outside shows through, just tinted and
+    // smeared, so you always know you're sealed inside something.
     const g = ctx.createLinearGradient(0, camY, SHAFT_W, camY);
-    g.addColorStop(0, `hsl(${depthHue},34%,9%)`);
-    g.addColorStop(0.5, `hsl(${depthHue},28%,14%)`);
-    g.addColorStop(1, `hsl(${depthHue},34%,9%)`);
+    g.addColorStop(0, hexA(z.glass, 0.55));
+    g.addColorStop(0.5, hexA(z.glass, 0.16));
+    g.addColorStop(1, hexA(z.glass, 0.55));
     ctx.fillStyle = g;
     ctx.fillRect(0, camY - 40, SHAFT_W, innerHeight + 80);
 
-    // ribs down the tube, every 120px, to sell the sense of speed
-    ctx.strokeStyle = `hsla(${depthHue},40%,60%,0.13)`;
-    ctx.lineWidth = 2;
-    const first = Math.floor((camY - 120) / 120) * 120;
-    ctx.beginPath();
-    for (let y = first; y < camY + innerHeight + 120; y += 120) {
-      ctx.moveTo(0, y); ctx.lineTo(SHAFT_W, y);
-    }
-    ctx.stroke();
+    // a long highlight down the glass
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(SHAFT_W * 0.16, camY - 40, 26, innerHeight + 80);
 
-    // walls
+    // frame rings every 120px, to sell the sense of speed
+    const first = Math.floor((camY - 120) / 120) * 120;
+    ctx.fillStyle = hexA(z.beam, 0.85);
+    for (let y = first; y < camY + innerHeight + 120; y += 120) {
+      ctx.fillRect(-WALL, y, SHAFT_W + WALL * 2, 7);
+      ctx.fillStyle = hexA(z.accent, 0.5);
+      ctx.fillRect(-WALL, y, SHAFT_W + WALL * 2, 2);
+      ctx.fillStyle = hexA(z.beam, 0.85);
+    }
+
+    // the two structural pillars
     for (const wx of [-WALL, SHAFT_W]) {
       const wg = ctx.createLinearGradient(wx, 0, wx + WALL, 0);
-      wg.addColorStop(0, '#161b30');
-      wg.addColorStop(0.5, '#232a48');
-      wg.addColorStop(1, '#161b30');
+      wg.addColorStop(0, hexA(z.prop, 0.95));
+      wg.addColorStop(0.5, hexA(z.beam, 0.95));
+      wg.addColorStop(1, hexA(z.prop, 0.95));
       ctx.fillStyle = wg;
       ctx.fillRect(wx, camY - 40, WALL, innerHeight + 80);
     }
-    ctx.fillStyle = 'rgba(120,150,220,0.22)';
+    ctx.fillStyle = hexA(z.accent, 0.5);
     for (let y = first; y < camY + innerHeight + 120; y += 60) {
       ctx.fillRect(-WALL + 9, y, 7, 7);
       ctx.fillRect(SHAFT_W + 10, y, 7, 7);
     }
 
     // depth marks
-    ctx.fillStyle = 'rgba(150,180,255,0.3)';
+    ctx.fillStyle = hexA(z.accent, 0.75);
     ctx.font = 'bold 11px monospace';
     ctx.textAlign = 'left';
     for (let y = first; y < camY + innerHeight + 120; y += 240) {
       if (y <= 0) continue;
-      ctx.fillText(`${Math.round(y)}m`, SHAFT_W + 4, y + 4);
+      ctx.fillText(`${Math.round(y)}m`, SHAFT_W + WALL + 4, y + 4);
     }
+  }
+
+  function hexA(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
   }
 
   function drawObstacle(o) {
@@ -702,8 +981,8 @@
   }
 
   function drawFaller() {
-    const p = state.p, s = suit();
-    const tilt = clamp(p.vx / H_SPEED, -1, 1) * 0.42;
+    const p = state.p, s = suit(), R = state.m.r;
+    const tilt = clamp(p.vx / state.m.hspeed, -1, 1) * 0.42;
     const braking = (keys.has('arrowup') || keys.has('w')) && state.brake > 0;
 
     // trail
@@ -761,6 +1040,83 @@
       ctx.fillRect(-R * 0.95, -R * 0.4, 5, R * 0.9);
       ctx.fillRect(R * 0.5, -R * 0.4, 5, R * 0.9);
     }
+    if (s.cow) {
+      // black patches, then horns and a snout over the visor
+      ctx.fillStyle = s.dark;
+      ctx.beginPath(); ctx.ellipse(-R*0.42, R*0.34, R*0.36, R*0.28, 0.4, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(R*0.44, -R*0.16, R*0.28, R*0.34, -0.3, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(R*0.1, R*0.76, R*0.24, R*0.18, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#f2e6cf';
+      for (const hx of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(hx * R * 0.5, -R * 0.78);
+        ctx.lineTo(hx * R * 0.92, -R * 1.18);
+        ctx.lineTo(hx * R * 0.66, -R * 0.6);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+    if (s.chicken) {
+      // red comb on top, orange beak, a wing on each side
+      ctx.fillStyle = '#e8323f';
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath(); ctx.arc(i * R * 0.26, -R * 0.98, R * 0.2, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.fillStyle = '#ff9b1f';
+      ctx.beginPath();
+      ctx.moveTo(0, -R * 0.1); ctx.lineTo(R * 0.5, R * 0.12); ctx.lineTo(0, R * 0.34);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#fff6d8';
+      for (const wx of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(wx * R * 0.92, R * 0.1, R * 0.26, R * 0.6, wx * 0.4, 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#e8323f';
+      ctx.beginPath(); ctx.ellipse(0, R * 0.42, R * 0.16, R * 0.12, 0, 0, Math.PI*2); ctx.fill();
+    }
+    if (s.soccer) {
+      // the classic black pentagons
+      ctx.fillStyle = s.dark;
+      ctx.beginPath(); ctx.arc(0, 0, R * 0.3, 0, Math.PI*2); ctx.fill();
+      for (let i = 0; i < 5; i++) {
+        const a = i * (Math.PI * 2 / 5) - Math.PI / 2;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * R * 0.72, Math.sin(a) * R * 0.86, R * 0.19, 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.strokeStyle = s.dark; ctx.lineWidth = 1.4;
+      for (let i = 0; i < 5; i++) {
+        const a = i * (Math.PI * 2 / 5) - Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * R * 0.3, Math.sin(a) * R * 0.34);
+        ctx.lineTo(Math.cos(a) * R * 0.72, Math.sin(a) * R * 0.86);
+        ctx.stroke();
+      }
+    }
+    if (s.duck) {
+      ctx.fillStyle = '#ff8c1a';
+      ctx.beginPath();
+      ctx.ellipse(R * 0.36, R * 0.08, R * 0.44, R * 0.2, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath(); ctx.arc(R * 0.02, -R * 0.34, R * 0.12, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#ffe98a';
+      ctx.beginPath(); ctx.arc(-R * 0.34, -R * 0.62, R * 0.22, 0, Math.PI*2); ctx.fill();
+    }
+    if (s.melon) {
+      // rind arc across the bottom, pips in the flesh
+      ctx.fillStyle = s.dark;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, R * 0.86, R * 1.12, 0, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#9dff8a';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, R * 0.72, R * 0.98, 0, 0.2 * Math.PI, 0.8 * Math.PI);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#2a1208';
+      for (const [px, py] of [[-0.34,0.1],[0.3,0.16],[0,0.42],[-0.16,-0.2],[0.2,-0.26]]) {
+        ctx.beginPath(); ctx.ellipse(px * R, py * R, R*0.09, R*0.13, 0.3, 0, Math.PI*2); ctx.fill();
+      }
+    }
 
     // visor
     ctx.fillStyle = s.visor;
@@ -781,6 +1137,18 @@
         ctx.fillRect(p.x + Math.cos(a) * 17, p.y - 8 - i * 9 + Math.sin(a) * 4, 2.5, 2.5);
       }
       ctx.globalAlpha = 1;
+    }
+
+    // the crash bubble, and the flicker while it's still protecting you
+    if (state.bubble || state.iframes > 0) {
+      ctx.save();
+      ctx.globalAlpha = state.bubble ? 0.4 + 0.12 * Math.sin(state.elapsed * 4)
+                                     : 0.25 + 0.3 * Math.abs(Math.sin(state.elapsed * 18));
+      ctx.strokeStyle = '#7ff0ff';
+      ctx.shadowColor = '#7ff0ff'; ctx.shadowBlur = 14;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, R + 9, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
     }
 
     // brake thrusters
@@ -817,7 +1185,7 @@
     document.getElementById('hTube').textContent = state.tubeIdx + 1;
     document.getElementById('hBest').textContent = save.best;
     document.getElementById('hCoins').textContent = save.coins;
-    document.getElementById('meterFill').style.height = (state.brake / BRAKE_MAX * 100) + '%';
+    document.getElementById('meterFill').style.height = (state.brake / state.m.brakeMax * 100) + '%';
   }
 
   // ---------- shop
@@ -825,7 +1193,7 @@
     document.getElementById('shopCoins').textContent = save.coins;
     const grid = document.getElementById('shopGrid');
     grid.innerHTML = '';
-    for (const s of SUITS) {
+    for (const s of [...SUITS].sort((a, b) => a.cost - b.cost)) {   // cheapest first
       const owned = save.owned.includes(s.id);
       const equipped = save.suit === s.id;
       const d = document.createElement('div');
@@ -856,8 +1224,53 @@
     }
   }
 
+  function renderUpgrades() {
+    document.getElementById('upCoins').textContent = save.coins;
+    const list = document.getElementById('upList');
+    list.innerHTML = '';
+    for (const u of UPGRADES) {
+      const lvl = save.up[u.id] | 0;
+      const maxed = lvl >= u.max;
+      const cost = maxed ? 0 : u.costs[lvl];
+      const row = document.createElement('div');
+      row.className = 'up-row' + (maxed ? ' maxed' : '');
+      let pips = '';
+      for (let i = 0; i < u.max; i++) pips += `<div class="pip${i < lvl ? ' on' : ''}"></div>`;
+      row.innerHTML =
+        `<div class="up-info">
+           <div class="up-name">${u.name}</div>
+           <div class="up-desc">${u.desc}</div>
+           <div class="up-now">now: ${u.effect(lvl)}${maxed ? '' : ' → ' + u.effect(lvl + 1)}</div>
+           <div class="pips">${pips}</div>
+         </div>`;
+      const btn = document.createElement('button');
+      btn.textContent = maxed ? 'MAXED' : `◈ ${cost}`;
+      btn.disabled = maxed || save.coins < cost;
+      if (!maxed) btn.onclick = () => {
+        if (save.coins < cost) return;
+        save.coins -= cost;
+        save.up[u.id] = lvl + 1;
+        persist();
+        renderUpgrades();
+        showToast(`${u.name} → ${u.effect(lvl + 1)}`);
+        tone(880, 0.1, 'sine', 0.06); tone(1240, 0.13, 'sine', 0.05);
+      };
+      row.appendChild(btn);
+      list.appendChild(row);
+    }
+  }
+
   // ---------- wiring
   document.getElementById('btnPlay').onclick = () => { actx(); startRun(0); };
+  document.getElementById('btnUp').onclick = () => {
+    renderUpgrades();
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('upOv').classList.remove('hidden');
+  };
+  document.getElementById('btnUpBack').onclick = () => {
+    document.getElementById('upOv').classList.add('hidden');
+    document.getElementById('titleOv').classList.remove('hidden');
+  };
   document.getElementById('btnShop').onclick = () => {
     renderShop();
     document.getElementById('titleOv').classList.add('hidden');
