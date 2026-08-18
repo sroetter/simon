@@ -661,12 +661,27 @@
       const par = 0.10 + layer * 0.14;
       const off = -(camY * par) % 620;
       const scale = 0.55 + layer * 0.28;
-      ctx.globalAlpha = 0.35 + layer * 0.26;
+      ctx.globalAlpha = 0.30 + layer * 0.22;
       for (let rep = -1; rep <= Math.ceil(H / 620) + 1; rep++) {
         drawScenery(z, layer, off + rep * 620, scale, W, H);
       }
     }
     ctx.globalAlpha = 1;
+
+    // Knock the whole world back so it reads as scenery. Everything that can kill you
+    // lives in the bright, sharp foreground; everything that can't is dim behind glass.
+    ctx.fillStyle = 'rgba(2,3,10,0.42)';
+    ctx.fillRect(0, 0, W, H);
+
+    // and darken hard towards the edges, so the eye sits in the tube
+    const L = shaftLeft(), Rr = L + SHAFT_W;
+    const vg = ctx.createLinearGradient(0, 0, W, 0);
+    vg.addColorStop(0, 'rgba(2,3,10,0.72)');
+    vg.addColorStop(Math.max(0, (L - 90) / W), 'rgba(2,3,10,0.18)');
+    vg.addColorStop(Math.min(1, (Rr + 90) / W), 'rgba(2,3,10,0.18)');
+    vg.addColorStop(1, 'rgba(2,3,10,0.72)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
   }
 
   function drawScenery(z, layer, yOff, scale, W, H) {
@@ -788,10 +803,14 @@
     const z = state.zone;
     // The tube itself is glass — the world outside shows through, just tinted and
     // smeared, so you always know you're sealed inside something.
+    // Dark inside, so the obstacles have something to stand out against — the world
+    // outside is only just visible through it.
+    ctx.fillStyle = 'rgba(4,6,16,0.62)';
+    ctx.fillRect(0, camY - 40, SHAFT_W, innerHeight + 80);
     const g = ctx.createLinearGradient(0, camY, SHAFT_W, camY);
-    g.addColorStop(0, hexA(z.glass, 0.55));
-    g.addColorStop(0.5, hexA(z.glass, 0.16));
-    g.addColorStop(1, hexA(z.glass, 0.55));
+    g.addColorStop(0, hexA(z.glass, 0.5));
+    g.addColorStop(0.5, hexA(z.glass, 0.1));
+    g.addColorStop(1, hexA(z.glass, 0.5));
     ctx.fillStyle = g;
     ctx.fillRect(0, camY - 40, SHAFT_W, innerHeight + 80);
 
@@ -842,10 +861,14 @@
   function drawObstacle(o) {
     if (o.type === 'cannons') {
       for (const r of obstacleRects(o)) {
-        ctx.fillStyle = '#3c4668';
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(r.x + 3, r.y + 4, r.w, r.h);
+        ctx.fillStyle = '#8f9ad0';
         ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.fillStyle = '#59668f';
-        ctx.fillRect(r.x + (r.x === 0 ? r.w - 6 : 0), r.y + 3, 6, r.h - 6);
+        ctx.fillStyle = '#ff9b4a';   // glowing muzzle, so you can see which side fires
+        ctx.fillRect(r.x + (r.x === 0 ? r.w - 7 : 0), r.y + 3, 7, r.h - 6);
+        ctx.strokeStyle = '#05060f'; ctx.lineWidth = 3;
+        ctx.strokeRect(r.x + 1.5, r.y + 1.5, r.w - 3, r.h - 3);
       }
       for (const b of o.balls) {
         ctx.save();
@@ -859,34 +882,49 @@
       return;
     }
 
+    // Hazards keep the SAME colours in every zone and always carry a heavy black
+    // outline plus a white top edge. Whatever is going on outside the glass, the
+    // things that kill you read instantly.
     const rects = obstacleRects(o);
     for (const r of rects) {
+      // a hard shadow underneath lifts the piece off the background
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(r.x + 3, r.y + 4, r.w, r.h);
+
       if (o.type === 'doors') {
-        ctx.fillStyle = o.amt < 0.35 ? '#ff5b6e' : '#8c94b8';
+        ctx.fillStyle = o.amt < 0.35 ? '#ff3b4e' : '#c9d2f2';
         ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
-        for (let x = r.x + 6; x < r.x + r.w - 4; x += 14) ctx.fillRect(x, r.y + 4, 6, r.h - 8);
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        for (let x = r.x + 6; x < r.x + r.w - 4; x += 14) ctx.fillRect(x, r.y + 5, 6, r.h - 10);
       } else if (o.type === 'bridge') {
-        ctx.fillStyle = '#6b5330';
+        ctx.fillStyle = '#c98a34';
         ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.fillStyle = '#8d6f42';
-        for (let x = r.x + 3; x < r.x + r.w - 5; x += 18) ctx.fillRect(x, r.y + 3, 13, r.h - 6);
-        ctx.strokeStyle = '#4a3720'; ctx.lineWidth = 2;
-        ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+        ctx.fillStyle = '#8a5a18';
+        for (let x = r.x + 3; x < r.x + r.w - 5; x += 18) ctx.fillRect(x, r.y + 4, 13, r.h - 8);
       } else if (o.type === 'slider') {
-        ctx.fillStyle = '#c2455f';
+        ctx.fillStyle = '#ff3b4e';
         ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.fillStyle = 'rgba(255,255,255,0.22)';
-        ctx.fillRect(r.x, r.y, r.w, 5);
-        // hazard chevrons
-        ctx.fillStyle = 'rgba(0,0,0,0.3)';
-        for (let x = r.x + 4; x < r.x + r.w - 8; x += 16) ctx.fillRect(x, r.y + 8, 8, 7);
+        // black hazard chevrons
+        ctx.fillStyle = '#141414';
+        for (let x = r.x + 4; x < r.x + r.w - 10; x += 17) {
+          ctx.beginPath();
+          ctx.moveTo(x, r.y + r.h - 4); ctx.lineTo(x + 7, r.y + 4);
+          ctx.lineTo(x + 12, r.y + 4); ctx.lineTo(x + 5, r.y + r.h - 4);
+          ctx.closePath(); ctx.fill();
+        }
       } else {
-        ctx.fillStyle = '#4a5378';
+        ctx.fillStyle = '#8f9ad0';
         ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.fillStyle = '#5f6b98';
-        ctx.fillRect(r.x, r.y, r.w, 5);
+        ctx.fillStyle = '#5a659c';
+        ctx.fillRect(r.x, r.y + r.h - 6, r.w, 6);
       }
+
+      // white top edge + black outline on everything
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(r.x, r.y, r.w, 3);
+      ctx.strokeStyle = '#05060f';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(r.x + 1.5, r.y + 1.5, r.w - 3, r.h - 3);
     }
 
     // countdown pips so the doors are readable before you commit
@@ -959,6 +997,10 @@
       }
       ctx.globalAlpha = 1;
     }
+
+    // a dark shell behind the faller so you never lose yourself against the scenery
+    ctx.fillStyle = 'rgba(3,4,12,0.75)';
+    ctx.beginPath(); ctx.arc(p.x, p.y, R + 5, 0, Math.PI*2); ctx.fill();
 
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -1092,6 +1134,8 @@
     // outline
     ctx.strokeStyle = s.dark; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.ellipse(0, 0, R * 0.86, R * 1.12, 0, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(0, 0, R * 0.86 + 2, R * 1.12 + 2, 0, 0, Math.PI*2); ctx.stroke();
     ctx.restore();
 
     if (s.sparkle || s.embers || s.flakes) {
