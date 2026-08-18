@@ -86,6 +86,7 @@
       Deeper tubes pay more <b>gravicoins</b>. Spend them on suits.
     </div>
     <div class="btnrow">
+      <button id="btnResume" class="hidden">RESUME</button>
       <button id="btnPlay">DROP IN</button>
       <button id="btnShop" class="ghost">SUIT LOCKER</button>
       <button id="btnUp" class="ghost">UPGRADES</button>
@@ -192,6 +193,9 @@
   ];
   const ZONE_LEN = 3;   // tubes per zone
   function zoneFor(n) { return ZONES[Math.floor(n / ZONE_LEN) % ZONES.length]; }
+  // Every new backdrop is a checkpoint. However badly it goes after it, you never get
+  // knocked back past the tube where the scenery changed.
+  function checkpointFor(n) { return Math.floor(n / ZONE_LEN) * ZONE_LEN; }
 
   // ---------- upgrades. These DO change how you fall, unlike the suits.
   const UPGRADES = [
@@ -218,7 +222,7 @@
 
   // ---------- save
   const SAVE_KEY = 'gravityFallerSave';
-  let save = { coins:0, owned:['gravity'], suit:'gravity', best:0, up:{...NO_UP} };
+  let save = { coins:0, owned:['gravity'], suit:'gravity', best:0, checkpoint:0, up:{...NO_UP} };
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (raw) {
@@ -228,6 +232,7 @@
       if (!save.owned.includes('gravity')) save.owned.push('gravity');
       save.suit = SUITS.some(x => x.id === s.suit) ? s.suit : 'gravity';
       save.best = Math.max(0, s.best | 0);
+      save.checkpoint = Math.max(0, s.checkpoint | 0);
       if (s.up) for (const u of UPGRADES) {
         save.up[u.id] = clamp(s.up[u.id] | 0, 0, u.max);
       }
@@ -472,8 +477,11 @@
     state.tube = buildTube(n);
     state.zone = zoneFor(n);
     if (state.zone !== wasZone) {
-      showToast(`ENTERING ${state.zone.name}`);
-      tone(300, 0.3, 'sine', 0.05);
+      // new backdrop, new checkpoint — and it sticks between runs
+      if (n > (save.checkpoint | 0)) { save.checkpoint = n; persist(); }
+      showToast(`◆ CHECKPOINT — ${state.zone.name}`);
+      tone(300, 0.14, 'sine', 0.05);
+      tone(450, 0.3, 'sine', 0.05);
     }
     state.p = { x: clamp(state.p.x, 40, SHAFT_W - 40), y: 60, vx: 0, vy: 0 };
     state.brake = state.m.brakeMax;
@@ -494,18 +502,22 @@
     }
     noise(0.35, 0.07);
     tone(120, 0.4, 'sawtooth', 0.07);
-    const back = Math.max(0, state.tubeIdx - state.m.back);
+    const cp = checkpointFor(state.tubeIdx);
+    const back = Math.max(0, cp, state.tubeIdx - state.m.back);
     state.backTo = back;
     setTimeout(() => {
       if (!state || !state.dead) return;
       document.getElementById('deadTitle').textContent = reason.title;
+      const held = back === cp && cp > 0 && back > state.tubeIdx - state.m.back;
       document.getElementById('deadText').innerHTML =
         `${reason.text}<br><br>You got to <b>tube ${state.tubeIdx + 1}</b>.` +
-        (back < state.tubeIdx
-          ? ` Knocked back to <b>tube ${back + 1}</b>.`
-          : state.tubeIdx > 0
-            ? ` Safety line held — you're back on <b>tube ${back + 1}</b>.`
-            : ` Starting over at <b>tube 1</b>.`);
+        (held
+          ? ` The <b>${zoneFor(back).name}</b> checkpoint caught you — back in at <b>tube ${back + 1}</b>.`
+          : back < state.tubeIdx
+            ? ` Knocked back to <b>tube ${back + 1}</b>.`
+            : state.tubeIdx > 0
+              ? ` Safety line held — you're back on <b>tube ${back + 1}</b>.`
+              : ` Starting over at <b>tube 1</b>.`);
       document.getElementById('deadOv').classList.remove('hidden');
     }, 700);
   }
@@ -1288,7 +1300,24 @@
     }
   }
 
+  // Your deepest checkpoint survives between sessions, so a long climb isn't thrown
+  // away by closing the tab.
+  function refreshTitle() {
+    const btn = document.getElementById('btnResume');
+    const cp = save.checkpoint | 0;
+    if (cp > 0) {
+      btn.textContent = `RESUME · ${zoneFor(cp).name} (TUBE ${cp + 1})`;
+      btn.classList.remove('hidden');
+      document.getElementById('btnPlay').textContent = 'START FROM THE TOP';
+    } else {
+      btn.classList.add('hidden');
+      document.getElementById('btnPlay').textContent = 'DROP IN';
+    }
+  }
+  refreshTitle();
+
   // ---------- wiring
+  document.getElementById('btnResume').onclick = () => { actx(); startRun(save.checkpoint | 0); };
   document.getElementById('btnPlay').onclick = () => { actx(); startRun(0); };
   document.getElementById('btnUp').onclick = () => {
     renderUpgrades();
@@ -1296,6 +1325,7 @@
     document.getElementById('upOv').classList.remove('hidden');
   };
   document.getElementById('btnUpBack').onclick = () => {
+    refreshTitle();
     document.getElementById('upOv').classList.add('hidden');
     document.getElementById('titleOv').classList.remove('hidden');
   };
@@ -1305,12 +1335,14 @@
     document.getElementById('shopOv').classList.remove('hidden');
   };
   document.getElementById('btnShopBack').onclick = () => {
+    refreshTitle();
     document.getElementById('shopOv').classList.add('hidden');
     document.getElementById('titleOv').classList.remove('hidden');
   };
   document.getElementById('btnRetry').onclick = () => { startRun(state ? state.backTo : 0); };
   document.getElementById('btnQuit').onclick = () => {
     state = null;
+    refreshTitle();
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('meter').classList.add('hidden');
     document.getElementById('meterLabel').classList.add('hidden');
