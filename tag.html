@@ -148,6 +148,9 @@ h2 { font-size: 18px; color: #d6e6c5; font-weight: normal; margin-bottom: 14px; 
             <button class="btn diff kind active" data-kind="infection">🔥 Infection</button>
             <button class="btn diff kind" data-kind="freeze">❄ Freeze Tag</button>
             <button class="btn diff kind" data-kind="classic">🏃 Classic Tag</button>
+            <button class="btn diff kind" data-kind="blob">🫧 Blob Tag</button>
+            <button class="btn diff kind" data-kind="potato">💣 Hot Potato</button>
+            <button class="btn diff kind" data-kind="hunters">🎯 Hunters</button>
         </div>
 
         <div class="label">Backdrop:</div>
@@ -252,7 +255,16 @@ const IT_RAMP_PER_SEC = 0.01;
 // own pack so the carrier gets the full climb; Freeze has one tagger all
 // round, so theirs builds at half speed; Classic hands It around and never
 // ramps at all.
-const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0 };
+const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, hunters: 0.5 };
+
+// Blob Tag: how far apart the linked taggers sit, and how hard they're pulled
+// back into line.
+const BLOB_LINK = PLAYER_R * 2.3;
+const BLOB_PULL = 7;
+// Hot Potato: how long a fuse lasts, and how much shorter each new one is.
+const FUSE_START = 14;
+const FUSE_STEP = 1.5;
+const FUSE_MIN = 6;
 const ROUND_DURATION_BASE = 18;    // first round duration
 const ROUND_MIN = 8;               // shortest round (when few players left)
 const TAGBACK_IMMUNITY = 1.4;      // short grace after a shield break / thaw
@@ -378,6 +390,24 @@ const TAG_KINDS = {
         tagline: 'One tagger — a touch freezes you solid.',
         blurb: 'One player is <b style="color:#ff7043;">It</b> the whole round. Their touch <b style="color:#80deea;">freezes you where you stand</b>.<br>Stand next to a frozen friend to thaw them out — you get speed tank for it. It carries the whole round, so it only speeds up at <b>half rate</b>. <b>It wins by freezing everyone at once; you win if anyone is still moving at the bell.</b>',
         go: 'FREEZE TAG — THAW YOUR FRIENDS!',
+    },
+    blob: {
+        name: 'Blob Tag',
+        tagline: 'The taggers hold hands and move as one.',
+        blurb: 'Everyone tagged <b style="color:#ff7043;">joins the blob</b> and is dragged along by it — but <b>only the two players on the ends can tag you</b>.<br>The middle is harmless. <b>Last one loose wins.</b>',
+        go: 'BLOB TAG — MIND THE ENDS!',
+    },
+    potato: {
+        name: 'Hot Potato',
+        tagline: 'It is a lit bomb. Do not be holding it.',
+        blurb: 'Whoever is It carries a <b style="color:#ff7043;">burning fuse</b>. Tag someone and it is their problem now.<br>When the fuse runs out the one holding it is <b>out for good</b>, and a fresh fuse is lit. <b>Last player left wins.</b>',
+        go: 'HOT POTATO — PASS IT ON!',
+    },
+    hunters: {
+        name: 'Hunters',
+        tagline: 'Several taggers, and one touch puts you out.',
+        blurb: 'A third of the field starts as <b style="color:#ff7043;">hunters</b> and stays that way — nobody switches sides.<br>One touch and you are <b>out of the round</b>. <b>Survive to the bell, or be the last one standing.</b>',
+        go: 'HUNTERS — ONE TOUCH AND YOU ARE OUT!',
     },
     classic: {
         name: 'Classic Tag',
@@ -518,6 +548,17 @@ function makeState(mode, difficulty, bots) {
     players[itIdx].isIt = true;
     players[itIdx].isOriginalIt = true;
 
+    // Hunters: a third of the field starts as taggers and never changes side.
+    if (currentKind === 'hunters') {
+        const want = Math.max(1, Math.round(total / 3));
+        const pool = players.map((_, i) => i).filter(i => i !== itIdx);
+        for (let i = pool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+        for (let i = 0; i < want - 1 && i < pool.length; i++) players[pool[i]].isIt = true;
+    }
+
     // Initial camera: arena center
     const camX0 = arena.x + arena.w / 2;
     const camY0 = arena.y + arena.h / 2;
@@ -544,6 +585,9 @@ function makeState(mode, difficulty, bots) {
         roundNumber: 1,
         roundTimer: ROUND_DURATION_BASE,
         roundDuration: ROUND_DURATION_BASE,
+        blob: currentKind === 'blob' ? [itIdx] : [],
+        fuse: currentKind === 'potato' ? FUSE_START : 0,
+        fuseMax: FUSE_START,
         tagFlashTimer: 0,
         roundFlashTimer: 0,
         announceText: '', announceTimer: 0,
@@ -1015,12 +1059,39 @@ function updatePlayer(p, dt) {
     if (p.isIt && !p.iced) {
         const touched = [];
         for (const q of state.players) {
-            if (q === p || q.isIt || q.tagbackTimer > 0 || q.iced) continue;
+            if (q === p || !q.alive || q.isIt || q.tagbackTimer > 0 || q.iced) continue;
             const dx = q.x - p.x, dy = q.y - p.y;
             if (dx * dx + dy * dy < TAG_RANGE * TAG_RANGE) touched.push(q);
         }
         if (touched.length) {
-            if (state.kind === 'classic') {
+            if (state.kind === 'blob') {
+                // only the two ends of the chain can actually tag
+                if (blobEnds().includes(p)) touched.forEach(q => joinBlob(p, q));
+            } else if (state.kind === 'potato') {
+                const pick = touched[Math.floor(Math.random() * touched.length)];
+                if (touched.length > 1) announce('CAUGHT TWO — COIN TOSS!', 1.1);
+                passItOn(p, pick);
+            } else if (state.kind === 'hunters') {
+                touched.forEach(q => knockOut(p, q));
+            } else if (state.kind === 'blob') {
+        const loose = state.players.filter(p => !p.isIt).length;
+        ctx.fillStyle = loose <= 1 ? '#ff5252' : '#ffe082';
+        ctx.fillText(`${loose} still loose · blob of ${state.blob.length}`, W / 2, 50);
+    } else if (state.kind === 'potato') {
+        const t = Math.max(0, state.fuse);
+        ctx.fillStyle = t < 4 ? '#ff5252' : '#ffe082';
+        const holder = state.players.find(p => p.isIt && p.alive);
+        const who = !holder ? '—' : (holder.isBot ? `BOT ${holder.idx + 1}` : `P${holder.idx + 1}`);
+        ctx.fillText(`💣 ${t.toFixed(1)}s — ${who}`, W / 2, 50);
+        ctx.font = 'bold 18px Segoe UI';
+        ctx.fillStyle = '#cce0c1';
+        ctx.fillText(`${alivePlayers().length} left in`, W / 2, 96);
+    } else if (state.kind === 'hunters') {
+        const prey = state.players.filter(p => !p.isIt && p.alive).length;
+        const hunters = state.players.filter(p => p.isIt).length;
+        ctx.fillStyle = prey <= 1 ? '#ff5252' : '#ffe082';
+        ctx.fillText(`${prey} left · ${hunters} hunting`, W / 2, 50);
+    } else if (state.kind === 'classic') {
                 // It can only go to one person. Catch two at once and it's
                 // a coin toss which of them ends up carrying it.
                 const pick = touched[Math.floor(Math.random() * touched.length)];
@@ -1093,6 +1164,127 @@ function passItOn(byP, victim) {
         x: victim.x, y: victim.y - 35, vx: 0, vy: -30, life: 1.2, maxLife: 1.2,
         size: 0, color: '#ff7043', isText: true, text: "YOU'RE IT!",
     });
+}
+
+// Blob Tag — the chain, and the two players who can actually tag.
+function blobEnds() {
+    const b = state.blob.map(i => state.players[i]).filter(p => p && p.alive);
+    if (!b.length) return [];
+    if (b.length === 1) return [b[0]];
+    return [b[0], b[b.length - 1]];
+}
+
+function joinBlob(byP, victim) {
+    if (victim.shieldActive) { breakShield(victim); return; }
+    victim.isIt = true;
+    victim.tagbackTimer = TAGBACK_IMMUNITY;
+    state.blob.push(victim.idx);
+    state.tagFlashTimer = 0.4;
+    tagSound();
+    state.particles.push({
+        x: victim.x, y: victim.y - 35, vx: 0, vy: -30, life: 1.2, maxLife: 1.2,
+        size: 0, color: '#ff7043', isText: true, text: 'JOINED THE BLOB!',
+    });
+    const loose = state.players.filter(q => !q.isIt).length;
+    if (loose > 0) announce(`${loose} STILL LOOSE`, 1.0);
+}
+
+// Pull the chain back into line so it moves as one body.
+function updateBlob(dt) {
+    if (state.kind !== 'blob' || state.blob.length < 2) return;
+    const k = Math.min(1, BLOB_PULL * dt);
+    for (let pass = 0; pass < 2; pass++) {
+        for (let i = 1; i < state.blob.length; i++) {
+            const a = state.players[state.blob[i - 1]];
+            const b = state.players[state.blob[i]];
+            if (!a || !b) continue;
+            let dx = b.x - a.x, dy = b.y - a.y;
+            const d = Math.hypot(dx, dy) || 0.01;
+            if (d <= BLOB_LINK) continue;
+            const pull = (d - BLOB_LINK) * k;
+            dx /= d; dy /= d;
+            // the head is heavier, so the tail whips around behind it
+            b.x -= dx * pull * 0.75; b.y -= dy * pull * 0.75;
+            a.x += dx * pull * 0.25; a.y += dy * pull * 0.25;
+            clampToArena(a, PLAYER_R); clampToArena(b, PLAYER_R);
+        }
+    }
+}
+
+// Hot Potato — the fuse burns down and takes whoever is holding it.
+function updateFuse(dt) {
+    if (state.kind !== 'potato' || state.gameEnded) return;
+    state.fuse -= dt;
+    if (state.fuse > 0) {
+        // ticking gets faster as it runs out
+        state.tickTimer -= dt;
+        if (state.tickTimer <= 0) {
+            state.tickTimer = Math.max(0.12, state.fuse / 12);
+            tickSound();
+        }
+        return;
+    }
+    const holder = state.players.find(q => q.isIt && q.alive);
+    if (holder) {
+        holder.alive = false;
+        holder.isIt = false;
+        holder.isOriginalIt = false;
+        buzzerSound();
+        state.tagFlashTimer = 0.6;
+        state.particles.push({
+            x: holder.x, y: holder.y - 35, vx: 0, vy: -30, life: 1.6, maxLife: 1.6,
+            size: 0, color: '#ff7043', isText: true, text: 'BOOM!',
+        });
+        for (let i = 0; i < 46; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const sp = 100 + Math.random() * 260;
+            state.particles.push({
+                x: holder.x, y: holder.y - 8,
+                vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40,
+                life: 0.6, maxLife: 0.6, size: 2 + Math.random() * 3,
+                color: Math.random() < 0.5 ? '#ff7043' : '#ffd54f', gravity: 90,
+            });
+        }
+        const name = holder.isBot ? `BOT ${holder.idx + 1}` : `P${holder.idx + 1}`;
+        announce(`${name} WENT OFF!`, 1.6);
+    }
+    // light a fresh one, a little shorter, and hand it to somebody still in
+    const left = alivePlayers();
+    if (left.length > 1) {
+        const next = left[Math.floor(Math.random() * left.length)];
+        next.isIt = true;
+        next.isOriginalIt = true;
+        next.tagbackTimer = TAGBACK_IMMUNITY;
+        state.fuseMax = Math.max(FUSE_MIN, state.fuseMax - FUSE_STEP);
+        state.fuse = state.fuseMax;
+    } else {
+        state.fuse = 0;
+    }
+}
+
+// Hunters — one touch and you're out of the round.
+function knockOut(byP, victim) {
+    if (victim.shieldActive) { breakShield(victim); return; }
+    victim.alive = false;
+    victim.eliminatedTimer = 0;
+    state.tagFlashTimer = 0.4;
+    tagSound();
+    state.particles.push({
+        x: victim.x, y: victim.y - 35, vx: 0, vy: -30, life: 1.3, maxLife: 1.3,
+        size: 0, color: '#ff7043', isText: true, text: 'OUT!',
+    });
+    for (let i = 0; i < 28; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 80 + Math.random() * 200;
+        state.particles.push({
+            x: victim.x, y: victim.y - 8,
+            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30,
+            life: 0.5, maxLife: 0.8, size: 1.5 + Math.random() * 2,
+            color: '#ff7043', gravity: 80,
+        });
+    }
+    const left = state.players.filter(q => !q.isIt && q.alive).length;
+    if (left > 0) announce(`${left} LEFT`, 1.0);
 }
 
 // Shared shield-break, so all three kinds respect a shield the same way.
@@ -1228,7 +1420,41 @@ function applyPowerup(p, pu) {
             powerupSound();
             return;
         }
-        if (state.kind === 'classic') {
+        if (state.kind === 'blob') {
+        const loose = state.players.filter(p => !p.isIt);
+        if (loose.length === 0) {                                 // blob ate everyone
+            const head = state.players[state.blob[0]];
+            endGame(head ? head.idx : -1);
+            return;
+        }
+        if (state.timeLeft <= 0) endGame(loose[0].idx);           // bell — the loose ones win
+        return;
+    }
+
+    if (state.kind === 'potato') {
+        const left = alivePlayers();
+        if (left.length <= 1) { endGame(left[0] ? left[0].idx : -1); return; }
+        if (state.timeLeft <= 0) {
+            // bell with several still in — the one who's carried it least wins
+            let best = null;
+            for (const p of left) if (!best || p.timeAsIt < best.timeAsIt) best = p;
+            endGame(best ? best.idx : -1);
+        }
+        return;
+    }
+
+    if (state.kind === 'hunters') {
+        const prey = state.players.filter(p => !p.isIt && p.alive);
+        if (prey.length === 0) {
+            const h = state.players.find(p => p.isIt);
+            endGame(h ? h.idx : -1);
+            return;
+        }
+        if (state.timeLeft <= 0) endGame(prey[0].idx);            // survived the bell
+        return;
+    }
+
+    if (state.kind === 'classic') {
             // Can't just delete It — hand it to somebody else.
             if (p.isIt) { passItOn(p, nearestOther(p)); }
             powerupSound();
@@ -1440,7 +1666,7 @@ function aiCommand(p, dt) {
     // and any healthy enemy counts as prey for It)
     let nearestIt = null, nearestItD = Infinity;
     for (const q of state.players) {
-        if (!q.isIt) continue;
+        if (!q.isIt || !q.alive) continue;
         if (q === p) continue;
         const d = Math.hypot(q.x - p.x, q.y - p.y);
         if (d < nearestItD) { nearestItD = d; nearestIt = q; }
@@ -1448,7 +1674,7 @@ function aiCommand(p, dt) {
     // For "It" bots: nearest healthy = prey
     let nearestClean = null, nearestCleanD = Infinity;
     for (const q of state.players) {
-        if (q === p || q.isIt || q.tagbackTimer > 0) continue;
+        if (q === p || !q.alive || q.isIt || q.tagbackTimer > 0) continue;
         if (q.iced) continue;                    // already frozen — no point chasing them
         const d = Math.hypot(q.x - p.x, q.y - p.y);
         if (d < nearestCleanD) { nearestCleanD = d; nearestClean = q; }
@@ -1501,7 +1727,7 @@ function aiCommand(p, dt) {
         // CHASE the nearest healthy target
         let target = null, bestScore = -Infinity;
         for (const q of state.players) {
-            if (q === p || q.isIt || q.tagbackTimer > 0) continue;
+            if (q === p || !q.alive || q.isIt || q.tagbackTimer > 0) continue;
             if (q.iced) continue;      // frozen solid — can't be tagged again, don't stand there
             const d = Math.hypot(q.x - p.x, q.y - p.y);
             const slowBonus = q.freezeTimer > 0 ? 400 : 0;
@@ -2504,6 +2730,8 @@ function loop(ts) {
             state.players.forEach(p => updatePlayer(p, dt));
             processFreezeTouches();
             processThaw(dt);
+            updateBlob(dt);
+            updateFuse(dt);
             updatePowerups(dt);
             checkWinCondition();
             updateCamera(dt);
