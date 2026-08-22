@@ -29,6 +29,7 @@ canvas { display: block; position: absolute; top: 0; left: 0; cursor: crosshair;
     position: fixed; inset: 0;
     display: flex; align-items: center; justify-content: center;
     z-index: 50; background: rgba(0,0,0,0.78);
+    padding: 14px; overflow-y: auto;
 }
 #overlay.hidden { display: none; }
 
@@ -36,23 +37,30 @@ canvas { display: block; position: absolute; top: 0; left: 0; cursor: crosshair;
     background: linear-gradient(135deg, #2e5c2a, #14401b);
     border: 2px solid #ffe082;
     border-radius: 18px;
-    padding: 26px 34px; text-align: center;
-    width: 92%; max-width: 600px;
+    padding: 20px 26px 0; text-align: center;
+    width: 92%; max-width: 640px;
+    max-height: calc(100vh - 28px); overflow-y: auto;
     box-shadow: 0 16px 60px rgba(0,0,0,0.7), 0 0 50px rgba(255,224,130,0.18);
 }
+/* START rides along the bottom of the panel however long the options get */
+.startrow {
+    position: sticky; bottom: 0;
+    margin: 12px -26px 0 !important; padding: 12px 0 16px;
+    background: linear-gradient(180deg, rgba(20,64,27,0) 0%, #14401b 45%);
+}
 h1 {
-    font-size: 50px; margin-bottom: 4px;
+    font-size: clamp(28px, 6vw, 44px); margin-bottom: 4px;
     color: #fff; letter-spacing: 3px;
     text-shadow: 0 0 18px rgba(255,82,82,0.55), 2px 2px 0 #4d2c0e;
 }
-h2 { font-size: 18px; color: #d6e6c5; font-weight: normal; margin-bottom: 14px; }
+h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; min-height: 20px; }
 
 .controls {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
-    margin: 12px 0 16px; text-align: left;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    margin: 10px 0; text-align: left;
 }
 .control-section {
-    background: rgba(0,0,0,0.3); padding: 12px;
+    background: rgba(0,0,0,0.3); padding: 9px 10px;
     border-radius: 8px;
 }
 .control-section.p1 { border: 1px solid rgba(255,107,107,0.5); }
@@ -60,9 +68,9 @@ h2 { font-size: 18px; color: #d6e6c5; font-weight: normal; margin-bottom: 14px; 
 .control-section h3 { font-size: 15px; margin-bottom: 6px; }
 .control-section.p1 h3 { color: #ff8a80; }
 .control-section.p2 h3 { color: #82b1ff; }
-.control-section p { font-size: 13px; line-height: 1.55; color: #d6e6f5; }
+.control-section p { font-size: 12px; line-height: 1.45; color: #d6e6f5; }
 
-.row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; margin-top: 6px; }
 .btn {
     background: linear-gradient(135deg, #ff7043, #d84315);
     color: white; border: 2px solid #ffd54f;
@@ -74,10 +82,11 @@ h2 { font-size: 18px; color: #d6e6c5; font-weight: normal; margin-bottom: 14px; 
 .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #6d2c0a; }
 .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #6d2c0a; }
 
-.btn.diff { padding: 8px 18px; font-size: 14px; min-width: 90px; background: linear-gradient(135deg, #455a64, #263238); border-color: #b0bec5; box-shadow: 0 4px 0 #1a232a; }
-.btn.diff.bots { padding: 6px 12px; min-width: 0; }
+.btn.diff { padding: 6px 12px; font-size: 13px; min-width: 76px; background: linear-gradient(135deg, #455a64, #263238); border-color: #b0bec5; box-shadow: 0 4px 0 #1a232a; }
+.btn.diff.bots { padding: 5px 11px; min-width: 0; }
+.btn.diff.kind, .btn.diff.back { padding: 6px 11px; min-width: 0; font-size: 13px; }
 .btn.diff.active { background: linear-gradient(135deg, #ff7f50, #d63300); border-color: #ffd9c2; box-shadow: 0 4px 0 #771c00; }
-.label { font-size: 13px; color: #d6e6c5; margin: 8px 0 4px; }
+.label { font-size: 12px; color: #d6e6c5; margin: 9px 0 2px; letter-spacing: 0.5px; }
 
 .color-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .color-swatch {
@@ -130,7 +139,7 @@ h2 { font-size: 18px; color: #d6e6c5; font-weight: normal; margin-bottom: 14px; 
                 Powerups: <span style="color:#81d4fa;"><b>⚡ Speed</b></span>,
                 <span style="color:#80deea;"><b>❄ Freeze</b></span>,
                 <span style="color:#ce93d8;"><b>🛡 Shield</b></span> (block one tag),
-                <span style="color:#ff9e70;"><b>S Swapper</b></span> (trade roles — clean players catch it, infected go clean),
+                <span style="color:#ff9e70;"><b>S Swapper</b></span> (trade places with the nearest player on the other side),
                 <span style="color:#7cffa3;"><b>C Cleanse</b></span> (cures you in Infection; frees a random frozen player in Freeze Tag).
             </p>
             <p style="font-size:12px;color:#cce0c1;margin:6px 0;">
@@ -180,7 +189,7 @@ h2 { font-size: 18px; color: #d6e6c5; font-weight: normal; margin-bottom: 14px; 
             <button class="btn diff" data-diff="hard">Hard</button>
         </div>
 
-        <div class="row">
+        <div class="row startrow">
             <button class="btn" id="start1P">1 Human + Bots</button>
             <button class="btn" id="start2P">2 Humans + Bots</button>
         </div>
@@ -417,21 +426,30 @@ const TAG_KINDS = {
     },
 };
 
-function refreshBackText() {
+function showBackText(key, preview) {
     const el = document.getElementById('backBlurb');
     if (!el) return;
-    const bd = BACKDROPS[currentBackdrop];
+    const bd = BACKDROPS[key];
     el.innerHTML = `<b style="color:${bd.ground[0]}">${bd.name}</b> — ${bd.blurb} ` +
-                   `<span style="color:#8fa886;">(${bd.driftName} in the air)</span>`;
+                   `<span style="color:#8fa886;">(${bd.driftName} in the air)</span>` +
+                   (preview && key !== currentBackdrop ? ' <span style="color:#ffd54f;">· click to pick</span>' : '');
 }
+function refreshBackText() { showBackText(currentBackdrop, false); }
 
-function refreshKindText() {
-    const k = TAG_KINDS[currentKind];
+function showKindText(key, preview) {
+    const k = TAG_KINDS[key];
+    if (!k) return;
     const t = document.getElementById('kindTagline');
     const b = document.getElementById('kindBlurb');
     if (t) t.textContent = k.tagline;
-    if (b) b.innerHTML = k.blurb;
+    if (b) {
+        b.innerHTML = k.blurb +
+            (preview && key !== currentKind
+                ? '<br><span style="color:#ffd54f;">Click to play ' + k.name + '.</span>'
+                : '');
+    }
 }
+function refreshKindText() { showKindText(currentKind, false); }
 
 // ===== State =====
 let state = null;
@@ -647,6 +665,7 @@ function makePlayer(idx, x, y, isBot, palIdx) {
         shieldActive: false,
         // Speed tank
         tank: TANK_START,
+        aiTankCap: TANK_MAX,
         boosting: false,
         survived: 0,
         // Footprints
@@ -761,7 +780,20 @@ document.querySelectorAll('.btn.diff').forEach(b => {
         b.classList.add('active');
         if (isBots) botCount = parseInt(b.dataset.bots, 10);
         else if (isKind) { currentKind = b.dataset.kind; refreshKindText();
-refreshBackText(); }
+refreshBackText();
+
+// Hovering a kind of tag (or a backdrop) previews its description; sliding
+// off puts the one you've actually picked back.
+document.querySelectorAll('.btn.diff.kind').forEach(b => {
+    b.addEventListener('mouseenter', () => showKindText(b.dataset.kind, true));
+    b.addEventListener('mouseleave', () => refreshKindText());
+    b.addEventListener('focus', () => showKindText(b.dataset.kind, true));
+    b.addEventListener('blur', () => refreshKindText());
+});
+document.querySelectorAll('.btn.diff.back').forEach(b => {
+    b.addEventListener('mouseenter', () => showBackText(b.dataset.back, true));
+    b.addEventListener('mouseleave', () => refreshBackText());
+}); }
         else if (isBack) { currentBackdrop = b.dataset.back; refreshBackText(); }
         else currentDifficulty = b.dataset.diff;
     });
@@ -902,7 +934,11 @@ function updatePlayer(p, dt) {
     // Surviving is what pays for the tank — taggers earn nothing.
     if (!p.isIt && !p.iced && p.freezeTimer <= 0) {
         p.survived += dt;
-        if (!p.boosting) p.tank = Math.min(TANK_MAX, p.tank + tankGainRate(p) * dt);
+        // Bots can only ever hold part of a tank on the easier settings, so a
+        // human tagger isn't out-run by a boost every single time.
+        const cap = p.isBot ? (p.aiTankCap || TANK_MAX) : TANK_MAX;
+        if (!p.boosting) p.tank = Math.min(cap, p.tank + tankGainRate(p) * dt);
+        if (p.tank > cap) p.tank = cap;
     }
 
     // Classic tag scores you on how long you carry It
@@ -963,6 +999,9 @@ function updatePlayer(p, dt) {
         }
     }
     if (p.speedTimer > 0) speed *= SPEED_BOOST_MULT;
+    // Bot runners give ground on the easier settings — a human tagger can't
+    // out-run a runner otherwise, however badly the runner jukes.
+    if (p.isBot && !p.isIt) speed *= (p.aiFleeSpeed || 1);
 
     // Speed tank: drains while held, and only runners have one.
     p.boosting = !!p.wantBoost && canBoost(p) && p.moving;
@@ -1482,37 +1521,43 @@ function applyPowerup(p, pu) {
             }
         }
     } else if (pu.kind === 'swap') {
-        if (state.kind === 'freeze' || state.kind === 'classic') {
-            // Trade places with whoever is It — the escape hatch.
-            const it = state.players.find(q => q.isIt && q !== p);
-            if (it) {
-                const tx = it.x, ty = it.y;
-                it.x = p.x; it.y = p.y;
-                p.x = tx; p.y = ty;
-                p.tagbackTimer = TAGBACK_IMMUNITY;
-                it.tagbackTimer = TAGBACK_IMMUNITY;
+        // Trade places with the nearest player on the other side — you land
+        // where they were standing and they land where you were. Works the
+        // same way in every kind of tag.
+        let target = null, bestD = Infinity;
+        for (const q of state.players) {
+            if (q === p || !q.alive) continue;
+            const opposite = p.isIt ? (!q.isIt && !q.iced) : q.isIt;
+            if (!opposite) continue;
+            const d = Math.hypot(q.x - p.x, q.y - p.y);
+            if (d < bestD) { bestD = d; target = q; }
+        }
+        if (target) {
+            const tx = target.x, ty = target.y;
+            target.x = p.x; target.y = p.y;
+            p.x = tx; p.y = ty;
+            p.tagbackTimer = TAGBACK_IMMUNITY;
+            target.tagbackTimer = TAGBACK_IMMUNITY;
+            for (const q of [p, target]) {
                 state.particles.push({
-                    x: p.x, y: p.y - 35, vx: 0, vy: -30, life: 1.3, maxLife: 1.3,
+                    x: q.x, y: q.y - 35, vx: 0, vy: -30, life: 1.3, maxLife: 1.3,
                     size: 0, color: '#ff7043', isText: true, text: 'SWAPPED!',
                 });
+                for (let i = 0; i < 20; i++) {
+                    const a = Math.random() * Math.PI * 2;
+                    const sp = 70 + Math.random() * 170;
+                    state.particles.push({
+                        x: q.x, y: q.y - 8,
+                        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30,
+                        life: 0.45, maxLife: 0.45,
+                        size: 1.5 + Math.random() * 2, color: '#ffab91',
+                    });
+                }
             }
-            powerupSound();
-            return;
-        }
-        // Infection — swap roles: if you're infected you become clean; if
-        // you're clean you become infected (and then start hunting).
-        if (p.isIt) {
-            p.isIt = false;
-            p.isOriginalIt = false;
-            p.tagbackTimer = TAGBACK_IMMUNITY * 1.4;
+            announce('SWAPPED PLACES!', 1.1);
         } else {
-            p.isIt = true;
-            p.tagbackTimer = TAGBACK_IMMUNITY;
+            announce('NOBODY TO SWAP WITH', 1.0);
         }
-        state.particles.push({
-            x: p.x, y: p.y - 35, vx: 0, vy: -30, life: 1.4, maxLife: 1.4,
-            size: 0, color: '#ff7043', isText: true, text: 'SWAPPED!',
-        });
     }
     powerupSound();
     const c = POWERUP_COLORS[pu.kind].core;
@@ -1657,10 +1702,20 @@ function aiCommand(p, dt) {
     const out = { ix: 0, iy: 0 };
 
     const cfg = {
-        easy:   { reactSpeed: 0.55, predict: 0.2, panicDist: 200, fleeBonus: 1.0 },
-        medium: { reactSpeed: 0.85, predict: 0.5, panicDist: 240, fleeBonus: 1.0 },
-        hard:   { reactSpeed: 1.0,  predict: 0.85, panicDist: 280, fleeBonus: 1.05 },
+        // fleeLag: how long they take to notice you've changed direction, so
+        //   you can cut the corner instead of watching them slip away.
+        // fumble: stumbles per second while panicking — a fraction of a second
+        //   of bad footing you can close on.
+        // boostAt: how close you have to get before they burn their speed tank.
+        // fleeSpeed matters most of all: taggers run at 88% of a runner, so a
+        // straight chase never closes unless the runner is slower than you.
+        easy:   { reactSpeed: 0.55, predict: 0.2,  panicDist: 200, fleeBonus: 0.95, fleeLag: 0.55, fumble: 1.2, boostAt: 110, fleeSpeed: 0.82, tankCap: 30 },
+        medium: { reactSpeed: 0.85, predict: 0.5,  panicDist: 240, fleeBonus: 1.0,  fleeLag: 0.35, fumble: 0.7, boostAt: 150, fleeSpeed: 0.92, tankCap: 65 },
+        hard:   { reactSpeed: 1.0,  predict: 0.85, panicDist: 280, fleeBonus: 1.05, fleeLag: 0.18, fumble: 0.3, boostAt: 210, fleeSpeed: 1.0, tankCap: 100 },
     }[state.difficulty || 'medium'];
+
+    p.aiFleeSpeed = cfg.fleeSpeed;
+    p.aiTankCap = cfg.tankCap;
 
     // Find the nearest infected (any of them counts as a threat to non-It,
     // and any healthy enemy counts as prey for It)
@@ -1721,7 +1776,7 @@ function aiCommand(p, dt) {
 
     // Bots lean on the tank when something is closing in — taggers have none,
     // so this only ever fires for runners.
-    p.wantBoost = canBoost(p) && nearestIt && nearestItD < 230;
+    p.wantBoost = canBoost(p) && nearestIt && nearestItD < cfg.boostAt;
 
     if (p.isIt) {
         // CHASE the nearest healthy target
@@ -1766,7 +1821,17 @@ function aiCommand(p, dt) {
             fleeY += (dy / d) * w;
         }
         const fl = Math.hypot(fleeX, fleeY) || 1;
-        const fromIt = { x: fleeX / fl, y: fleeY / fl };
+
+        // They don't turn on a sixpence any more. The direction they run is
+        // eased toward the true escape line, so a quick change of direction on
+        // your part buys you a moment before they follow it.
+        const wantX = fleeX / fl, wantY = fleeY / fl;
+        if (p.ai.fleeDirX === undefined) { p.ai.fleeDirX = wantX; p.ai.fleeDirY = wantY; }
+        const k = Math.min(1, dt / Math.max(0.001, cfg.fleeLag));
+        p.ai.fleeDirX += (wantX - p.ai.fleeDirX) * k;
+        p.ai.fleeDirY += (wantY - p.ai.fleeDirY) * k;
+        const fdl = Math.hypot(p.ai.fleeDirX, p.ai.fleeDirY) || 1;
+        const fromIt = { x: p.ai.fleeDirX / fdl, y: p.ai.fleeDirY / fdl };
         const d = nearestItD;
 
         if (d > cfg.panicDist) {
@@ -1783,9 +1848,22 @@ function aiCommand(p, dt) {
             const tcx = ax - p.x, tcy = ay - p.y;
             const tcd = Math.hypot(tcx, tcy) || 1;
             const center = { x: tcx / tcd, y: tcy / tcd };
-            // Mostly flee, with a bit of center-pull
-            out.ix = (fromIt.x * 0.85 + center.x * 0.25) * cfg.fleeBonus;
-            out.iy = (fromIt.y * 0.85 + center.y * 0.25) * cfg.fleeBonus;
+            // Mostly flee, with a bit of center-pull. Less pull than before,
+            // so they back themselves into walls and corners more often.
+            out.ix = (fromIt.x * 0.85 + center.x * 0.12) * cfg.fleeBonus;
+            out.iy = (fromIt.y * 0.85 + center.y * 0.12) * cfg.fleeBonus;
+
+            // Panicked footing: every so often they lose a step.
+            p.ai.fumbleT = (p.ai.fumbleT || 0) - dt;
+            if (p.ai.fumbleT <= -0.0001 && Math.random() < cfg.fumble * dt) {
+                p.ai.fumbleT = 0.18 + Math.random() * 0.18;
+                p.ai.fumbleX = (Math.random() - 0.5) * 1.2;
+                p.ai.fumbleY = (Math.random() - 0.5) * 1.2;
+            }
+            if (p.ai.fumbleT > 0) {
+                out.ix = out.ix * 0.3 + p.ai.fumbleX * 0.35;
+                out.iy = out.iy * 0.3 + p.ai.fumbleY * 0.35;
+            }
         }
 
         // Detour to grab a useful powerup if nearby (and not actively cornered)
