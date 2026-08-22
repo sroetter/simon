@@ -120,18 +120,23 @@ h2 { font-size: 18px; color: #d6e6c5; font-weight: normal; margin-bottom: 14px; 
         <div class="controls">
             <div class="control-section p1">
                 <h3>🔴 Player 1</h3>
-                <p>WASD (or arrows in 1P) — Move<br>Left-Shift / Space — Dash (1.5s cd)</p>
+                <p>WASD (or arrows in 1P) — Move<br><b>Hold Left-Shift / Space — Speed Tank</b></p>
             </div>
             <div class="control-section p2">
                 <h3>🔵 Player 2 (2P only)</h3>
-                <p>Arrow keys — Move<br>Right-Shift / Enter — Dash<br>(or CPU when 1P)</p>
+                <p>Arrow keys — Move<br><b>Hold Right-Shift / Enter — Speed Tank</b><br>(or CPU when 1P)</p>
             </div>
             <p style="font-size:12px;color:#cce0c1;margin:6px 0;">
                 Powerups: <span style="color:#81d4fa;"><b>⚡ Speed</b></span>,
                 <span style="color:#80deea;"><b>❄ Freeze</b></span>,
                 <span style="color:#ce93d8;"><b>🛡 Shield</b></span> (block one tag),
                 <span style="color:#ff9e70;"><b>S Swapper</b></span> (trade roles — clean players catch it, infected go clean),
-                <span style="color:#7cffa3;"><b>C Cleanse</b></span> (cures you if you're infected).
+                <span style="color:#7cffa3;"><b>C Cleanse</b></span> (cures you in Infection; frees a random frozen player in Freeze Tag).
+            </p>
+            <p style="font-size:12px;color:#cce0c1;margin:6px 0;">
+                <b style="color:#ffd54f;">Speed tank:</b> hold shift to burn it. Only runners carry one —
+                taggers have none. It fills as you survive, faster the longer you last, and you get a
+                chunk every time you free a frozen player.
             </p>
         </div>
 
@@ -253,9 +258,16 @@ const POWERUP_COLORS = {
     cleanse: { core: '#43a047', edge: '#c8e6c9', glow: 'rgba(120,220,150,0.55)' }, // cures infection
     swap:    { core: '#ff7043', edge: '#ffd180', glow: 'rgba(255,130,80,0.55)'  }, // swap roles with random opposite
 };
-const DASH_DURATION = 0.32;
-const DASH_COOLDOWN = 1.5;
-const DASH_SPEED_MULT = 2.1;
+// Speed tank — runners only. Hold shift to burn it, earn it back by staying
+// loose, and get a chunk for every friend you free.
+const TANK_MAX = 100;
+const TANK_START = 40;
+const TANK_DRAIN = 26;            // per second while you're holding it down
+const TANK_GAIN_BASE = 3.2;       // per second of surviving
+const TANK_GAIN_RAMP = 0.06;      // ...and it fills faster the longer you last
+const TANK_GAIN_CAP = 9;
+const TANK_BOOST_MULT = 1.6;
+const TANK_FREE_BONUS = 25;       // for thawing somebody out
 
 const PLAYER_PALETTE = [
     { coat: '#d8463c', dark: '#9a2c25', hat: '#b9352a', pom: '#ffd6d4', scarf: '#f4d35e', label: '#ff5d5d' },
@@ -508,9 +520,10 @@ function makePlayer(idx, x, y, isBot, palIdx) {
         freezeTimer: 0,
         freezeRayTimer: 0,
         shieldActive: false,
-        // Dash
-        dashTimer: 0,
-        dashCooldown: 0,
+        // Speed tank
+        tank: TANK_START,
+        boosting: false,
+        survived: 0,
         // Footprints
         footprintTimer: 0,
         // Tag kinds
@@ -657,25 +670,41 @@ function nearestOther(p) {
     return best || p;
 }
 
-function tryDash(p) {
-    if (p.dashCooldown > 0 || p.dashTimer > 0 || p.freezeTimer > 0) return;
-    p.dashTimer = DASH_DURATION;
-    p.dashCooldown = DASH_COOLDOWN;
-    // Quick puff sound
-    tone(420, 0.06, 'square', 0.08);
-    tone(220, 0.08, 'sawtooth', 0.04);
-    // Trail particles in the dash direction
+// Taggers don't carry a tank at all — this is the runners' way out.
+function canBoost(p) {
+    return !p.isIt && !p.iced && p.freezeTimer <= 0 && p.tank > 0;
+}
+
+// How fast your tank fills right now. The longer you've stayed loose, the
+// quicker it comes back.
+function tankGainRate(p) {
+    return Math.min(TANK_GAIN_CAP, TANK_GAIN_BASE + p.survived * TANK_GAIN_RAMP);
+}
+
+function awardTank(p, amount, label) {
+    if (!p || p.isIt) return;
+    p.tank = Math.min(TANK_MAX, p.tank + amount);
+    if (label) {
+        state.particles.push({
+            x: p.x, y: p.y - 34, vx: 0, vy: -28, life: 1.1, maxLife: 1.1,
+            size: 0, color: '#ffd54f', isText: true, text: label,
+        });
+    }
+}
+
+// Puff of exhaust behind a boosting player.
+function boostPuff(p) {
     const fx = p.facingX, fy = p.facingY;
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 2; i++) {
         const a = Math.random() * Math.PI * 2;
         state.particles.push({
-            x: p.x - fx * 6 + Math.cos(a) * 6,
-            y: p.y - fy * 6 + Math.sin(a) * 6,
-            vx: -fx * 80 + (Math.random() - 0.5) * 60,
-            vy: -fy * 80 + (Math.random() - 0.5) * 60,
-            life: 0.35, maxLife: 0.35,
+            x: p.x - fx * 8 + Math.cos(a) * 5,
+            y: p.y - fy * 8 + Math.sin(a) * 5,
+            vx: -fx * 90 + (Math.random() - 0.5) * 50,
+            vy: -fy * 90 + (Math.random() - 0.5) * 50,
+            life: 0.3, maxLife: 0.3,
             size: 2 + Math.random() * 2,
-            color: 'rgba(255,255,255,0.85)',
+            color: Math.random() < 0.5 ? 'rgba(255,213,79,0.9)' : 'rgba(255,255,255,0.8)',
         });
     }
 }
@@ -741,8 +770,11 @@ function updatePlayer(p, dt) {
     p.speedTimer = Math.max(0, p.speedTimer - dt);
     p.freezeTimer = Math.max(0, p.freezeTimer - dt);
     p.freezeRayTimer = Math.max(0, p.freezeRayTimer - dt);
-    p.dashTimer = Math.max(0, p.dashTimer - dt);
-    p.dashCooldown = Math.max(0, p.dashCooldown - dt);
+    // Surviving is what pays for the tank — taggers earn nothing.
+    if (!p.isIt && !p.iced && p.freezeTimer <= 0) {
+        p.survived += dt;
+        if (!p.boosting) p.tank = Math.min(TANK_MAX, p.tank + tankGainRate(p) * dt);
+    }
 
     // Classic tag scores you on how long you carry It
     if (p.isIt) p.timeAsIt += dt;
@@ -778,11 +810,11 @@ function updatePlayer(p, dt) {
         if (codes[k.down]  || (dual && codes['ArrowDown']))  iy += 1;
         if (codes[k.left]  || (dual && codes['ArrowLeft']))  ix -= 1;
         if (codes[k.right] || (dual && codes['ArrowRight'])) ix += 1;
-        // Dash input
-        const dashKey = (p.idx === 0)
-            ? (consumeJust('ShiftLeft') || consumeJust('Space') || (dual && (consumeJust('ShiftRight') || consumeJust('Enter'))))
-            : (consumeJust('ShiftRight') || consumeJust('Enter'));
-        if (dashKey) tryDash(p);
+        // Speed tank — held, not tapped
+        const boostKey = (p.idx === 0)
+            ? (codes['ShiftLeft'] || codes['Space'] || (dual && (codes['ShiftRight'] || codes['Enter'])))
+            : (codes['ShiftRight'] || codes['Enter']);
+        p.wantBoost = !!boostKey;
     }
     const len = Math.hypot(ix, iy);
     if (len > 0) { ix /= len; iy /= len; }
@@ -801,7 +833,20 @@ function updatePlayer(p, dt) {
         }
     }
     if (p.speedTimer > 0) speed *= SPEED_BOOST_MULT;
-    if (p.dashTimer > 0) speed *= DASH_SPEED_MULT;
+
+    // Speed tank: drains while held, and only runners have one.
+    p.boosting = !!p.wantBoost && canBoost(p) && p.moving;
+    if (p.boosting) {
+        p.tank = Math.max(0, p.tank - TANK_DRAIN * dt);
+        speed *= TANK_BOOST_MULT;
+        if (Math.random() < dt * 30) boostPuff(p);
+        if (p.tank === 0 && !p.tankDry) {
+            p.tankDry = true;
+            if (!p.isBot) tone(200, 0.12, 'square', 0.05);
+        }
+    } else if (p.tank > 6) {
+        p.tankDry = false;
+    }
 
     p.vx = ix * speed;
     p.vy = iy * speed;
@@ -1006,6 +1051,7 @@ function processThaw(dt) {
             if (f.thaw >= 1) {
                 f.iced = false; f.thaw = 0;
                 f.tagbackTimer = TAGBACK_IMMUNITY;
+                awardTank(helper, TANK_FREE_BONUS, '+TANK');
                 tone(520, 0.09, 'sine', 0.1);
                 tone(780, 0.12, 'sine', 0.09);
                 state.particles.push({
@@ -1066,19 +1112,33 @@ function applyPowerup(p, pu) {
         p.shieldActive = true;
     } else if (pu.kind === 'cleanse') {
         if (state.kind === 'freeze') {
-            // Thaw every frozen player standing near you, all at once.
-            let freed = 0;
-            state.players.forEach(q => {
-                if (!q.iced) return;
-                if (Math.hypot(q.x - p.x, q.y - p.y) > 240) return;
+            // Frees one frozen player at random, wherever they are on the map.
+            const frozen = state.players.filter(q => q.iced && q !== p);
+            if (frozen.length) {
+                const q = frozen[Math.floor(Math.random() * frozen.length)];
                 q.iced = false; q.thaw = 0; q.tagbackTimer = TAGBACK_IMMUNITY;
-                freed++;
+                awardTank(p, TANK_FREE_BONUS, '+TANK');
                 state.particles.push({
-                    x: q.x, y: q.y - 35, vx: 0, vy: -30, life: 1.2, maxLife: 1.2,
-                    size: 0, color: '#7cffa3', isText: true, text: 'THAWED!',
+                    x: q.x, y: q.y - 35, vx: 0, vy: -30, life: 1.4, maxLife: 1.4,
+                    size: 0, color: '#7cffa3', isText: true, text: 'FREED!',
                 });
-            });
-            if (freed) announce(`${freed} THAWED!`, 1.2);
+                for (let i = 0; i < 26; i++) {
+                    const a = Math.random() * Math.PI * 2;
+                    const sp = 70 + Math.random() * 180;
+                    state.particles.push({
+                        x: q.x, y: q.y - 8,
+                        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30,
+                        life: 0.5, maxLife: 0.5,
+                        size: 1.5 + Math.random() * 2, color: '#7cffa3',
+                    });
+                }
+                const who = q.isBot ? `BOT ${q.idx + 1}` : `P${q.idx + 1}`;
+                announce(`${who} FREED!`, 1.2);
+                tone(520, 0.09, 'sine', 0.1);
+                tone(780, 0.12, 'sine', 0.09);
+            } else {
+                announce('NOBODY TO FREE', 1.0);
+            }
             powerupSound();
             return;
         }
@@ -1347,14 +1407,9 @@ function aiCommand(p, dt) {
         if (d < range && d < pickD) { pickD = d; pickUp = pu; }
     }
 
-    // Bot dash decisions — dash to escape danger or close on prey
-    if (p.dashCooldown <= 0 && p.dashTimer <= 0) {
-        if (!p.isIt && nearestIt && nearestItD < 95) {
-            tryDash(p);
-        } else if (p.isIt && nearestClean && nearestCleanD < 80 && nearestCleanD > 25) {
-            tryDash(p);
-        }
-    }
+    // Bots lean on the tank when something is closing in — taggers have none,
+    // so this only ever fires for runners.
+    p.wantBoost = canBoost(p) && nearestIt && nearestItD < 230;
 
     if (p.isIt) {
         // CHASE the nearest healthy target
@@ -1889,8 +1944,8 @@ function drawPlayer(p) {
         ctx.fill();
     }
 
-    // Dash trail (after-images)
-    if (p.dashTimer > 0) {
+    // Boost trail (after-images)
+    if (p.boosting) {
         ctx.strokeStyle = 'rgba(255,255,255,0.7)';
         ctx.lineWidth = 2;
         for (let i = 1; i <= 3; i++) {
@@ -2173,6 +2228,52 @@ function drawHUD() {
 // Tagger-only minimap: only visible when a HUMAN player is currently It.
 // Shows the entire arena with runners as colored dots so the tagger can
 // hunt them down. Runners hide somewhere; the tagger gets a radar.
+// The tank gauge for the human player(s) — bottom centre.
+function drawTankGauge() {
+    const humans = state.players.filter(p => !p.isBot);
+    if (!humans.length) return;
+    const bw = 210, bh = 13, gap = 26;
+    const totalW = humans.length * bw + (humans.length - 1) * gap;
+    let bx = (W - totalW) / 2;
+    const by = H - 46;
+    for (const p of humans) {
+        const pct = Math.max(0, Math.min(1, p.tank / TANK_MAX));
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(bx - 2, by - 2, bw + 4, bh + 4);
+        ctx.fillStyle = 'rgba(255,255,255,0.12)';
+        ctx.fillRect(bx, by, bw, bh);
+        if (p.isIt) {
+            // Taggers don't carry one at all.
+            ctx.fillStyle = 'rgba(255,112,67,0.25)';
+            ctx.fillRect(bx, by, bw, bh);
+            ctx.font = 'bold 11px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#ff8a65';
+            ctx.fillText('NO TANK WHILE YOU\'RE IT', bx + bw / 2, by + bh - 2);
+        } else {
+            const grad = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+            grad.addColorStop(0, '#ffd54f');
+            grad.addColorStop(1, p.boosting ? '#ff7043' : '#7cffa3');
+            ctx.fillStyle = grad;
+            ctx.fillRect(bx, by, bw * pct, bh);
+            ctx.font = 'bold 11px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#0c1a08';
+            const label = `SPEED TANK ${Math.round(p.tank)}%  ·  +${tankGainRate(p).toFixed(1)}/s`;
+            ctx.fillText(label, bx + bw / 2, by + bh - 2);
+        }
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx, by, bw, bh);
+        if (humans.length > 1) {
+            ctx.font = 'bold 10px Segoe UI';
+            ctx.fillStyle = '#cce0c1';
+            ctx.fillText(`P${p.idx + 1}`, bx + bw / 2, by - 6);
+        }
+        bx += bw + gap;
+    }
+}
+
 function drawMinimap() {
     const humanIts = state.players.filter(p => !p.isBot && p.isIt);
     if (humanIts.length === 0) return;
@@ -2351,6 +2452,7 @@ function loop(ts) {
         drawLeaves();
         drawHUD();
         drawMinimap();
+        drawTankGauge();
         drawWinnerOverlay();
     }
 
