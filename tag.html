@@ -196,7 +196,7 @@ h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; 
     </div>
 
     <div class="box" id="gameOverScreen" style="display:none;">
-        <h1>GAME OVER</h1>
+        <h1 id="gameOverTitle">GAME OVER</h1>
         <div class="winner" id="winnerText"></div>
         <div class="row">
             <button class="btn" id="rematchBtn">Rematch</button>
@@ -271,9 +271,9 @@ const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, h
 const BLOB_LINK = PLAYER_R * 2.3;
 const BLOB_PULL = 7;
 // Hot Potato: how long a fuse lasts, and how much shorter each new one is.
-const FUSE_START = 14;
-const FUSE_STEP = 1.5;
-const FUSE_MIN = 6;
+const FUSE_START = 24;   // you get a good while to find somebody
+const FUSE_STEP = 1.5;   // ...and each new fuse is a little shorter
+const FUSE_MIN = 11;
 const ROUND_DURATION_BASE = 18;    // first round duration
 const ROUND_MIN = 8;               // shortest round (when few players left)
 const TAGBACK_IMMUNITY = 1.4;      // short grace after a shield break / thaw
@@ -409,7 +409,7 @@ const TAG_KINDS = {
     potato: {
         name: 'Hot Potato',
         tagline: 'It is a lit bomb. Do not be holding it.',
-        blurb: 'Whoever is It carries a <b style="color:#ff7043;">burning fuse</b>. Tag someone and it is their problem now.<br>When the fuse runs out the one holding it is <b>out for good</b>, and a fresh fuse is lit. <b>Last player left wins.</b>',
+        blurb: 'Whoever is It carries a <b style="color:#ff7043;">burning fuse</b> — 24 seconds at first, shorter every time. Tag someone and it is their problem now.<br>When the fuse runs out the one holding it is <b>out for good</b>, and a fresh fuse is lit. <b>Last player left wins.</b>',
         go: 'HOT POTATO — PASS IT ON!',
     },
     hunters: {
@@ -736,15 +736,47 @@ function endGame(winnerIdx) {
 function showGameOver() {
     state.running = false;
     const winnerEl = document.getElementById('winnerText');
+    const titleEl = document.getElementById('gameOverTitle');
     const w = state.winner >= 0 ? state.players[state.winner] : null;
+
+    // Did a human win it? That decides whether this is a win screen or a
+    // lose screen rather than just a scoreline.
+    const humans = state.players.filter(p => !p.isBot);
+    const youWon = !!w && !w.isBot;
+
+    if (titleEl) {
+        titleEl.textContent = youWon ? 'YOU WIN!' : (w ? 'YOU LOSE' : 'GAME OVER');
+        titleEl.style.color = youWon ? '#7cffa3' : (w ? '#ff6b6b' : '#fff');
+        titleEl.style.textShadow = youWon
+            ? '0 0 22px rgba(124,255,163,0.6), 2px 2px 0 #14401b'
+            : '0 0 22px rgba(255,107,107,0.5), 2px 2px 0 #4d1010';
+    }
+
+    let line;
     if (w) {
-        const label = w.isBot ? `Bot ${w.idx + 1}` : `Player ${w.idx + 1}`;
-        winnerEl.textContent = `${label} Wins!`;
+        const label = w.isBot ? `Bot ${w.idx + 1}` : (humans.length > 1 ? `Player ${w.idx + 1}` : 'You');
+        line = `${label} ${w.isBot || humans.length > 1 ? 'wins' : 'win'}!`;
+        // A word about how, so the ending reads as the end of that round.
+        if (state.kind === 'potato') {
+            line += ' Everybody else went off.';
+        } else if (state.kind === 'hunters') {
+            const hunted = state.players.filter(p => p.isIt).length;
+            line += w.isIt ? ` The ${hunted} hunters cleared the field.` : ' Last one standing.';
+        } else if (state.kind === 'freeze') {
+            line += w.isIt ? ' Everyone frozen at once.' : ' Still moving at the bell.';
+        } else if (state.kind === 'classic') {
+            line += ` Only ${w.timeAsIt.toFixed(1)}s spent as It.`;
+        } else if (state.kind === 'blob') {
+            line += w.isIt ? ' The blob swallowed the lot.' : ' Never joined the blob.';
+        } else {
+            line += ' Last one clean.';
+        }
         winnerEl.style.color = w.labelColor;
     } else {
-        winnerEl.textContent = 'Nobody Wins!';
+        line = 'Nobody Wins!';
         winnerEl.style.color = '#fff';
     }
+    winnerEl.textContent = line;
     overlay.classList.remove('hidden');
     startScreen.style.display = 'none';
     gameOverScreen.style.display = '';
@@ -779,8 +811,11 @@ document.querySelectorAll('.btn.diff').forEach(b => {
         document.querySelectorAll(selector).forEach(x => x.classList.remove('active'));
         b.classList.add('active');
         if (isBots) botCount = parseInt(b.dataset.bots, 10);
-        else if (isKind) { currentKind = b.dataset.kind; refreshKindText();
-refreshBackText();
+        else if (isKind) { currentKind = b.dataset.kind; refreshKindText(); }
+        else if (isBack) { currentBackdrop = b.dataset.back; refreshBackText(); }
+        else currentDifficulty = b.dataset.diff;
+    });
+});
 
 // Hovering a kind of tag (or a backdrop) previews its description; sliding
 // off puts the one you've actually picked back.
@@ -793,12 +828,10 @@ document.querySelectorAll('.btn.diff.kind').forEach(b => {
 document.querySelectorAll('.btn.diff.back').forEach(b => {
     b.addEventListener('mouseenter', () => showBackText(b.dataset.back, true));
     b.addEventListener('mouseleave', () => refreshBackText());
-}); }
-        else if (isBack) { currentBackdrop = b.dataset.back; refreshBackText(); }
-        else currentDifficulty = b.dataset.diff;
-    });
 });
+
 refreshKindText();
+refreshBackText();
 document.getElementById('start1P').addEventListener('click', () => startGame(1));
 document.getElementById('start2P').addEventListener('click', () => startGame(2));
 document.getElementById('rematchBtn').addEventListener('click', () => startGame(state.mode));
@@ -1472,7 +1505,16 @@ function applyPowerup(p, pu) {
 
     if (state.kind === 'potato') {
         const left = alivePlayers();
-        if (left.length <= 1) { endGame(left[0] ? left[0].idx : -1); return; }
+        if (left.length <= 1) {
+            // hold a beat so the last explosion plays out before the screen.
+            // Only stretch the timer on the frame we actually end, or it gets
+            // refreshed every frame and the screen never arrives.
+            if (!state.gameEnded) {
+                endGame(left[0] ? left[0].idx : -1);
+                state.endTimer = 2.4;
+            }
+            return;
+        }
         if (state.timeLeft <= 0) {
             // bell with several still in — the one who's carried it least wins
             let best = null;
