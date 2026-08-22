@@ -150,6 +150,16 @@ h2 { font-size: 18px; color: #d6e6c5; font-weight: normal; margin-bottom: 14px; 
             <button class="btn diff kind" data-kind="classic">🏃 Classic Tag</button>
         </div>
 
+        <div class="label">Backdrop:</div>
+        <div class="row">
+            <button class="btn diff back active" data-back="forest">🌲 Forest</button>
+            <button class="btn diff back" data-back="snow">❄ Snow</button>
+            <button class="btn diff back" data-back="desert">🏜 Desert</button>
+            <button class="btn diff back" data-back="night">🌙 Night</button>
+            <button class="btn diff back" data-back="lava">🌋 Volcano</button>
+        </div>
+        <div id="backBlurb" style="font-size:12px;color:#cce0c1;margin:4px 0 2px;"></div>
+
         <div class="label">Number of bots:</div>
         <div class="row">
             <button class="btn diff bots" data-bots="1">1</button>
@@ -238,6 +248,11 @@ const IT_SPEED_BOOST = 0.88;       // Taggers start slower — runners can escap
 // Original tagger ramps up by 1% per second of round time so a stalemate
 // eventually breaks. Multiplier applied on top of IT_SPEED_BOOST.
 const IT_RAMP_PER_SEC = 0.01;
+// How much of that ramp each kind of tag actually uses. Infection grows its
+// own pack so the carrier gets the full climb; Freeze has one tagger all
+// round, so theirs builds at half speed; Classic hands It around and never
+// ramps at all.
+const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0 };
 const ROUND_DURATION_BASE = 18;    // first round duration
 const ROUND_MIN = 8;               // shortest round (when few players left)
 const TAGBACK_IMMUNITY = 1.4;      // short grace after a shield break / thaw
@@ -292,6 +307,63 @@ let botCount = 3;
 let currentDifficulty = 'medium';
 let currentKind = 'infection';
 
+// Where you're playing. Purely how the world looks — the ground, the sky,
+// the cover and whatever is drifting through the air.
+const BACKDROPS = {
+    forest: {
+        name: 'Forest', blurb: 'Green field under a dark canopy.',
+        sky: ['#0e2018', '#1a3520'], speck: 'rgba(60,110,55,0.55)',
+        ground: ['#76b04a', '#4f8c2a'], texDark: 'rgba(40,80,30,0.35)', texLight: 'rgba(180,220,140,0.45)',
+        bush: ['#3d8546', '#4ea05a'], berry: ['#d32f2f', '#7b1f1f'],
+        rock: ['#a4a4a4', '#6e6e6e', '#3a3a3a'],
+        log: ['#7a4f2a', '#a87045', '#5e3818'],
+        flower: ['#ffffff', '#ffe082', '#f8bbd0', '#b39ddb'],
+        drift: ['#ffb300', '#ef5350', '#8d6e63', '#fdd835'], driftName: 'leaves',
+    },
+    snow: {
+        name: 'Snow Field', blurb: 'Fresh powder and bare grey sky.',
+        sky: ['#1b2733', '#33495e'], speck: 'rgba(200,225,245,0.5)',
+        ground: ['#eef5fb', '#c3d6e6'], texDark: 'rgba(140,170,200,0.30)', texLight: 'rgba(255,255,255,0.75)',
+        bush: ['#2f6b4a', '#e8f2f8'], berry: ['#d32f2f', '#7b1f1f'],
+        rock: ['#dfe8ef', '#93a6b5', '#4d5c69'],
+        log: ['#6b4a2c', '#8d6844', '#4a301a'],
+        flower: ['#ffffff', '#dbeaf7', '#cfe4f5', '#ffffff'],
+        drift: ['#ffffff', '#eaf4ff', '#d7e9fa', '#ffffff'], driftName: 'snow',
+    },
+    desert: {
+        name: 'Desert', blurb: 'Hot sand and a bleached sky.',
+        sky: ['#5c3a1e', '#c98b45'], speck: 'rgba(255,220,150,0.35)',
+        ground: ['#e8c98b', '#c9a367'], texDark: 'rgba(150,110,60,0.35)', texLight: 'rgba(255,240,200,0.5)',
+        bush: ['#5b7d3a', '#7fa653'], berry: ['#ff8f00', '#8d4b00'],
+        rock: ['#d9b98d', '#a3835c', '#5f4a30'],
+        log: ['#9c7448', '#c39c6c', '#6b4c2a'],
+        flower: ['#ffb74d', '#ff8a65', '#fff176', '#e57373'],
+        drift: ['#e6c98f', '#d9b878', '#f0dcae', '#cfa96a'], driftName: 'sand',
+    },
+    night: {
+        name: 'Moonlit Night', blurb: 'Blue dark, and fireflies drifting past.',
+        sky: ['#05070f', '#111a2e'], speck: 'rgba(180,200,255,0.5)',
+        ground: ['#2d4a3a', '#1b2f27'], texDark: 'rgba(10,25,18,0.45)', texLight: 'rgba(120,180,150,0.30)',
+        bush: ['#1f4a30', '#2c6440'], berry: ['#80deea', '#00838f'],
+        rock: ['#6b7280', '#454b55', '#22262d'],
+        log: ['#4a3524', '#63482f', '#31200f'],
+        flower: ['#b39ddb', '#80deea', '#ce93d8', '#e1bee7'],
+        drift: ['#fff59d', '#ffee58', '#e6ee9c', '#fff9c4'], driftName: 'fireflies',
+    },
+    lava: {
+        name: 'Volcano', blurb: 'Black rock, and embers on the wind.',
+        sky: ['#160707', '#3d1109'], speck: 'rgba(255,120,50,0.35)',
+        ground: ['#4a3230', '#241a1a'], texDark: 'rgba(10,5,5,0.5)', texLight: 'rgba(255,120,50,0.28)',
+        bush: ['#3a2320', '#5c352c'], berry: ['#ff7043', '#bf360c'],
+        rock: ['#8c7b74', '#4f423d', '#241c19'],
+        log: ['#3b2a24', '#584038', '#201612'],
+        flower: ['#ff7043', '#ffab40', '#ff5252', '#ffd180'],
+        drift: ['#ff7043', '#ffab40', '#ff5252', '#ffe082'], driftName: 'embers',
+    },
+};
+let currentBackdrop = 'forest';
+const BD = () => BACKDROPS[(state && state.backdrop) || currentBackdrop];
+
 // The three kinds of tag. They all start the same way — one random player is
 // It — but what a tag *does* is different in each.
 const TAG_KINDS = {
@@ -304,7 +376,7 @@ const TAG_KINDS = {
     freeze: {
         name: 'Freeze Tag',
         tagline: 'One tagger — a touch freezes you solid.',
-        blurb: 'One player is <b style="color:#ff7043;">It</b> the whole round. Their touch <b style="color:#80deea;">freezes you where you stand</b>.<br>Stand next to a frozen friend to thaw them out. <b>It wins by freezing everyone at once; you win if anyone is still moving at the bell.</b>',
+        blurb: 'One player is <b style="color:#ff7043;">It</b> the whole round. Their touch <b style="color:#80deea;">freezes you where you stand</b>.<br>Stand next to a frozen friend to thaw them out — you get speed tank for it. It carries the whole round, so it only speeds up at <b>half rate</b>. <b>It wins by freezing everyone at once; you win if anyone is still moving at the bell.</b>',
         go: 'FREEZE TAG — THAW YOUR FRIENDS!',
     },
     classic: {
@@ -314,6 +386,14 @@ const TAG_KINDS = {
         go: 'CLASSIC TAG — PASS IT ON!',
     },
 };
+
+function refreshBackText() {
+    const el = document.getElementById('backBlurb');
+    if (!el) return;
+    const bd = BACKDROPS[currentBackdrop];
+    el.innerHTML = `<b style="color:${bd.ground[0]}">${bd.name}</b> — ${bd.blurb} ` +
+                   `<span style="color:#8fa886;">(${bd.driftName} in the air)</span>`;
+}
 
 function refreshKindText() {
     const k = TAG_KINDS[currentKind];
@@ -399,7 +479,7 @@ function makeState(mode, difficulty, bots) {
             x: arena.x + 30 + Math.random() * (arena.w - 60),
             y: arena.y + 30 + Math.random() * (arena.h - 60),
             kind: Math.random() < 0.6 ? 'flower' : 'patch',
-            color: ['#ffeb3b', '#fff9c4', '#f48fb1', '#ce93d8', '#ffab91'][Math.floor(Math.random() * 5)],
+            color: BACKDROPS[currentBackdrop].flower[Math.floor(Math.random() * 4)],
             r: 2 + Math.random() * 3,
         });
     }
@@ -414,7 +494,7 @@ function makeState(mode, difficulty, bots) {
             vy: 10 + Math.random() * 30,
             vx: -10 + Math.random() * 20,
             wob: Math.random() * Math.PI * 2,
-            color: ['#ffb300', '#ef5350', '#8d6e63', '#fdd835'][Math.floor(Math.random() * 4)],
+            color: BACKDROPS[currentBackdrop].drift[Math.floor(Math.random() * 4)],
         });
     }
 
@@ -447,6 +527,7 @@ function makeState(mode, difficulty, bots) {
     return {
         mode, difficulty, bots,
         kind: currentKind,
+        backdrop: currentBackdrop,
         arena,
         camX: camX0, camY: camY0,
         running: true,
@@ -627,13 +708,17 @@ document.querySelectorAll('.btn.diff').forEach(b => {
     b.addEventListener('click', () => {
         const isBots = b.classList.contains('bots');
         const isKind = b.classList.contains('kind');
+        const isBack = b.classList.contains('back');
         const selector = isBots ? '.btn.diff.bots'
                        : isKind ? '.btn.diff.kind'
-                       : '.btn.diff:not(.bots):not(.kind)';
+                       : isBack ? '.btn.diff.back'
+                       : '.btn.diff:not(.bots):not(.kind):not(.back)';
         document.querySelectorAll(selector).forEach(x => x.classList.remove('active'));
         b.classList.add('active');
         if (isBots) botCount = parseInt(b.dataset.bots, 10);
-        else if (isKind) { currentKind = b.dataset.kind; refreshKindText(); }
+        else if (isKind) { currentKind = b.dataset.kind; refreshKindText();
+refreshBackText(); }
+        else if (isBack) { currentBackdrop = b.dataset.back; refreshBackText(); }
         else currentDifficulty = b.dataset.diff;
     });
 });
@@ -828,8 +913,9 @@ function updatePlayer(p, dt) {
         speed *= (state.kind === 'classic') ? 1 : IT_SPEED_BOOST;
         // Only the original tagger ramps up — +1% of their tagger speed
         // per second of round time. Newly-infected players don't ramp.
-        if (p.isOriginalIt && state.kind !== 'classic') {
-            speed *= (1 + state.time * IT_RAMP_PER_SEC);
+        if (p.isOriginalIt) {
+            const r = KIND_RAMP[state.kind] !== undefined ? KIND_RAMP[state.kind] : 1;
+            speed *= (1 + state.time * IT_RAMP_PER_SEC * r);
         }
     }
     if (p.speedTimer > 0) speed *= SPEED_BOOST_MULT;
@@ -1493,13 +1579,14 @@ function aiCommand(p, dt) {
 // ===== Render =====
 // Screen-space backdrop visible beyond the arena fence — dark forest
 function drawSky() {
+    const bd = BD();
     const sky = ctx.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, '#0e2018');
-    sky.addColorStop(1, '#1a3520');
+    sky.addColorStop(0, bd.sky[0]);
+    sky.addColorStop(1, bd.sky[1]);
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, W, H);
-    // Dotted forest texture
-    ctx.fillStyle = 'rgba(60,110,55,0.55)';
+    // Dotted texture beyond the arena edge
+    ctx.fillStyle = bd.speck;
     for (let i = 0; i < 320; i++) {
         const x = (i * 73 + state.time * 4) % W;
         const y = (i * 131) % H;
@@ -1523,22 +1610,23 @@ function drawArena() {
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.fillRect(a.x + 6, a.y + 8, a.w, a.h);
 
-    // Grass gradient
+    // Ground gradient
+    const bd = BD();
     const grass = ctx.createLinearGradient(0, a.y, 0, a.y + a.h);
-    grass.addColorStop(0, '#76b04a');
-    grass.addColorStop(1, '#4f8c2a');
+    grass.addColorStop(0, bd.ground[0]);
+    grass.addColorStop(1, bd.ground[1]);
     ctx.fillStyle = grass;
     ctx.fillRect(a.x, a.y, a.w, a.h);
 
-    // Grass texture (deterministic from position so it doesn't shimmer)
-    ctx.fillStyle = 'rgba(40,80,30,0.35)';
+    // Ground texture (deterministic from position so it doesn't shimmer)
+    ctx.fillStyle = bd.texDark;
     const density = 1500;
     for (let i = 0; i < density; i++) {
         const x = a.x + ((i * 73) % a.w);
         const y = a.y + ((i * 131) % a.h);
         ctx.fillRect(x, y, 2, 1);
     }
-    ctx.fillStyle = 'rgba(180,220,140,0.45)';
+    ctx.fillStyle = bd.texLight;
     for (let i = 0; i < density / 3; i++) {
         const x = a.x + ((i * 197 + 31) % a.w);
         const y = a.y + ((i * 257 + 13) % a.h);
@@ -1605,9 +1693,10 @@ function drawRock(r) {
     ctx.fill();
     // Body
     const grad = ctx.createRadialGradient(r.x - r.rx * 0.3, r.y - r.ry * 0.5, 4, r.x, r.y, r.rx);
-    grad.addColorStop(0, '#a4a4a4');
-    grad.addColorStop(0.55, '#6e6e6e');
-    grad.addColorStop(1, '#3a3a3a');
+    const bdr = BD();
+    grad.addColorStop(0, bdr.rock[0]);
+    grad.addColorStop(0.55, bdr.rock[1]);
+    grad.addColorStop(1, bdr.rock[2]);
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.ellipse(r.x, r.y, r.rx, r.ry, 0, 0, Math.PI * 2);
@@ -1656,9 +1745,10 @@ function drawLog(l) {
     const grad = l.horizontal
         ? ctx.createLinearGradient(0, l.y - l.h / 2, 0, l.y + l.h / 2)
         : ctx.createLinearGradient(l.x - l.w / 2, 0, l.x + l.w / 2, 0);
-    grad.addColorStop(0, '#7a4f2a');
-    grad.addColorStop(0.5, '#a87045');
-    grad.addColorStop(1, '#5e3818');
+    const bdl = BD();
+    grad.addColorStop(0, bdl.log[0]);
+    grad.addColorStop(0.5, bdl.log[1]);
+    grad.addColorStop(1, bdl.log[2]);
     ctx.fillStyle = grad;
     ctx.fillRect(l.x - l.w / 2, l.y - l.h / 2, l.w, l.h);
     // Bark grain stripes
@@ -1706,17 +1796,18 @@ function drawBushSingle(b) {
     ctx.beginPath();
     ctx.ellipse(b.x + 4, b.y + b.r * 0.5, b.r * 1.05, b.r * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#3d8546';
+    const bd = BD();
+    ctx.fillStyle = bd.bush[0];
     ctx.beginPath();
     ctx.arc(b.x + sway, b.y, b.r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#4ea05a';
+    ctx.fillStyle = bd.bush[1];
     ctx.beginPath();
     ctx.arc(b.x + sway - b.r * 0.3, b.y - b.r * 0.4, b.r * 0.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#d32f2f';
+    ctx.fillStyle = bd.berry[0];
     ctx.beginPath(); ctx.arc(b.x + sway + b.r * 0.3, b.y - b.r * 0.1, 2.5, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#7b1f1f';
+    ctx.fillStyle = bd.berry[1];
     ctx.beginPath(); ctx.arc(b.x + sway + b.r * 0.31, b.y - b.r * 0.09, 1, 0, Math.PI * 2); ctx.fill();
 }
 
@@ -2166,8 +2257,8 @@ function drawHUD() {
     }
     // Original-tagger speed ramp (1% per sec of round time) — Classic Tag
     // hands It around constantly, so the tagger never ramps there.
-    if (state.kind !== 'classic') {
-        const origSpeed = PLAYER_SPEED * IT_SPEED_BOOST * (1 + state.time * IT_RAMP_PER_SEC);
+    if (KIND_RAMP[state.kind]) {
+        const origSpeed = PLAYER_SPEED * IT_SPEED_BOOST * (1 + state.time * IT_RAMP_PER_SEC * KIND_RAMP[state.kind]);
         const runnerSpeed = PLAYER_SPEED;
         const ramp = ((origSpeed / runnerSpeed) * 100).toFixed(0);
         ctx.font = '13px Segoe UI';
