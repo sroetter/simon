@@ -61,22 +61,44 @@
     <h1>LASER TAG ARENA</h1>
     <div class="hint">
       WASD/arrows to move &nbsp;•&nbsp; mouse aims &nbsp;•&nbsp; click or space to shoot &nbsp;•&nbsp; R reloads<br>
-      Red vs Blue, or nobody's team but your own. One hit is a tag — in a timed match it
-      just goes on the board and you keep playing; in knockout it ends your round.
+      Two to ten sides, or nobody's team but your own. One hit is a tag — in a timed match it
+      just goes on the board and you keep playing; in knockout it ends your round; in
+      takeover it puts you on the other side.
     </div>
     <label>YOUR NAME</label>
     <input type="text" id="name" maxlength="14" value="Player">
-    <label>YOUR TEAM</label>
+    <label>TEAMS</label>
     <div class="teampick" id="teamPick">
-      <button data-t="red" class="sel">RED</button>
-      <button data-t="blue">BLUE</button>
+      <button data-t="2" class="sel">2</button>
+      <button data-t="3">3</button>
+      <button data-t="4">4</button>
+      <button data-t="5">5</button>
+      <button data-t="6">6</button>
+      <button data-t="7">7</button>
+      <button data-t="8">8</button>
+      <button data-t="9">9</button>
+      <button data-t="10">10</button>
       <button data-t="none">NO TEAMS</button>
     </div>
-    <div style="color:#888; font-size:12px; margin-top:6px;">No teams: everyone for themselves, every player their own colour.</div>
+    <div id="sizeOpts">
+      <label>PLAYERS PER TEAM</label>
+      <div class="row" id="size">
+        <button data-n="2">2</button>
+        <button data-n="3" class="sel">3</button>
+        <button data-n="4">4</button>
+        <button data-n="5">5</button>
+      </div>
+    </div>
+    <div style="color:#888; font-size:12px; margin-top:6px;" id="rosterNote"></div>
     <label>GAME MODE</label>
     <div class="row" id="mode">
       <button data-m="timer" class="sel">TIMER</button>
       <button data-m="knockout">KNOCKOUT</button>
+      <button data-m="takeover">TAKEOVER</button>
+    </div>
+    <div id="takeoverOpts" class="hidden" style="color:#888; font-size:12px; margin-top:6px;">
+      Tagged means <b style="color:#ffd54f;">turned</b> — you start shooting for whoever tagged you.
+      A side wins by absorbing everybody, but <b>only its founding members win with it</b>.
     </div>
     <div id="timerOpts">
       <label>MATCH LENGTH</label>
@@ -101,11 +123,13 @@
       <button data-d="medium">MEDIUM</button>
       <button data-d="hard">HARD</button>
     </div>
-    <label>BOTS</label>
-    <div class="row" id="bots">
-      <button data-n="4">4</button>
-      <button data-n="6" class="sel">6</button>
-      <button data-n="8">8</button>
+    <div id="botOpts" class="hidden">
+      <label>BOTS</label>
+      <div class="row" id="bots">
+        <button data-n="4">4</button>
+        <button data-n="6" class="sel">6</button>
+        <button data-n="8">8</button>
+      </div>
     </div>
     <div style="margin-top:18px; text-align:center;">
       <button id="start">START</button>
@@ -185,21 +209,54 @@
     } catch(e){}
   }
 
-  // two sides, and everyone wears their side's colour so you can tell friend from foe
-  const TEAM = {
-    red:  { name:'RED',  color:'#ff3b47', dim:'#7a1a20', glow:'#ff6b73' },
-    blue: { name:'BLUE', color:'#3a8bff', dim:'#16386e', glow:'#7cb4ff' },
-  };
+  // up to ten sides, and everyone wears their side's colour so you can tell friend from foe
+  const TEAM = [
+    { name:'RED',    color:'#ff3b47', dim:'#7a1a20', glow:'#ff6b73' },
+    { name:'BLUE',   color:'#3a8bff', dim:'#16386e', glow:'#7cb4ff' },
+    { name:'GREEN',  color:'#4ddb62', dim:'#175423', glow:'#8bf29b' },
+    { name:'GOLD',   color:'#ffc53a', dim:'#6e4d0c', glow:'#ffdc8a' },
+    { name:'VIOLET', color:'#b66bff', dim:'#43206e', glow:'#d3a6ff' },
+    { name:'ORANGE', color:'#ff8a3a', dim:'#7a3c0f', glow:'#ffb682' },
+    { name:'TEAL',   color:'#2fd9c8', dim:'#0f5b54', glow:'#87f0e6' },
+    { name:'PINK',   color:'#ff5fbf', dim:'#781a53', glow:'#ffa3d8' },
+    { name:'LIME',   color:'#c3f53c', dim:'#5c740f', glow:'#e0fa93' },
+    { name:'BONE',   color:'#e8e2d0', dim:'#6b6656', glow:'#f7f3e6' },
+  ];
   // free-for-all colours, used when teams are switched off
   const PALETTE = ['#ff3366','#ffaa00','#ffd700','#7eff5a','#39e3ff','#5a8bff','#b66bff','#ff66cc','#ffffff','#ff9966'];
-  let myTeam = 'red';                       // 'red' | 'blue' | 'none' (no teams)
-  const teamsOn = () => myTeam !== 'none';
+  // How many sides are in the fight. 'none' is the old free-for-all.
+  let teamCount = 2;                         // 2..10, or 'none' for no teams at all
+  let teamSize = 3;                          // players on EVERY team — you fill one slot on yours
+  const myTeam = 0;                          // you always lead the first side
+  const teamsOn = () => teamCount !== 'none';
   document.querySelectorAll('#teamPick button').forEach(b => {
     b.onclick = () => {
       document.querySelectorAll('#teamPick button').forEach(x=>x.classList.remove('sel'));
-      b.classList.add('sel'); myTeam = b.dataset.t;
+      b.classList.add('sel');
+      teamCount = b.dataset.t === 'none' ? 'none' : parseInt(b.dataset.t, 10);
+      refreshRoster();
     };
   });
+  document.querySelectorAll('#size button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#size button').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel'); teamSize = parseInt(b.dataset.n, 10);
+      refreshRoster();
+    };
+  });
+  function refreshRoster() {
+    const el = document.getElementById('rosterNote');
+    const sizeRow = document.getElementById('sizeOpts');
+    const botRow = document.getElementById('botOpts');
+    if (!el) return;
+    sizeRow.classList.toggle('hidden', !teamsOn());
+    botRow.classList.toggle('hidden', teamsOn());
+    if (!teamsOn()) { el.textContent = 'No teams: everyone for themselves, every player their own colour.'; return; }
+    const total = teamCount * teamSize;
+    el.innerHTML = `${teamCount} even teams of ${teamSize} — <b>${total} players</b>. ` +
+      `You fill a slot on ${TEAM[0].name}, so it runs one bot short of the others. ` +
+      `More teams means a bigger arena.`;
+  }
 
   // mode: a timed points match, or knockout with one of two rulesets
   let mode = 'timer';
@@ -219,12 +276,19 @@
     document.querySelectorAll('#mode button').forEach(x => x.classList.toggle('sel', x.dataset.m === m));
     document.getElementById('timerOpts').classList.toggle('hidden', m !== 'timer');
     document.getElementById('knockoutOpts').classList.toggle('hidden', m !== 'knockout');
+    document.getElementById('takeoverOpts').classList.toggle('hidden', m !== 'takeover');
+    // Takeover is about swapping sides, so it needs sides to swap between.
+    if (m === 'takeover' && !teamsOn()) {
+      teamCount = 2;
+      document.querySelectorAll('#teamPick button').forEach(x => x.classList.toggle('sel', x.dataset.t === '2'));
+      refreshRoster();
+    }
   }
   document.querySelectorAll('#mode button').forEach(b => {
     b.onclick = () => {
       // choosing knockout opens the rules window right away
       if (b.dataset.m === 'knockout') koOv.classList.remove('hidden');
-      else setMode('timer');
+      else setMode(b.dataset.m);
     };
   });
   document.getElementById('koRevenge').onclick = () => { setMode('knockout'); setKoRule('revenge'); koOv.classList.add('hidden'); };
@@ -254,7 +318,14 @@
     };
   });
 
-  const ARENA_W = 1900, ARENA_H = 1300;
+  const BASE_ARENA_W = 1900, BASE_ARENA_H = 1300;
+  let ARENA_W = BASE_ARENA_W, ARENA_H = BASE_ARENA_H;
+  // More sides need more ground to fight over.
+  function sizeArena() {
+    const k = teamsOn() ? 1 + (teamCount - 2) * 0.12 : 1;
+    ARENA_W = Math.round(BASE_ARENA_W * k);
+    ARENA_H = Math.round(BASE_ARENA_H * k);
+  }
   const PLAYER_R = 18;
   const PLAYER_SPEED = 270;
   const BOLT_SPEED = 760;
@@ -339,7 +410,7 @@
       { x:ARENA_W - 20, y:0, w:20, h:ARENA_H },
     ];
     let tries = 0;
-    const target = 30;
+    const target = Math.round(30 * (ARENA_W * ARENA_H) / (BASE_ARENA_W * BASE_ARENA_H));
     while (walls.length < target + 4 && tries < 500) {
       tries++;
       const horizontal = Math.random() < 0.5;
@@ -378,6 +449,8 @@
   function makePlayer(name, team, isBot) {
     return {
       name, team, isBot,
+      origTeam: team,        // takeover: only a side's founders win with it
+      converted: false,
       id: nextId++,                                   // stable identity, even in a free-for-all
       color: (TEAM[team] && TEAM[team].color) || '#fff',   // solo players get a palette colour instead
       x:0, y:0, vx:0, vy:0,
@@ -406,6 +479,7 @@
     document.getElementById('ch').classList.remove('hidden');
 
     const cfg = DIFF[diff];
+    sizeArena();
     const walls = buildArena();
     const players = [];
     const teamed = teamsOn();
@@ -424,14 +498,18 @@
     human.x = sp.x; human.y = sp.y;
     players.push(human);
 
-    // The other side always fields one player more than yours — you're worth more than a
-    // bot. With 6 bots that's you plus 2 against 4.
-    const other = myTeam === 'red' ? 'blue' : 'red';
-    const myBots = Math.max(0, Math.floor((botCount - 2) / 2));
-    for (let i=0;i<botCount;i++) {
+    // Every side fields exactly the same number. You take one of the slots on
+    // your own team, so it runs a bot short of the others rather than a player.
+    const nBots = teamed ? (teamCount * teamSize - 1) : botCount;
+    for (let i=0;i<nBots;i++) {
       let team;
-      if (teamed) team = i < myBots ? myTeam : other;
-      else team = 'solo' + (i + 1);
+      if (teamed) {
+        // deal round-robin starting on the side after yours, so your team is
+        // the one that ends up short by exactly one
+        team = (i + 1) % teamCount;
+      } else {
+        team = 'solo' + (i + 1);
+      }
       const bot = makePlayer(names[i % names.length], team, true);
       if (!teamed) bot.color = PALETTE[(i + 1) % PALETTE.length];
       const sp2 = spawnPoint(walls, players);
@@ -446,6 +524,7 @@
       pickupT: 5,
       cfg, elapsed: 0,
       teamed,
+      teamCount: teamed ? teamCount : players.length,
       mode, koRule,
       time: mode === 'timer' ? matchSecs : 0,   // knockout runs until a side is wiped out
       ended: false,
@@ -458,6 +537,7 @@
     cam.y = human.y - innerHeight/2;
   }
 
+  refreshRoster();
   document.getElementById('start').onclick = () => { actx(); startGame(); };
   document.getElementById('again').onclick = () => {
     document.getElementById('endOv').classList.add('hidden');
@@ -565,6 +645,27 @@
   function tagPlayer(p, by) {
     p.taken++;
     if (by) by.hits++;
+
+    // Takeover: you don't go out, you change sides. Only a team's founding
+    // members can win with it, so being turned costs you the round.
+    if (state.mode === 'takeover') {
+      state.particles.push(...burst(p.x, p.y, p.color, 26));
+      if (by && by.team !== p.team) {
+        p.team = by.team;
+        p.color = TEAM[by.team].color;
+        p.converted = true;
+        p.taggedBy = by;
+        p.invuln = TAG_COOLDOWN * 2;         // a moment to get clear before anyone shoots again
+        p.aimTarget = null;
+        state.floaters.push({ x:p.x, y:p.y - 24, text:`TURNED — ${TEAM[by.team].name}`, color:p.color, life:1.8, ttl:1.8 });
+        const isHumanT = p === state.players[state.humanIdx];
+        state.shake = Math.max(state.shake || 0, isHumanT ? 22 : 8);
+        if (isHumanT) tone(150, 0.35, 'sawtooth', 0.07);
+        else tone(420, 0.16, 'triangle', 0.05);
+        noise(0.25, 0.05);
+      }
+      return;
+    }
     p.taggedBy = by || null;
     p.eliminatedAt = state.elapsed;
     state.particles.push(...burst(p.x, p.y, p.color, 34));
@@ -785,6 +886,14 @@
       return;
     }
 
+    if (state.mode === 'takeover') {
+      // over the moment one side holds every single player
+      const sides = new Set(state.players.map(p => p.team));
+      state.time += dt;
+      if (sides.size <= 1) { state.ended = true; showEnd(); }
+      return;
+    }
+
     // knockout: the round ends when only one side still has anybody in it
     const sidesLeft = new Set(state.players.filter(p => !p.out).map(p => sideKey(p)));
     if (sidesLeft.size <= 1) {
@@ -816,7 +925,8 @@
   }
 
   function sideKeys() {
-    return state.teamed ? ['red','blue'] : state.players.map(p => p.id);
+    if (!state.teamed) return state.players.map(p => p.id);
+    return Array.from({ length: state.teamCount }, (_, i) => i);
   }
 
   function showEnd() {
@@ -828,6 +938,36 @@
 
     // who won: most points on the clock, or the last side standing in knockout
     let winners;
+    if (state.mode === 'takeover') {
+      // biggest side takes it; if one holds everybody, that's the clean sweep
+      const counts = sideKeys().map(k => ({ k, n: state.players.filter(p => p.team === k).length }));
+      const top = Math.max(...counts.map(x => x.n));
+      winners = counts.filter(x => x.n === top).map(x => x.k);
+      // ...but you only share in it if you never got turned
+      const iWon = winners.includes(human.team) && !human.converted;
+      const swept = new Set(state.players.map(p => p.team)).size === 1;
+      const wk = winners[0];
+      const founders = state.players.filter(p => p.team === wk && !p.converted).length;
+      t.textContent = iWon ? 'VICTORY' : 'DEFEAT';
+      const col2 = iWon ? '#7eff5a' : '#ff3366';
+      t.style.color = col2;
+      t.style.textShadow = `0 0 14px ${col2}`;
+      const wlabel = `<b style="color:${TEAM[wk].color}">${TEAM[wk].name}</b>`;
+      let l2 = swept
+        ? `${wlabel} absorbed the entire arena — all ${state.players.length} players.`
+        : `Time called it. ${wlabel} was biggest at ${top}.`;
+      l2 += `<br><span style="color:#9ab">`;
+      l2 += human.converted
+        ? `You were turned and finished the round shooting for <b style="color:${TEAM[human.team].color}">${TEAM[human.team].name}</b> — only founders win it.`
+        : `You held out as a founding member of <b style="color:${TEAM[human.origTeam].color}">${TEAM[human.origTeam].name}</b>.`;
+      l2 += ` ${founders} founder${founders === 1 ? '' : 's'} share the win. You turned <b>${human.hits}</b>.</span>`;
+      txt.innerHTML = l2;
+      ov.classList.remove('hidden');
+      document.getElementById('hud').classList.add('hidden');
+      document.getElementById('ch').classList.add('hidden');
+      document.getElementById('teamBar').classList.add('hidden');
+      return;
+    }
     if (state.mode === 'timer') {
       const scored = sideKeys().map(k => ({ k, s: teamScore(k) }));
       const top = Math.max(...scored.map(x => x.s));
@@ -849,7 +989,9 @@
                    : `${label(winners[0])} takes it.`;
     if (state.mode === 'timer') {
       if (state.teamed) {
-        line += `<br>RED <b>${fmtScore(teamScore('red'))}</b> &nbsp;—&nbsp; BLUE <b>${fmtScore(teamScore('blue'))}</b>`;
+        line += '<br>' + sideKeys()
+          .map(k => `<b style="color:${TEAM[k].color}">${TEAM[k].name}</b> ${fmtScore(teamScore(k))}`)
+          .join(' &nbsp;—&nbsp; ');
       }
       line += `<br><span style="color:#9ab">You landed <b>${human.hits}</b> and took <b>${human.taken}</b>` +
               ` — <b>${fmtScore(human.hits - human.taken * HIT_TAKEN_PENALTY)}</b> points.</span>`;
@@ -1114,10 +1256,18 @@
     const clock = document.getElementById('clock');
     let a, b, aLabel, bLabel, aCol, bCol;
     if (state.teamed) {
-      a = state.mode === 'timer' ? teamScore('red') : state.players.filter(p => !p.out && p.team === 'red').length;
-      b = state.mode === 'timer' ? teamScore('blue') : state.players.filter(p => !p.out && p.team === 'blue').length;
-      aLabel = `RED ${fmtScore(a)}`; bLabel = `${fmtScore(b)} BLUE`;
-      aCol = TEAM.red.color; bCol = TEAM.blue.color;
+      const human = state.players[state.humanIdx];
+      const mine = human.team;
+      const val = k => state.mode === 'timer' ? teamScore(k)
+                 : state.mode === 'takeover' ? state.players.filter(p => p.team === k).length
+                 : state.players.filter(p => !p.out && p.team === k).length;
+      // your side against whichever of the others is doing best
+      const rivals = sideKeys().filter(k => k !== mine);
+      const leader = rivals.reduce((m, k) => val(k) > val(m) ? k : m, rivals[0]);
+      a = val(mine); b = val(leader);
+      aLabel = `${TEAM[mine].name} ${fmtScore(a)}`;
+      bLabel = `${fmtScore(b)} ${TEAM[leader].name}`;
+      aCol = TEAM[mine].color; bCol = TEAM[leader].color;
     } else {
       // free-for-all: you against whoever is top of the pile
       const human = state.players[state.humanIdx];
@@ -1139,7 +1289,9 @@
     fill.parentElement.style.background = bCol;
     clock.textContent = state.mode === 'timer'
       ? fmtClock(Math.max(0, state.time))
-      : (state.koRule === 'revenge' ? 'REVENGE' : 'ELIMINATION');
+      : state.mode === 'takeover'
+        ? `${new Set(state.players.map(p => p.team)).size} SIDES LEFT`
+        : (state.koRule === 'revenge' ? 'REVENGE' : 'ELIMINATION');
   }
 
   function fmtClock(s) {
