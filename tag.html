@@ -235,7 +235,8 @@ const IT_SPEED_BOOST = 0.88;       // Taggers start slower — runners can escap
 const IT_RAMP_PER_SEC = 0.01;
 const ROUND_DURATION_BASE = 18;    // first round duration
 const ROUND_MIN = 8;               // shortest round (when few players left)
-const TAGBACK_IMMUNITY = 1.4;      // can't tag the player who just tagged you
+const TAGBACK_IMMUNITY = 1.4;      // short grace after a shield break / thaw
+const NO_TAGBACK_TIME = 5.0;       // can't tag the player who just tagged you
 const TAG_RANGE = PLAYER_R * 2 - 2; // collision distance
 const THAW_TIME = 0.8;             // seconds stood beside a frozen friend
 const POWERUP_R = 16;
@@ -297,7 +298,7 @@ const TAG_KINDS = {
     classic: {
         name: 'Classic Tag',
         tagline: 'Tag someone and It passes to them.',
-        blurb: 'Touch a runner and <b style="color:#ff7043;">you stop being It — they start</b>. No tag-backs for a moment, so go find somebody else.<br>Nobody is ever out. <b>Whoever spent the least time as It when the bell goes wins.</b>',
+        blurb: 'Touch a runner and <b style="color:#ff7043;">you stop being It — they start</b>. <b>No tag-backs for 5 seconds</b>, so go find somebody else.<br>The tagger never speeds up in this one. Nobody is ever out — <b>whoever spent the least time as It when the bell goes wins.</b>',
         go: 'CLASSIC TAG — PASS IT ON!',
     },
 };
@@ -790,10 +791,14 @@ function updatePlayer(p, dt) {
     // Speed (with It boost + speed-powerup + dash + original-tagger ramp)
     let speed = PLAYER_SPEED;
     if (p.isIt) {
-        speed *= IT_SPEED_BOOST;
+        // Classic passes It around constantly and never ramps, so the tagger
+        // runs level with everyone else rather than at the usual handicap.
+        speed *= (state.kind === 'classic') ? 1 : IT_SPEED_BOOST;
         // Only the original tagger ramps up — +1% of their tagger speed
         // per second of round time. Newly-infected players don't ramp.
-        if (p.isOriginalIt) speed *= (1 + state.time * IT_RAMP_PER_SEC);
+        if (p.isOriginalIt && state.kind !== 'classic') {
+            speed *= (1 + state.time * IT_RAMP_PER_SEC);
+        }
     }
     if (p.speedTimer > 0) speed *= SPEED_BOOST_MULT;
     if (p.dashTimer > 0) speed *= DASH_SPEED_MULT;
@@ -877,15 +882,24 @@ function updatePlayer(p, dt) {
 
     // Tag touch — what it does depends on the kind of tag being played
     if (p.isIt && !p.iced) {
+        const touched = [];
         for (const q of state.players) {
             if (q === p || q.isIt || q.tagbackTimer > 0 || q.iced) continue;
             const dx = q.x - p.x, dy = q.y - p.y;
-            if (dx * dx + dy * dy < TAG_RANGE * TAG_RANGE) {
-                if (state.kind === 'freeze') freezePlayer(p, q);
-                else if (state.kind === 'classic') passItOn(p, q);
-                else infectPlayer(p, q);
-                // Don't break — one tagger can chain-tag two if they're both
-                // crowded against each other.
+            if (dx * dx + dy * dy < TAG_RANGE * TAG_RANGE) touched.push(q);
+        }
+        if (touched.length) {
+            if (state.kind === 'classic') {
+                // It can only go to one person. Catch two at once and it's
+                // a coin toss which of them ends up carrying it.
+                const pick = touched[Math.floor(Math.random() * touched.length)];
+                if (touched.length > 1) announce('CAUGHT TWO — COIN TOSS!', 1.1);
+                passItOn(p, pick);
+            } else if (state.kind === 'freeze') {
+                // Freezing is not exclusive — catch two and both go solid.
+                touched.forEach(q => freezePlayer(p, q));
+            } else {
+                touched.forEach(q => infectPlayer(p, q));
             }
         }
     }
@@ -921,11 +935,12 @@ function freezePlayer(byP, victim) {
 // Classic Tag: It transfers to whoever you touched.
 function passItOn(byP, victim) {
     if (!victim || victim === byP) return;
+    if (!byP.isIt) return;      // already passed it on this frame — only one It ever
     if (victim.shieldActive) { breakShield(victim); return; }
     byP.isIt = false;
-    byP.tagbackTimer = TAGBACK_IMMUNITY;
+    byP.tagbackTimer = NO_TAGBACK_TIME;     // five seconds of no tag-backs
     victim.isIt = true;
-    victim.tagbackTimer = TAGBACK_IMMUNITY;
+    victim.tagbackTimer = NO_TAGBACK_TIME;
     // The ramp belongs to whoever is carrying It now.
     state.players.forEach(q => { q.isOriginalIt = false; });
     victim.isOriginalIt = true;
@@ -2094,13 +2109,16 @@ function drawHUD() {
         ctx.fillStyle = t < 15 ? '#ff5252' : (t < 30 ? '#ffd54f' : '#cce0c1');
         ctx.fillText(`⏱ ${mins}:${secs}`, W / 2, 76);
     }
-    // Original-tagger speed ramp (1% per sec of round time)
-    const origSpeed = PLAYER_SPEED * IT_SPEED_BOOST * (1 + state.time * IT_RAMP_PER_SEC);
-    const runnerSpeed = PLAYER_SPEED;
-    const ramp = ((origSpeed / runnerSpeed) * 100).toFixed(0);
-    ctx.font = '13px Segoe UI';
-    ctx.fillStyle = origSpeed > runnerSpeed ? '#ff8a65' : '#cce0c1';
-    ctx.fillText(`Original tagger speed: ${ramp}% of runner`, W / 2, 86);
+    // Original-tagger speed ramp (1% per sec of round time) — Classic Tag
+    // hands It around constantly, so the tagger never ramps there.
+    if (state.kind !== 'classic') {
+        const origSpeed = PLAYER_SPEED * IT_SPEED_BOOST * (1 + state.time * IT_RAMP_PER_SEC);
+        const runnerSpeed = PLAYER_SPEED;
+        const ramp = ((origSpeed / runnerSpeed) * 100).toFixed(0);
+        ctx.font = '13px Segoe UI';
+        ctx.fillStyle = origSpeed > runnerSpeed ? '#ff8a65' : '#cce0c1';
+        ctx.fillText(`Original tagger speed: ${ramp}% of runner`, W / 2, 86);
+    }
 
     const all = state.players;
     const stripW = Math.min(W - 100, all.length * 70);
