@@ -53,7 +53,9 @@ h1 {
     color: #fff; letter-spacing: 3px;
     text-shadow: 0 0 18px rgba(255,82,82,0.55), 2px 2px 0 #4d2c0e;
 }
-h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; min-height: 20px; }
+h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; min-height: 22px; }
+#kindBlurb { min-height: 88px; }
+#backBlurb { min-height: 34px; }
 
 .controls {
     display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
@@ -80,6 +82,10 @@ h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; 
     box-shadow: 0 4px 0 #6d2c0a;
 }
 .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 0 #6d2c0a; }
+/* the small option buttons stay put — with this many of them, a hop on every
+   hover reads as the whole panel twitching */
+.btn.diff:hover { transform: none; box-shadow: 0 4px 0 #1a232a; filter: brightness(1.25); }
+.btn.diff.active:hover { box-shadow: 0 4px 0 #771c00; }
 .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #6d2c0a; }
 
 .btn.diff { padding: 6px 12px; font-size: 13px; min-width: 76px; background: linear-gradient(135deg, #455a64, #263238); border-color: #b0bec5; box-shadow: 0 4px 0 #1a232a; }
@@ -159,7 +165,9 @@ h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; 
             <button class="btn diff kind" data-kind="classic">🏃 Classic Tag</button>
             <button class="btn diff kind" data-kind="blob">🫧 Blob Tag</button>
             <button class="btn diff kind" data-kind="potato">💣 Hot Potato</button>
-            <button class="btn diff kind" data-kind="hunters">🎯 Hunters</button>
+            <button class="btn diff kind" data-kind="jail">🔒 Jail Tag</button>
+            <button class="btn diff kind" data-kind="rabbit">🐇 Rabbit</button>
+            <button class="btn diff kind" data-kind="line">📏 Line Tag</button>
         </div>
 
         <div class="label">Backdrop:</div>
@@ -264,7 +272,18 @@ const IT_RAMP_PER_SEC = 0.01;
 // own pack so the carrier gets the full climb; Freeze has one tagger all
 // round, so theirs builds at half speed; Classic hands It around and never
 // ramps at all.
-const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, hunters: 0.5 };
+const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, jail: 0.5, rabbit: 0, line: 0 };
+
+// Line Tag: spacing of the painted grid, and how close counts as "on a line".
+const LINE_GAP = 165;
+const LINE_TOL = 13;
+
+// Jail Tag: the pen, and the key button that opens it.
+const JAIL_W = 230, JAIL_H = 180;
+const KEY_R = 38;            // how big the button is
+const KEY_HOLD = 2.0;        // seconds you must stand on it
+const KEY_DECAY = 1.4;       // how fast the hold drains when you step off
+const KEY_MIN_FROM_JAIL = 520;
 
 // Blob Tag: how far apart the linked taggers sit, and how hard they're pulled
 // back into line.
@@ -381,8 +400,21 @@ const BACKDROPS = {
         flower: ['#ff7043', '#ffab40', '#ff5252', '#ffd180'],
         drift: ['#ff7043', '#ffab40', '#ff5252', '#ffe082'], driftName: 'embers',
     },
+    // Only Line Tag plays here, so it is deliberately absent from the picker.
+    lines: {
+        name: 'Painted Lines', blurb: 'Court markings on cold asphalt.',
+        sky: ['#10141c', '#1b2430'], speck: 'rgba(120,140,170,0.35)',
+        ground: ['#3f444d', '#2b2f36'], texDark: 'rgba(12,14,18,0.4)', texLight: 'rgba(190,205,225,0.18)',
+        bush: ['#2f4a35', '#3d6144'], berry: ['#ffd54f', '#8d6e00'],
+        rock: ['#8d939c', '#5b616a', '#2c3037'],
+        log: ['#5a4433', '#75593f', '#3a2a1c'],
+        flower: ['#ffd54f', '#ffffff', '#80deea', '#ffab91'],
+        drift: ['#c8d4e6', '#9fb0c8', '#e2e9f5', '#b6c3d6'], driftName: 'dust',
+    },
 };
 let currentBackdrop = 'forest';
+// Line Tag always plays on its own ground, whatever else is selected.
+function effectiveBackdrop() { return currentKind === 'line' ? 'lines' : currentBackdrop; }
 const BD = () => BACKDROPS[(state && state.backdrop) || currentBackdrop];
 
 // The three kinds of tag. They all start the same way — one random player is
@@ -412,11 +444,23 @@ const TAG_KINDS = {
         blurb: 'Whoever is It carries a <b style="color:#ff7043;">burning fuse</b> — 24 seconds at first, shorter every time. Tag someone and it is their problem now.<br>When the fuse runs out the one holding it is <b>out for good</b>, and a fresh fuse is lit. <b>Last player left wins.</b>',
         go: 'HOT POTATO — PASS IT ON!',
     },
-    hunters: {
-        name: 'Hunters',
-        tagline: 'Several taggers, and one touch puts you out.',
-        blurb: 'A third of the field starts as <b style="color:#ff7043;">hunters</b> and stays that way — nobody switches sides.<br>One touch and you are <b>out of the round</b>. <b>Survive to the bell, or be the last one standing.</b>',
-        go: 'HUNTERS — ONE TOUCH AND YOU ARE OUT!',
+    jail: {
+        name: 'Jail Tag',
+        tagline: 'Tagged players go to jail. Somebody has to break them out.',
+        blurb: 'One tagger. Get touched and you are marched to <b style="color:#ff7043;">the jail</b> and stuck there.<br>Somewhere across the map there is a <b style="color:#43d86a;">green key button</b> — stand on it for <b>2 seconds</b> and everyone inside walks free, then it moves somewhere new. <b>It wins with everyone locked up; you win if anyone is still free at the bell.</b>',
+        go: 'JAIL TAG — BREAK THEM OUT!',
+    },
+    line: {
+        name: 'Line Tag',
+        tagline: 'Stay on the painted lines. Nobody may leave them.',
+        blurb: 'The whole game is played <b style="color:#ffd54f;">on the court markings</b> — you can only run along a line, and only change direction where two lines cross.<br>A tag passes It on, same as Classic. <b>Least time as It wins.</b> Always played on the painted ground.',
+        go: 'LINE TAG — STAY ON THE LINES!',
+    },
+    rabbit: {
+        name: 'Rabbit',
+        tagline: 'Everybody chases one runner. Catch them and you are the rabbit.',
+        blurb: 'One player is the <b style="color:#7cffa3;">rabbit</b> — ears and all — and <b>everyone else is chasing them</b>. Touch the rabbit and you become the rabbit.<br>Grabbing a <b style="color:#7cffa3;">C</b> steals the rabbit outright. The rabbit is the only one who scores: <b>whoever spends longest as the rabbit wins.</b>',
+        go: 'RABBIT — RUN!',
     },
     classic: {
         name: 'Classic Tag',
@@ -434,7 +478,14 @@ function showBackText(key, preview) {
                    `<span style="color:#8fa886;">(${bd.driftName} in the air)</span>` +
                    (preview && key !== currentBackdrop ? ' <span style="color:#ffd54f;">· click to pick</span>' : '');
 }
-function refreshBackText() { showBackText(currentBackdrop, false); }
+function refreshBackText() {
+    const el = document.getElementById('backBlurb');
+    if (currentKind === 'line') {
+        if (el) el.innerHTML = '<b style="color:#ffd54f">Painted Lines</b> — Line Tag always plays on the court markings, so the choice above is ignored for it.';
+        return;
+    }
+    showBackText(currentBackdrop, false);
+}
 
 function showKindText(key, preview) {
     const k = TAG_KINDS[key];
@@ -527,7 +578,7 @@ function makeState(mode, difficulty, bots) {
             x: arena.x + 30 + Math.random() * (arena.w - 60),
             y: arena.y + 30 + Math.random() * (arena.h - 60),
             kind: Math.random() < 0.6 ? 'flower' : 'patch',
-            color: BACKDROPS[currentBackdrop].flower[Math.floor(Math.random() * 4)],
+            color: BACKDROPS[effectiveBackdrop()].flower[Math.floor(Math.random() * 4)],
             r: 2 + Math.random() * 3,
         });
     }
@@ -542,7 +593,7 @@ function makeState(mode, difficulty, bots) {
             vy: 10 + Math.random() * 30,
             vx: -10 + Math.random() * 20,
             wob: Math.random() * Math.PI * 2,
-            color: BACKDROPS[currentBackdrop].drift[Math.floor(Math.random() * 4)],
+            color: BACKDROPS[effectiveBackdrop()].drift[Math.floor(Math.random() * 4)],
         });
     }
 
@@ -566,15 +617,19 @@ function makeState(mode, difficulty, bots) {
     players[itIdx].isIt = true;
     players[itIdx].isOriginalIt = true;
 
-    // Hunters: a third of the field starts as taggers and never changes side.
-    if (currentKind === 'hunters') {
-        const want = Math.max(1, Math.round(total / 3));
-        const pool = players.map((_, i) => i).filter(i => i !== itIdx);
-        for (let i = pool.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [pool[i], pool[j]] = [pool[j], pool[i]];
-        }
-        for (let i = 0; i < want - 1 && i < pool.length; i++) players[pool[i]].isIt = true;
+    // Line Tag: everyone starts standing on a crossing.
+    if (currentKind === 'line') {
+        players.forEach(pl => {
+            pl.x = arena.x + Math.round((pl.x - arena.x) / LINE_GAP) * LINE_GAP;
+            pl.y = arena.y + Math.round((pl.y - arena.y) / LINE_GAP) * LINE_GAP;
+            pl.x = Math.max(arena.x + LINE_GAP, Math.min(arena.x + arena.w - LINE_GAP, pl.x));
+            pl.y = Math.max(arena.y + LINE_GAP, Math.min(arena.y + arena.h - LINE_GAP, pl.y));
+        });
+    }
+
+    // Rabbit: it's the other way round — everyone chases the one runner.
+    if (currentKind === 'rabbit') {
+        players.forEach((p, i) => { p.isIt = (i !== itIdx); p.isOriginalIt = false; });
     }
 
     // Initial camera: arena center
@@ -586,7 +641,7 @@ function makeState(mode, difficulty, bots) {
     return {
         mode, difficulty, bots,
         kind: currentKind,
-        backdrop: currentBackdrop,
+        backdrop: effectiveBackdrop(),
         arena,
         camX: camX0, camY: camY0,
         running: true,
@@ -604,6 +659,13 @@ function makeState(mode, difficulty, bots) {
         roundTimer: ROUND_DURATION_BASE,
         roundDuration: ROUND_DURATION_BASE,
         blob: currentKind === 'blob' ? [itIdx] : [],
+        jail: currentKind === 'jail' ? {
+            x: arena.x + arena.w / 2 - JAIL_W / 2,
+            y: arena.y + arena.h * 0.5 - JAIL_H / 2,
+            w: JAIL_W, h: JAIL_H,
+        } : null,
+        jailFlash: 0,
+        keyBtn: currentKind === 'jail' ? placeKeyButton(arena, rocks, logs) : null,
         fuse: currentKind === 'potato' ? FUSE_START : 0,
         fuseMax: FUSE_START,
         tagFlashTimer: 0,
@@ -613,6 +675,24 @@ function makeState(mode, difficulty, bots) {
         tickTimer: 0,
         // For dramatic just-tagged camera-shake-ish flash
     };
+}
+
+// The key button sits a good run away from the jail, so springing it is a
+// commitment rather than a lap of the pen.
+function placeKeyButton(arena, rocks, logs) {
+    const jx = arena.x + arena.w / 2, jy = arena.y + arena.h / 2;
+    for (let tries = 0; tries < 200; tries++) {
+        const x = arena.x + 90 + Math.random() * (arena.w - 180);
+        const y = arena.y + 90 + Math.random() * (arena.h - 180);
+        if (Math.hypot(x - jx, y - jy) < KEY_MIN_FROM_JAIL) continue;
+        let ok = true;
+        for (const r of (rocks || [])) if (Math.hypot(x - r.x, y - r.y) < r.rx + KEY_R + 20) { ok = false; break; }
+        if (ok) for (const l of (logs || [])) {
+            if (Math.abs(x - l.x) < l.w / 2 + KEY_R && Math.abs(y - l.y) < l.h / 2 + KEY_R) { ok = false; break; }
+        }
+        if (ok) return { x, y, hold: 0 };
+    }
+    return { x: arena.x + arena.w * 0.2, y: arena.y + arena.h * 0.2, hold: 0 };
 }
 
 function computeArena() {
@@ -674,6 +754,8 @@ function makePlayer(idx, x, y, isBot, palIdx) {
         iced: false,        // freeze tag: frozen until a friend thaws you
         thaw: 0,            // how far along that thawing is
         timeAsIt: 0,        // classic tag: what you are scored on
+        jailed: false,      // jail tag: locked up until somebody springs you
+        timeAsRabbit: 0,    // rabbit: the only thing that scores
     };
 }
 
@@ -759,12 +841,13 @@ function showGameOver() {
         // A word about how, so the ending reads as the end of that round.
         if (state.kind === 'potato') {
             line += ' Everybody else went off.';
-        } else if (state.kind === 'hunters') {
-            const hunted = state.players.filter(p => p.isIt).length;
-            line += w.isIt ? ` The ${hunted} hunters cleared the field.` : ' Last one standing.';
+        } else if (state.kind === 'jail') {
+            line += w.isIt ? ' Everyone locked up.' : ' Still free at the bell.';
+        } else if (state.kind === 'rabbit') {
+            line += ` ${w.timeAsRabbit.toFixed(1)}s spent as the rabbit.`;
         } else if (state.kind === 'freeze') {
             line += w.isIt ? ' Everyone frozen at once.' : ' Still moving at the bell.';
-        } else if (state.kind === 'classic') {
+        } else if (state.kind === 'classic' || state.kind === 'line') {
             line += ` Only ${w.timeAsIt.toFixed(1)}s spent as It.`;
         } else if (state.kind === 'blob') {
             line += w.isIt ? ' The blob swallowed the lot.' : ' Never joined the blob.';
@@ -811,7 +894,7 @@ document.querySelectorAll('.btn.diff').forEach(b => {
         document.querySelectorAll(selector).forEach(x => x.classList.remove('active'));
         b.classList.add('active');
         if (isBots) botCount = parseInt(b.dataset.bots, 10);
-        else if (isKind) { currentKind = b.dataset.kind; refreshKindText(); }
+        else if (isKind) { currentKind = b.dataset.kind; refreshKindText(); refreshBackText(); }
         else if (isBack) { currentBackdrop = b.dataset.back; refreshBackText(); }
         else currentDifficulty = b.dataset.diff;
     });
@@ -862,6 +945,32 @@ function nearestOther(p) {
         if (d < bd) { bd = d; best = q; }
     }
     return best || p;
+}
+
+// Line Tag — the painted grid, and staying on it.
+function lineX(x) { return state.arena.x + Math.round((x - state.arena.x) / LINE_GAP) * LINE_GAP; }
+function lineY(y) { return state.arena.y + Math.round((y - state.arena.y) / LINE_GAP) * LINE_GAP; }
+
+// Turn a free direction into one you're actually allowed to run in: along the
+// line you're standing on, and only across at a crossing.
+function constrainToLines(p, ix, iy) {
+    const lx = lineX(p.x), ly = lineY(p.y);
+    const onV = Math.abs(p.x - lx) <= LINE_TOL;    // standing on a vertical line
+    const onH = Math.abs(p.y - ly) <= LINE_TOL;    // standing on a horizontal one
+
+    // Somehow off the grid entirely (a swap, a spawn) — walk back to the nearest line.
+    if (!onV && !onH) {
+        const dx = lx - p.x, dy = ly - p.y;
+        return Math.abs(dx) < Math.abs(dy) ? { ix: Math.sign(dx), iy: 0, snap: 'none' }
+                                           : { ix: 0, iy: Math.sign(dy), snap: 'none' };
+    }
+
+    const wantH = Math.abs(ix) >= Math.abs(iy);
+    if (wantH && onH) return { ix: Math.sign(ix) || 0, iy: 0, snap: 'y' };
+    if (!wantH && onV) return { ix: 0, iy: Math.sign(iy) || 0, snap: 'x' };
+    // The way you asked for isn't available here — carry on along your line.
+    if (onV) return { ix: 0, iy: Math.sign(iy) || 0, snap: 'x' };
+    return { ix: Math.sign(ix) || 0, iy: 0, snap: 'y' };
 }
 
 // Taggers don't carry a tank at all — this is the runners' way out.
@@ -977,8 +1086,11 @@ function updatePlayer(p, dt) {
     // Classic tag scores you on how long you carry It
     if (p.isIt) p.timeAsIt += dt;
 
-    // Frozen — can't move (freeze powerup, or frozen solid in Freeze Tag)
-    if (p.freezeTimer > 0 || p.iced) {
+    // Rabbit is the only one who scores in that kind
+    if (state.kind === 'rabbit' && !p.isIt) p.timeAsRabbit += dt;
+
+    // Can't move: freeze powerup, frozen solid, or locked in the jail
+    if (p.freezeTimer > 0 || p.iced || p.jailed) {
         p.moving = false;
         p.vx = 0; p.vy = 0;
         // Frost particles
@@ -1014,6 +1126,14 @@ function updatePlayer(p, dt) {
             : (codes['ShiftRight'] || codes['Enter']);
         p.wantBoost = !!boostKey;
     }
+    if (state.kind === 'line' && (ix || iy)) {
+        const c = constrainToLines(p, ix, iy);
+        ix = c.ix; iy = c.iy;
+        // hold the line you're running along so you don't drift off it
+        if (c.snap === 'x') p.x = lineX(p.x);
+        else if (c.snap === 'y') p.y = lineY(p.y);
+    }
+
     const len = Math.hypot(ix, iy);
     if (len > 0) { ix /= len; iy /= len; }
     p.moving = len > 0;
@@ -1131,7 +1251,7 @@ function updatePlayer(p, dt) {
     if (p.isIt && !p.iced) {
         const touched = [];
         for (const q of state.players) {
-            if (q === p || !q.alive || q.isIt || q.tagbackTimer > 0 || q.iced) continue;
+            if (q === p || !q.alive || q.isIt || q.tagbackTimer > 0 || q.iced || q.jailed) continue;
             const dx = q.x - p.x, dy = q.y - p.y;
             if (dx * dx + dy * dy < TAG_RANGE * TAG_RANGE) touched.push(q);
         }
@@ -1143,27 +1263,12 @@ function updatePlayer(p, dt) {
                 const pick = touched[Math.floor(Math.random() * touched.length)];
                 if (touched.length > 1) announce('CAUGHT TWO — COIN TOSS!', 1.1);
                 passItOn(p, pick);
-            } else if (state.kind === 'hunters') {
-                touched.forEach(q => knockOut(p, q));
-            } else if (state.kind === 'blob') {
-        const loose = state.players.filter(p => !p.isIt).length;
-        ctx.fillStyle = loose <= 1 ? '#ff5252' : '#ffe082';
-        ctx.fillText(`${loose} still loose · blob of ${state.blob.length}`, W / 2, 50);
-    } else if (state.kind === 'potato') {
-        const t = Math.max(0, state.fuse);
-        ctx.fillStyle = t < 4 ? '#ff5252' : '#ffe082';
-        const holder = state.players.find(p => p.isIt && p.alive);
-        const who = !holder ? '—' : (holder.isBot ? `BOT ${holder.idx + 1}` : `P${holder.idx + 1}`);
-        ctx.fillText(`💣 ${t.toFixed(1)}s — ${who}`, W / 2, 50);
-        ctx.font = 'bold 18px Segoe UI';
-        ctx.fillStyle = '#cce0c1';
-        ctx.fillText(`${alivePlayers().length} left in`, W / 2, 96);
-    } else if (state.kind === 'hunters') {
-        const prey = state.players.filter(p => !p.isIt && p.alive).length;
-        const hunters = state.players.filter(p => p.isIt).length;
-        ctx.fillStyle = prey <= 1 ? '#ff5252' : '#ffe082';
-        ctx.fillText(`${prey} left · ${hunters} hunting`, W / 2, 50);
-    } else if (state.kind === 'classic') {
+            } else if (state.kind === 'jail') {
+                touched.forEach(q => sendToJail(p, q));
+            } else if (state.kind === 'rabbit' || state.kind === 'line') {
+                // rabbit: catching them makes YOU the rabbit. line: It just passes on.
+                passItOn(p, touched[Math.floor(Math.random() * touched.length)]);
+            } else if (state.kind === 'classic') {
                 // It can only go to one person. Catch two at once and it's
                 // a coin toss which of them ends up carrying it.
                 const pick = touched[Math.floor(Math.random() * touched.length)];
@@ -1273,11 +1378,21 @@ function updateBlob(dt) {
             let dx = b.x - a.x, dy = b.y - a.y;
             const d = Math.hypot(dx, dy) || 0.01;
             if (d <= BLOB_LINK) continue;
-            const pull = (d - BLOB_LINK) * k;
             dx /= d; dy /= d;
-            // the head is heavier, so the tail whips around behind it
-            b.x -= dx * pull * 0.75; b.y -= dy * pull * 0.75;
-            a.x += dx * pull * 0.25; a.y += dy * pull * 0.25;
+            // The spring alone can't keep up if a link is dragged hard — a
+            // swap teleport, or someone snagged on a rock while the head runs.
+            // Past this, the link is simply not allowed to be longer.
+            const maxLink = BLOB_LINK * 2.2;
+            if (d > maxLink) {
+                b.x = a.x + dx * maxLink;
+                b.y = a.y + dy * maxLink;
+                b.vx = b.vy = 0;
+            } else {
+                const pull = (d - BLOB_LINK) * k;
+                // the head is heavier, so the tail whips around behind it
+                b.x -= dx * pull * 0.75; b.y -= dy * pull * 0.75;
+                a.x += dx * pull * 0.25; a.y += dy * pull * 0.25;
+            }
             clampToArena(a, PLAYER_R); clampToArena(b, PLAYER_R);
         }
     }
@@ -1357,6 +1472,71 @@ function knockOut(byP, victim) {
     }
     const left = state.players.filter(q => !q.isIt && q.alive).length;
     if (left > 0) announce(`${left} LEFT`, 1.0);
+}
+
+// Jail Tag — marched off to the pen, and stuck there until somebody comes.
+function sendToJail(byP, victim) {
+    if (victim.shieldActive) { breakShield(victim); return; }
+    const j = state.jail;
+    victim.jailed = true;
+    victim.vx = victim.vy = 0;
+    victim.x = j.x + 26 + Math.random() * (j.w - 52);
+    victim.y = j.y + 26 + Math.random() * (j.h - 52);
+    state.tagFlashTimer = 0.4;
+    tagSound();
+    state.particles.push({
+        x: victim.x, y: victim.y - 35, vx: 0, vy: -30, life: 1.3, maxLife: 1.3,
+        size: 0, color: '#ff7043', isText: true, text: 'JAILED!',
+    });
+    const free = state.players.filter(q => !q.isIt && !q.jailed).length;
+    if (free > 0) announce(`${free} STILL FREE`, 1.0);
+}
+
+// The jail only opens if a free runner stands on the key button and holds it.
+function processJailbreak(dt) {
+    if (state.kind !== 'jail' || !state.jail || !state.keyBtn) return;
+    state.jailFlash = Math.max(0, state.jailFlash - dt);
+    const k = state.keyBtn;
+    const inmates = state.players.filter(q => q.jailed);
+    if (!inmates.length) { k.hold = Math.max(0, k.hold - dt * KEY_DECAY); return; }
+
+    const onIt = state.players.find(q =>
+        !q.isIt && !q.jailed && q.alive &&
+        Math.hypot(q.x - k.x, q.y - k.y) < KEY_R + PLAYER_R * 0.5);
+
+    if (!onIt) {
+        k.hold = Math.max(0, k.hold - dt * KEY_DECAY);   // let go and it slips back
+        return;
+    }
+    k.hold += dt;
+    if (Math.random() < dt * 14) {
+        state.particles.push({
+            x: k.x + (Math.random() - 0.5) * KEY_R * 1.4,
+            y: k.y + (Math.random() - 0.5) * KEY_R * 1.4,
+            vx: 0, vy: -40 - Math.random() * 30,
+            life: 0.4, maxLife: 0.4, size: 1.6, color: '#7cffa3',
+        });
+    }
+    if (k.hold < KEY_HOLD) return;                       // not long enough yet
+    k.hold = 0;
+    const rescuer = onIt;
+    inmates.forEach(q => {
+        q.jailed = false;
+        q.tagbackTimer = TAGBACK_IMMUNITY;
+        awardTank(q, TANK_FREE_BONUS * 0.5, null);
+        state.particles.push({
+            x: q.x, y: q.y - 35, vx: 0, vy: -30, life: 1.4, maxLife: 1.4,
+            size: 0, color: '#7cffa3', isText: true, text: 'FREE!',
+        });
+    });
+    awardTank(rescuer, TANK_FREE_BONUS, '+TANK');
+    state.jailFlash = 0.9;
+    // move the button so the tagger can't just plant themselves on it
+    const moved = placeKeyButton(state.arena, state.rocks, state.logs);
+    state.keyBtn.x = moved.x; state.keyBtn.y = moved.y;
+    announce(`JAILBREAK — ${inmates.length} FREED!`, 1.5);
+    tone(520, 0.09, 'sine', 0.1);
+    tone(780, 0.12, 'sine', 0.09);
 }
 
 // Shared shield-break, so all three kinds respect a shield the same way.
@@ -1492,50 +1672,51 @@ function applyPowerup(p, pu) {
             powerupSound();
             return;
         }
-        if (state.kind === 'blob') {
-        const loose = state.players.filter(p => !p.isIt);
-        if (loose.length === 0) {                                 // blob ate everyone
-            const head = state.players[state.blob[0]];
-            endGame(head ? head.idx : -1);
+        if (state.kind === 'jail') {
+            // Springs the jail from wherever you're standing.
+            const inmates = state.players.filter(q => q.jailed);
+            inmates.forEach(q => {
+                q.jailed = false;
+                q.tagbackTimer = TAGBACK_IMMUNITY;
+                state.particles.push({
+                    x: q.x, y: q.y - 35, vx: 0, vy: -30, life: 1.4, maxLife: 1.4,
+                    size: 0, color: '#7cffa3', isText: true, text: 'FREE!',
+                });
+            });
+            announce(inmates.length ? `JAILBREAK — ${inmates.length} FREED!` : 'JAIL IS EMPTY', 1.3);
+            if (inmates.length) awardTank(p, TANK_FREE_BONUS, '+TANK');
+            powerupSound();
             return;
         }
-        if (state.timeLeft <= 0) endGame(loose[0].idx);           // bell — the loose ones win
-        return;
-    }
-
-    if (state.kind === 'potato') {
-        const left = alivePlayers();
-        if (left.length <= 1) {
-            // hold a beat so the last explosion plays out before the screen.
-            // Only stretch the timer on the frame we actually end, or it gets
-            // refreshed every frame and the screen never arrives.
-            if (!state.gameEnded) {
-                endGame(left[0] ? left[0].idx : -1);
-                state.endTimer = 2.4;
+        if (state.kind === 'rabbit') {
+            // Everyone but one player is It here, so handing It on would leave
+            // two rabbits. Instead the cleanse STEALS the rabbit: whoever grabs
+            // it becomes the rabbit and the old one joins the chase.
+            if (p.isIt) {
+                const old = state.players.find(q => !q.isIt);
+                if (old) {
+                    old.isIt = true;
+                    old.tagbackTimer = NO_TAGBACK_TIME;
+                    state.particles.push({
+                        x: old.x, y: old.y - 35, vx: 0, vy: -30, life: 1.3, maxLife: 1.3,
+                        size: 0, color: '#ff7043', isText: true, text: 'LOST IT!',
+                    });
+                }
+                p.isIt = false;
+                p.tagbackTimer = NO_TAGBACK_TIME;
+                state.particles.push({
+                    x: p.x, y: p.y - 35, vx: 0, vy: -30, life: 1.4, maxLife: 1.4,
+                    size: 0, color: '#7cffa3', isText: true, text: 'RABBIT STOLEN!',
+                });
+                announce('RABBIT STOLEN!', 1.3);
+            } else {
+                p.tank = TANK_MAX;                       // already the rabbit — take the fuel
+                announce('TANK FULL', 1.0);
             }
+            powerupSound();
             return;
         }
-        if (state.timeLeft <= 0) {
-            // bell with several still in — the one who's carried it least wins
-            let best = null;
-            for (const p of left) if (!best || p.timeAsIt < best.timeAsIt) best = p;
-            endGame(best ? best.idx : -1);
-        }
-        return;
-    }
-
-    if (state.kind === 'hunters') {
-        const prey = state.players.filter(p => !p.isIt && p.alive);
-        if (prey.length === 0) {
-            const h = state.players.find(p => p.isIt);
-            endGame(h ? h.idx : -1);
-            return;
-        }
-        if (state.timeLeft <= 0) endGame(prey[0].idx);            // survived the bell
-        return;
-    }
-
-    if (state.kind === 'classic') {
+        if (state.kind === 'classic' || state.kind === 'potato' || state.kind === 'line') {
             // Can't just delete It — hand it to somebody else.
             if (p.isIt) { passItOn(p, nearestOther(p)); }
             powerupSound();
@@ -1665,7 +1846,61 @@ function checkWinCondition() {
         return;
     }
 
-    if (state.kind === 'classic') {
+    if (state.kind === 'blob') {
+        const loose = state.players.filter(p => !p.isIt);
+        if (loose.length === 0) {                                 // the blob ate everyone
+            const head = state.players[state.blob[0]];
+            endGame(head ? head.idx : -1);
+            return;
+        }
+        if (state.timeLeft <= 0) endGame(loose[0].idx);           // bell — the loose ones win
+        return;
+    }
+
+    if (state.kind === 'potato') {
+        const left = alivePlayers();
+        if (left.length <= 1) {
+            // hold a beat so the last explosion plays out before the screen.
+            // Only stretch the timer on the frame we actually end, or it gets
+            // refreshed every frame and the screen never arrives.
+            if (!state.gameEnded) {
+                endGame(left[0] ? left[0].idx : -1);
+                state.endTimer = 2.4;
+            }
+            return;
+        }
+        if (state.timeLeft <= 0) {
+            let best = null;
+            for (const p of left) if (!best || p.timeAsIt < best.timeAsIt) best = p;
+            endGame(best ? best.idx : -1);
+        }
+        return;
+    }
+
+    if (state.kind === 'jail') {
+        const free = state.players.filter(p => !p.isIt && !p.jailed);
+        if (free.length === 0) {                                  // everyone locked up
+            const it = state.players.find(p => p.isIt);
+            endGame(it ? it.idx : -1);
+            return;
+        }
+        if (state.timeLeft <= 0) endGame(free[0].idx);            // still free at the bell
+        return;
+    }
+
+    if (state.kind === 'rabbit') {
+        // Only the rabbit scores. Longest run wins it at the bell.
+        if (state.timeLeft <= 0) {
+            let best = null;
+            for (const p of state.players) {
+                if (!best || p.timeAsRabbit > best.timeAsRabbit) best = p;
+            }
+            endGame(best ? best.idx : -1);
+        }
+        return;
+    }
+
+    if (state.kind === 'classic' || state.kind === 'line') {
         // Nobody is ever out; the bell decides it on time carried as It.
         if (state.timeLeft <= 0) {
             let best = null;
@@ -1772,9 +2007,34 @@ function aiCommand(p, dt) {
     let nearestClean = null, nearestCleanD = Infinity;
     for (const q of state.players) {
         if (q === p || !q.alive || q.isIt || q.tagbackTimer > 0) continue;
-        if (q.iced) continue;                    // already frozen — no point chasing them
+        if (q.iced || q.jailed) continue;        // frozen or locked up — no point chasing them
         const d = Math.hypot(q.x - p.x, q.y - p.y);
         if (d < nearestCleanD) { nearestCleanD = d; nearestClean = q; }
+    }
+
+    // Jail Tag: free runners make for the key button and hold it; the tagger
+    // parks on it once anybody is locked up.
+    if (state.kind === 'jail' && state.keyBtn && !p.jailed) {
+        const k = state.keyBtn;
+        const inmates = state.players.filter(q => q.jailed).length;
+        const mine = Math.hypot(k.x - p.x, k.y - p.y);
+        if (!p.isIt && inmates > 0) {
+            const guarded = nearestIt && Math.hypot(nearestIt.x - k.x, nearestIt.y - k.y) < 190;
+            const worthIt = !guarded || inmates >= 2;
+            if (worthIt && (!nearestIt || nearestItD > cfg.panicDist * 0.75)) {
+                if (mine < KEY_R * 0.6) return out;      // on it — stand still and hold
+                const dx = k.x - p.x, dy = k.y - p.y, m = Math.hypot(dx, dy) || 1;
+                out.ix = dx / m; out.iy = dy / m;
+                return out;
+            }
+        }
+        if (p.isIt && inmates > 0 && (!nearestClean || nearestCleanD > 300)) {
+            // nothing close to chase — go and sit on the button
+            if (mine < KEY_R * 0.8) return out;
+            const dx = k.x - p.x, dy = k.y - p.y, m = Math.hypot(dx, dy) || 1;
+            out.ix = dx / m; out.iy = dy / m;
+            return out;
+        }
     }
 
     // Freeze Tag: if nothing is breathing down your neck, go thaw a friend out.
@@ -1825,7 +2085,7 @@ function aiCommand(p, dt) {
         let target = null, bestScore = -Infinity;
         for (const q of state.players) {
             if (q === p || !q.alive || q.isIt || q.tagbackTimer > 0) continue;
-            if (q.iced) continue;      // frozen solid — can't be tagged again, don't stand there
+            if (q.iced || q.jailed) continue;   // frozen or jailed — don't stand over them
             const d = Math.hypot(q.x - p.x, q.y - p.y);
             const slowBonus = q.freezeTimer > 0 ? 400 : 0;
             const speedPenalty = q.speedTimer > 0 ? 100 : 0;
@@ -1997,6 +2257,109 @@ function drawArena() {
         ctx.fillRect(a.x - 6, y - 3, 12, 6);
         ctx.fillRect(a.x + a.w - 6, y - 3, 12, 6);
     }
+}
+
+// The painted grid Line Tag is played on — drawn from the same numbers the
+// movement uses, so what you see is exactly where you can run.
+function drawGridLines() {
+    if (state.kind !== 'line') return;
+    const a = state.arena;
+    ctx.lineCap = 'round';
+    for (let pass = 0; pass < 2; pass++) {
+        ctx.strokeStyle = pass ? 'rgba(255,245,200,0.85)' : 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = pass ? 7 : 11;
+        for (let x = a.x; x <= a.x + a.w; x += LINE_GAP) {
+            ctx.beginPath(); ctx.moveTo(x, a.y); ctx.lineTo(x, a.y + a.h); ctx.stroke();
+        }
+        for (let y = a.y; y <= a.y + a.h; y += LINE_GAP) {
+            ctx.beginPath(); ctx.moveTo(a.x, y); ctx.lineTo(a.x + a.w, y); ctx.stroke();
+        }
+    }
+    // a dot at every crossing, since crossings are the only place you can turn
+    ctx.fillStyle = 'rgba(255,213,79,0.9)';
+    for (let x = a.x; x <= a.x + a.w; x += LINE_GAP) {
+        for (let y = a.y; y <= a.y + a.h; y += LINE_GAP) {
+            ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+        }
+    }
+}
+
+// The key button — stand on it and hold to open the jail.
+function drawKeyButton() {
+    if (state.kind !== 'jail' || !state.keyBtn) return;
+    const k = state.keyBtn;
+    const inmates = state.players.filter(q => q.jailed).length;
+    const live = inmates > 0;
+    const pulse = live ? 1 + Math.sin(state.time * 5) * 0.05 : 1;
+    const prog = Math.min(1, k.hold / KEY_HOLD);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(k.x + 3, k.y + KEY_R * 0.45, KEY_R * 0.95, KEY_R * 0.32, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // the pad
+    const g = ctx.createRadialGradient(k.x - 8, k.y - 10, 4, k.x, k.y, KEY_R * pulse);
+    g.addColorStop(0, live ? '#b9ffcf' : '#7d9c88');
+    g.addColorStop(0.6, live ? '#43d86a' : '#3f6b4f');
+    g.addColorStop(1, live ? '#1c7a35' : '#2a4a34');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(k.x, k.y, KEY_R * pulse, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 3; ctx.stroke();
+
+    // key symbol
+    ctx.save();
+    ctx.translate(k.x, k.y);
+    ctx.rotate(-0.4);
+    ctx.strokeStyle = live ? '#0f3d1d' : '#20301f';
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(-7, 0, 7, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(15, 0);
+    ctx.moveTo(10, 0); ctx.lineTo(10, 6);
+    ctx.moveTo(15, 0); ctx.lineTo(15, 7);
+    ctx.stroke();
+    ctx.restore();
+
+    // hold progress
+    if (prog > 0) {
+        ctx.strokeStyle = '#eaffef';
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(k.x, k.y, KEY_R + 9, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+    }
+    if (live) {
+        ctx.font = 'bold 12px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#b9ffcf';
+        ctx.fillText(prog > 0 ? `HOLD ${(KEY_HOLD - k.hold).toFixed(1)}s` : 'STAND HERE', k.x, k.y - KEY_R - 16);
+    }
+}
+
+// The jail, drawn under everyone so inmates show up inside it.
+function drawJail() {
+    if (state.kind !== 'jail' || !state.jail) return;
+    const j = state.jail;
+    const flash = state.jailFlash > 0 ? state.jailFlash / 0.9 : 0;
+    ctx.fillStyle = flash ? `rgba(124,255,163,${0.10 + flash * 0.25})` : 'rgba(255,112,67,0.13)';
+    ctx.fillRect(j.x, j.y, j.w, j.h);
+    ctx.strokeStyle = flash ? '#7cffa3' : '#ff8a65';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(j.x, j.y, j.w, j.h);
+    // bars
+    ctx.strokeStyle = flash ? 'rgba(124,255,163,0.55)' : 'rgba(255,138,101,0.45)';
+    ctx.lineWidth = 3;
+    for (let x = j.x + 22; x < j.x + j.w - 10; x += 22) {
+        ctx.beginPath(); ctx.moveTo(x, j.y + 4); ctx.lineTo(x, j.y + j.h - 4); ctx.stroke();
+    }
+    ctx.font = 'bold 15px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = flash ? '#7cffa3' : '#ffab91';
+    ctx.fillText('JAIL', j.x + j.w / 2, j.y - 8);
 }
 
 function drawDecorations() {
@@ -2420,6 +2783,31 @@ function drawPlayer(p) {
 }
 
 function drawPlayerBody(x, y, p, eliminated) {
+    const isRabbit = state.kind === 'rabbit' && !p.isIt && !eliminated;
+
+    // Rabbit ears go on behind the head, before the body is drawn over them
+    if (isRabbit) {
+        const twitch = Math.sin(state.time * 3 + p.idx) * 0.12;
+        const bob = p.moving ? Math.abs(Math.sin(p.animTime * 12)) * 2 : 0;
+        for (const side of [-1, 1]) {
+            ctx.save();
+            ctx.translate(x + side * 5, y - PLAYER_R * 0.75 - bob);
+            ctx.rotate(side * (0.22 + twitch * side));
+            // outer ear
+            ctx.fillStyle = eliminated ? '#999' : '#f5f0e6';
+            ctx.beginPath(); ctx.ellipse(0, -13, 4.6, 14, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.4; ctx.stroke();
+            // inner ear
+            ctx.fillStyle = '#f7b8c6';
+            ctx.beginPath(); ctx.ellipse(0, -13, 2.2, 9.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        }
+        // cotton tail
+        ctx.fillStyle = '#fffdf7';
+        ctx.beginPath(); ctx.arc(x - p.facingX * (PLAYER_R * 0.85), y + 6, 5.5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1.2; ctx.stroke();
+    }
+
     // Legs
     const legSwing = p.moving ? Math.sin(p.animTime * 12) * 4 : 0;
     ctx.fillStyle = '#3b2a1f';
@@ -2578,7 +2966,41 @@ function drawHUD() {
         const frozen = state.players.filter(p => p.iced).length;
         ctx.fillStyle = moving <= 1 ? '#ff5252' : '#ffe082';
         ctx.fillText(`${moving} still moving · ${frozen} frozen`, W / 2, 50);
-    } else if (state.kind === 'classic') {
+    } else if (state.kind === 'blob') {
+        const loose = state.players.filter(p => !p.isIt).length;
+        ctx.fillStyle = loose <= 1 ? '#ff5252' : '#ffe082';
+        ctx.fillText(`${loose} still loose · blob of ${state.blob.length}`, W / 2, 50);
+    } else if (state.kind === 'potato') {
+        const t = Math.max(0, state.fuse);
+        ctx.fillStyle = t < 4 ? '#ff5252' : '#ffe082';
+        const holder = state.players.find(p => p.isIt && p.alive);
+        const who = !holder ? '—' : (holder.isBot ? `BOT ${holder.idx + 1}` : `P${holder.idx + 1}`);
+        ctx.fillText(`💣 ${t.toFixed(1)}s — ${who}`, W / 2, 50);
+        ctx.font = 'bold 18px Segoe UI';
+        ctx.fillStyle = '#cce0c1';
+        ctx.fillText(`${alivePlayers().length} left in`, W / 2, 96);
+    } else if (state.kind === 'jail') {
+        const free = state.players.filter(p => !p.isIt && !p.jailed).length;
+        const locked = state.players.filter(p => p.jailed).length;
+        ctx.fillStyle = free <= 1 ? '#ff5252' : '#ffe082';
+        ctx.fillText(`${free} free · ${locked} in jail`, W / 2, 50);
+        if (locked > 0 && state.keyBtn) {
+            ctx.font = 'bold 18px Segoe UI';
+            ctx.fillStyle = state.keyBtn.hold > 0 ? '#7cffa3' : '#cce0c1';
+            ctx.fillText(state.keyBtn.hold > 0
+                ? `holding the key… ${(KEY_HOLD - state.keyBtn.hold).toFixed(1)}s`
+                : 'find the green key button', W / 2, 96);
+        }
+    } else if (state.kind === 'rabbit') {
+        const r = state.players.find(p => !p.isIt);
+        const me2 = state.players[0];
+        ctx.fillStyle = (r && r.idx === 0) ? '#7cffa3' : '#ffe082';
+        const who2 = !r ? '—' : (r.isBot ? `BOT ${r.idx + 1}` : `P${r.idx + 1}`);
+        ctx.fillText(`🐇 ${who2} is the rabbit`, W / 2, 50);
+        ctx.font = 'bold 18px Segoe UI';
+        ctx.fillStyle = '#cce0c1';
+        ctx.fillText(`your time as rabbit: ${me2.timeAsRabbit.toFixed(1)}s`, W / 2, 96);
+    } else if (state.kind === 'classic' || state.kind === 'line') {
         const me = state.players[0];
         const it = state.players.find(p => p.isIt);
         ctx.fillStyle = (it && it.idx === 0) ? '#ff5252' : '#ffe082';
@@ -2852,6 +3274,7 @@ function loop(ts) {
             processThaw(dt);
             updateBlob(dt);
             updateFuse(dt);
+            processJailbreak(dt);
             updatePowerups(dt);
             checkWinCondition();
             updateCamera(dt);
@@ -2872,6 +3295,9 @@ function loop(ts) {
         ctx.save();
         ctx.translate(W / 2 - state.camX, H / 2 - state.camY);
         drawArena();
+        drawGridLines();
+        drawJail();
+        drawKeyButton();
         drawDecorations();
         drawFootprints();
         drawPowerups();
