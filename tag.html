@@ -129,7 +129,9 @@ h2 { font-size: 18px; color: #d6e6c5; font-weight: normal; margin-bottom: 14px; 
             <p style="font-size:12px;color:#cce0c1;margin:6px 0;">
                 Powerups: <span style="color:#81d4fa;"><b>⚡ Speed</b></span>,
                 <span style="color:#80deea;"><b>❄ Freeze</b></span>,
-                <span style="color:#ce93d8;"><b>🛡 Shield</b></span> (block one tag).
+                <span style="color:#ce93d8;"><b>🛡 Shield</b></span> (block one tag),
+                <span style="color:#ff9e70;"><b>S Swapper</b></span> (trade roles — clean players catch it, infected go clean),
+                <span style="color:#7cffa3;"><b>C Cleanse</b></span> (cures you if you're infected).
             </p>
         </div>
 
@@ -1497,6 +1499,18 @@ function drawPowerups() {
             ctx.lineTo(2, -3);
             ctx.closePath();
             ctx.fill();
+        } else if (pu.kind === 'swap' || pu.kind === 'cleanse') {
+            // Letter badge: S for swapper, C for cleanse
+            const letter = pu.kind === 'swap' ? 'S' : 'C';
+            ctx.font = 'bold 19px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = pu.kind === 'swap' ? '#7a2a10' : '#14431d';
+            ctx.strokeText(letter, 0, 1);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(letter, 0, 1);
+            ctx.textBaseline = 'alphabetic';
         }
         ctx.restore();
         ctx.globalAlpha = 1;
