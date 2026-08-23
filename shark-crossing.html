@@ -62,6 +62,24 @@
                  background:linear-gradient(135deg,#2c5f7d,#16384d); border-color:#69a9c7; box-shadow:0 3px 0 #0a2233; }
     .btn.small.sel { background:linear-gradient(135deg,#2bb3ff,#0a6fa8); border-color:#cdefff; }
     .final { font-size:17px; color:#ffd76a; margin:8px 0; }
+    .purse { font-size:16px; color:#ffd76a; margin:6px 0 12px; }
+    .purse b { font-size:20px; }
+    .item {
+        display:flex; align-items:center; gap:12px; text-align:left;
+        background:rgba(0,0,0,0.26); border:1px solid rgba(86,208,255,0.25);
+        border-radius:10px; padding:10px 12px; margin:7px 0;
+    }
+    .item .txt { flex:1; }
+    .item .name { font-weight:bold; font-size:14.5px; color:#eaf6ff; }
+    .item .desc { font-size:12.5px; color:#a9dcf5; line-height:1.45; }
+    .item .lvl { font-size:11.5px; color:#7ad48f; letter-spacing:0.5px; }
+    .item button {
+        background:linear-gradient(135deg,#2bb3ff,#0a6fa8); color:#fff; border:2px solid #9fe3ff;
+        border-radius:9px; cursor:pointer; padding:8px 13px; font-size:13px; font-weight:bold;
+        white-space:nowrap; min-width:92px;
+    }
+    .item button[disabled] { background:#2a3a46; border-color:#44586a; color:#7e93a3; cursor:default; }
+    .item.maxed { border-color:rgba(124,255,163,0.4); }
 </style>
 <style>
 /* Keep the back button clickable above this game's overlays. */
@@ -93,7 +111,11 @@
       it either. <b>Pearls</b> lie about the water and sit in <b>chests</b> off to the sides: each one
       you carry slows you down, and each one you land is worth double. Bank them by reaching a reef.<br>
       Every <b>fifth crossing</b> something much bigger turns up — and it goes straight through
-      blocks instead of round them.
+      blocks instead of round them.<br><br>
+      Whatever you make out there converts to <b style="color:#ffd76a;">crusty coins</b> — three a
+      crossing, one a pearl — and <b>The Crusty Coin</b> will sell you a bigger satchel, a sharper
+      pickaxe, slipperier scales, a pearl net, kelp sense, or a second wind. What you buy stays
+      bought.
     </div>
     <div class="keys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — swim</div>
@@ -109,6 +131,23 @@
     </div>
     <div class="row" style="margin-top:16px;">
       <button class="btn" id="start">DIVE IN</button>
+      <button class="btn small" id="shopBtn">🪙 THE CRUSTY COIN</button>
+    </div>
+    <div style="color:#8fb4c8; font-size:12px; margin-top:8px;" id="purseHint"></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="shopOv">
+  <div class="panel">
+    <h1>🪙 THE CRUSTY COIN</h1>
+    <h2>Everything you've earned, spent on not getting eaten</h2>
+    <div class="purse">You have <b id="purse">0</b> crusty coins</div>
+    <div id="shopList"></div>
+    <div style="color:#8fb4c8; font-size:12px; margin-top:8px;">
+      Every crossing is worth 3 coins and every banked pearl is worth 1. What you buy is yours for good.
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="shopBack">BACK</button>
     </div>
   </div>
 </div>
@@ -119,6 +158,7 @@
     <div class="final" id="finalText"></div>
     <div class="row" style="margin-top:14px;">
       <button class="btn" id="again">SWIM AGAIN</button>
+      <button class="btn small" id="shopFromOver">🪙 SHOP</button>
       <button class="btn small" id="menu">MENU</button>
     </div>
   </div>
@@ -193,6 +233,76 @@ function ding() { tone(880, 0.1, 'sine', 0.05); tone(1180, 0.14, 'sine', 0.04); 
 function thud() { tone(220, 0.09, 'square', 0.05); }
 
 /* ==================================================================
+   THE CRUSTY COIN — what your runs are worth, and what you spend it on
+   ================================================================== */
+const SHOP = [
+    { key:'satchel', name:'Bigger satchel', max:3, cost:[15, 32, 65],
+      desc:'Four more blocks to start every run with.' },
+    { key:'pick',    name:'Sharpened pickaxe', max:2, cost:[20, 48],
+      desc:'Mine rock and blocks a quarter faster each level.' },
+    { key:'scales',  name:'Slippery scales', max:3, cost:[25, 55, 110],
+      desc:'Six percent more swim speed each level. Sharks stay at 250.' },
+    { key:'net',     name:'Pearl net', max:2, cost:[30, 72],
+      desc:'Pearls weigh you down far less, so you can carry a hoard.' },
+    { key:'sense',   name:'Kelp sense', max:2, cost:[25, 58],
+      desc:'Sharks lose you in the kelp from further out.' },
+    { key:'wind',    name:'Second wind', max:1, cost:[130],
+      desc:'Survive one bite a run. It grows back at the next reef.' },
+];
+
+let coins = 0;
+let owned = {};
+
+function shopLoad() {
+    try {
+        const raw = localStorage.getItem('sharkCrossing.shop');
+        if (raw) { const d = JSON.parse(raw); coins = d.coins || 0; owned = d.owned || {}; }
+    } catch (e) { coins = 0; owned = {}; }
+}
+function shopSave() {
+    try { localStorage.setItem('sharkCrossing.shop', JSON.stringify({ coins, owned })); } catch (e) {}
+}
+function lvl(key) { return owned[key] || 0; }
+
+// What the upgrades actually do.
+function startBlocks()  { return START_BLOCKS + lvl('satchel') * 4; }
+function mineTime()     { return MINE_TIME * Math.pow(0.75, lvl('pick')); }
+function speedBonus()   { return 1 + lvl('scales') * 0.06; }
+function pearlSlow()    { return PEARL_SLOW * (lvl('net') === 0 ? 1 : lvl('net') === 1 ? 0.55 : 0.3); }
+function kelpHide()     { return KELP_HIDE + lvl('sense') * 34; }
+function extraLives()   { return lvl('wind'); }
+
+function buildShop() {
+    const list = document.getElementById('shopList');
+    document.getElementById('purse').textContent = coins;
+    list.innerHTML = '';
+    SHOP.forEach(it => {
+        const have = lvl(it.key);
+        const maxed = have >= it.max;
+        const price = maxed ? null : it.cost[have];
+        const row = document.createElement('div');
+        row.className = 'item' + (maxed ? ' maxed' : '');
+        row.innerHTML =
+            `<div class="txt"><div class="name">${it.name}</div>` +
+            `<div class="desc">${it.desc}</div>` +
+            `<div class="lvl">${maxed ? 'FULLY UPGRADED' : `owned ${have} of ${it.max}`}</div></div>`;
+        const b = document.createElement('button');
+        b.textContent = maxed ? 'OWNED' : `🪙 ${price}`;
+        b.disabled = maxed || coins < price;
+        b.onclick = () => {
+            if (coins < price) return;
+            coins -= price;
+            owned[it.key] = have + 1;
+            shopSave();
+            buildShop();
+            ding();
+        };
+        row.appendChild(b);
+        list.appendChild(row);
+    });
+}
+
+/* ==================================================================
    STATE
    ================================================================== */
 let state = null;
@@ -230,10 +340,11 @@ function newGame() {
         carrying: 0,
         banked: 0,
         bubbles: [],
-        spare: START_BLOCKS,
+        spare: startBlocks(),
         mining: null,
         mineT: 0,
         dead: false,
+        lives: extraLives(),
         grace: 1.4,
         paused: false,
         time: 0,
@@ -364,11 +475,11 @@ function inKelp(e) {
 }
 function hiddenFrom(e, shark) {
     if (!inKelp(e)) return false;
-    return Math.hypot(shark.x - e.x, shark.y - e.y) > KELP_HIDE;
+    return Math.hypot(shark.x - e.x, shark.y - e.y) > kelpHide();
 }
 // Your speed, once the pearls in your pockets are accounted for.
 function fishSpeed() {
-    return FISH_SPEED * Math.max(0.55, 1 - state.carrying * PEARL_SLOW);
+    return FISH_SPEED * speedBonus() * Math.max(0.55, 1 - state.carrying * pearlSlow());
 }
 
 function solidsAt(x, y, pad) {
@@ -430,7 +541,7 @@ function updateMining(dt) {
             r: 1.5 + Math.random() * 2.5, vy: -30 - Math.random() * 40, life: 0.7,
         });
     }
-    if (state.mineT >= MINE_TIME) {
+    if (state.mineT >= mineTime()) {
         const wasMine = state.blocks.indexOf(best);
         if (wasMine >= 0) { state.blocks.splice(wasMine, 1); state.spare++; }
         else state.rocks.splice(state.rocks.indexOf(best), 1);
@@ -676,6 +787,7 @@ function update(dt) {
     // made it?
     const reached = state.goingUp ? f.y < waterTop() - 4 : f.y > waterBottom() + 4;
     if (reached) {
+        if (extraLives() > 0) state.lives = extraLives();
         if (state.carrying > 0) {
             state.banked += state.carrying * PEARL_WORTH;
             say(`${state.carrying} PEARL${state.carrying === 1 ? '' : 'S'} BANKED`, 1.8);
@@ -697,6 +809,20 @@ function update(dt) {
 
 function die() {
     if (state.dead || state.grace > 0) return;
+    if (state.lives > 0) {
+        // second wind: you're bitten, not eaten
+        state.lives--;
+        state.grace = 2.2;
+        state.flash = 1;
+        say('SECOND WIND!', 1.8);
+        tone(300, 0.2, 'triangle', 0.07, 260);
+        for (let i = 0; i < 26; i++) {
+            const a = Math.random() * Math.PI * 2;
+            state.bubbles.push({ x: state.fish.x, y: state.fish.y, r: 2 + Math.random() * 3,
+                vx: Math.cos(a) * 180, vy: Math.sin(a) * 180 - 40, life: 0.7 });
+        }
+        return;
+    }
     state.dead = true;
     chomp();
     for (let i = 0; i < 40; i++) {
@@ -709,12 +835,17 @@ function die() {
 }
 
 function showOver() {
+    const earned = state.crossings * 3 + state.banked;
+    coins += earned;
+    shopSave();
     document.getElementById('overOv').classList.remove('hidden');
     document.getElementById('overTitle').textContent = state.crossings > 0 ? 'EATEN' : 'EATEN ALREADY?';
     const c = state.crossings;
     document.getElementById('finalText').innerHTML =
         `<b>${c}</b> crossing${c === 1 ? '' : 's'} and <b>${state.banked}</b> pearls banked on ${DIFF[diff].name}.` +
-        (c >= 6 ? '<br>That is proper swimming.' : c >= 3 ? '<br>The rock nearly saved you.' : '<br>The far reef is further than it looks.');
+        (c >= 6 ? '<br>That is proper swimming.' : c >= 3 ? '<br>The rock nearly saved you.' : '<br>The far reef is further than it looks.') +
+        `<br><br><span style="color:#ffd76a">🪙 <b>+${earned}</b> crusty coins</span>` +
+        `<span style="color:#8fb4c8"> — ${coins} in the purse</span>`;
 }
 
 /* ==================================================================
@@ -820,7 +951,7 @@ function drawBlock(o, isRock) {
 
     // mining progress
     if (state.mining === o) {
-        const p = Math.min(1, state.mineT / MINE_TIME);
+        const p = Math.min(1, state.mineT / mineTime());
         ctx.fillStyle = 'rgba(0,0,0,0.45)';
         ctx.fillRect(x + 4, y + BLOCK - 12, BLOCK - 8, 7);
         ctx.fillStyle = '#7cffa3';
@@ -970,7 +1101,7 @@ function drawHUD() {
 
     ctx.textAlign = 'right';
     ctx.fillStyle = state.spare > 0 ? '#ffd98a' : '#ff8a80';
-    ctx.fillText(`🧱 ${state.spare}`, W - 18, H - 22);
+    ctx.fillText(`🧱 ${state.spare}` + (state.lives > 0 ? '   ❤ second wind' : ''), W - 18, H - 22);
     ctx.fillStyle = '#bfe6fb';
     ctx.font = 'bold 15px Segoe UI';
     ctx.fillText(state.crossings + 1 >= PICKAXE_FROM
@@ -1101,6 +1232,31 @@ document.querySelectorAll('#diff button').forEach(b => {
         diff = b.dataset.d;
     };
 });
+shopLoad();
+function refreshPurseHint() {
+    const el = document.getElementById('purseHint');
+    const bought = SHOP.reduce((a, it) => a + lvl(it.key), 0);
+    el.innerHTML = `🪙 <b style="color:#ffd76a">${coins}</b> crusty coins` +
+        (bought ? ` · ${bought} upgrade${bought === 1 ? '' : 's'} bought` : ' · nothing bought yet');
+}
+refreshPurseHint();
+
+function openShop(fromOver) {
+    shopReturn = fromOver ? 'overOv' : 'titleOv';
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('overOv').classList.add('hidden');
+    document.getElementById('shopOv').classList.remove('hidden');
+    buildShop();
+}
+let shopReturn = 'titleOv';
+document.getElementById('shopBtn').onclick = () => { actx(); openShop(false); };
+document.getElementById('shopFromOver').onclick = () => openShop(true);
+document.getElementById('shopBack').onclick = () => {
+    document.getElementById('shopOv').classList.add('hidden');
+    document.getElementById(shopReturn).classList.remove('hidden');
+    refreshPurseHint();
+};
+
 document.getElementById('start').onclick = () => {
     actx();
     document.getElementById('titleOv').classList.add('hidden');
@@ -1114,6 +1270,7 @@ document.getElementById('again').onclick = () => {
 document.getElementById('menu').onclick = () => {
     document.getElementById('overOv').classList.add('hidden');
     document.getElementById('titleOv').classList.remove('hidden');
+    refreshPurseHint();
     state = null;
 };
 })();
