@@ -376,8 +376,23 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
         }
     </style>
+<style>
+/* Keep the back button clickable above this game's overlays. */
+.back-btn{z-index:99999;}
+</style>
+<style>
+/* A fixed way home, on top of anything. This game's own .back-btn only
+   appears on its panels, so it can't be reached mid-game. */
+.home-btn{position:fixed;top:14px;left:14px;z-index:99999;text-decoration:none;
+ color:#1b1b1b;background:rgba(255,255,255,0.9);border:1px solid rgba(0,0,0,0.25);
+ padding:8px 16px;border-radius:8px;font-size:14px;line-height:1.2;
+ font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;}
+.home-btn:hover{background:#fff;}
+</style>
 </head>
 <body>
+<a href="index.html" class="home-btn">&larr; Back to Games</a>
+
     <div class="welcome-screen" id="welcomeScreen">
         <div class="welcome-content">
             <h2>🏎️ Turbo Racer</h2>

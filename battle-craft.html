@@ -56,8 +56,18 @@ canvas{display:block;image-rendering:pixelated;cursor:crosshair;position:relativ
 #crafting-panel ::-webkit-scrollbar-track{background:#1a1a2e;}
 #crafting-panel ::-webkit-scrollbar-thumb{background:#533483;border-radius:4px;}
 </style>
+<style>
+/* Back to the gallery — fixed, and above anything the game puts on top. */
+.back-btn{position:fixed;top:14px;left:14px;z-index:99999;text-decoration:none;
+ color:#1b1b1b;background:rgba(255,255,255,0.9);border:1px solid rgba(0,0,0,0.25);
+ padding:8px 16px;border-radius:8px;font-size:14px;line-height:1.2;
+ font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;}
+.back-btn:hover{background:#fff;}
+</style>
 </head>
 <body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+
 <canvas id="gameCanvas"></canvas>
 <div id="title-screen">
 <h1>BATTLE CRAFT</h1>

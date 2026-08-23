@@ -50,8 +50,18 @@
   #colourPick button { flex:0 0 auto; min-width:60px; padding:9px 10px; font-size:12px; font-weight:bold; color:#0d0f16; }
   #colourPick button.sel { border-color:#fff; box-shadow:0 0 12px rgba(255,255,255,0.45); }
 </style>
+<style>
+/* Back to the gallery — fixed, and above anything the game puts on top. */
+.back-btn{position:fixed;top:14px;left:14px;z-index:99999;text-decoration:none;
+ color:#1b1b1b;background:rgba(255,255,255,0.9);border:1px solid rgba(0,0,0,0.25);
+ padding:8px 16px;border-radius:8px;font-size:14px;line-height:1.2;
+ font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;}
+.back-btn:hover{background:#fff;}
+</style>
 </head>
 <body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+
 <canvas id="game"></canvas>
 <div class="crosshair hidden" id="ch"></div>
 <div class="hud hidden" id="hud">

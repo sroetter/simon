@@ -205,8 +205,18 @@ canvas { display: block; }
 }
 .ui-btn:hover { transform: scale(1.05); border-color: #ffd700; }
 </style>
+<style>
+/* Back to the gallery — fixed, and above anything the game puts on top. */
+.back-btn{position:fixed;top:14px;left:14px;z-index:99999;text-decoration:none;
+ color:#1b1b1b;background:rgba(255,255,255,0.9);border:1px solid rgba(0,0,0,0.25);
+ padding:8px 16px;border-radius:8px;font-size:14px;line-height:1.2;
+ font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;}
+.back-btn:hover{background:#fff;}
+</style>
 </head>
 <body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+
 <canvas id="game"></canvas>
 <div id="ui">
     <div id="titleScreen" class="screen">
