@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>King of the Hill - Simon's Game Gallery</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+        font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background:#14100c; color:#f6efe4; overflow:hidden;
+        -webkit-user-select:none; user-select:none;
+    }
+    canvas { display:block; }
+    .back-btn {
+        position:fixed; top:14px; left:14px; z-index:30; text-decoration:none;
+        color:#5a3a12; background:rgba(255,255,255,0.85);
+        border:1px solid rgba(90,58,18,0.3); padding:8px 16px; border-radius:8px; font-size:14px;
+    }
+    .back-btn:hover { background:#fff; }
+    .footer-link {
+        position:fixed; bottom:8px; left:0; right:0; text-align:center;
+        font-size:12px; color:rgba(255,255,255,0.4); z-index:20; pointer-events:none;
+    }
+    .footer-link a { color:rgba(255,255,255,0.7); pointer-events:auto; }
+
+    .overlay {
+        position:fixed; inset:0; z-index:40; display:flex; align-items:center;
+        justify-content:center; padding:16px; overflow-y:auto; background:rgba(14,10,6,0.84);
+    }
+    .overlay.hidden { display:none; }
+    .panel {
+        background:linear-gradient(150deg,#4a3418,#2a1d0c);
+        border:2px solid #ffc85a; border-radius:18px; padding:20px 26px;
+        max-width:640px; width:94%; text-align:center;
+        max-height:calc(100vh - 32px); overflow-y:auto;
+        box-shadow:0 18px 60px rgba(0,0,0,0.6), 0 0 44px rgba(255,200,90,0.16);
+    }
+    h1 { font-size:clamp(26px,5.5vw,42px); letter-spacing:2px; margin-bottom:4px;
+         text-shadow:0 0 16px rgba(255,200,90,0.45); }
+    h2 { font-size:15px; font-weight:normal; color:#e2c894; margin-bottom:10px; }
+    .rules { text-align:left; font-size:13.5px; line-height:1.6; color:#f0e2c8;
+             background:rgba(0,0,0,0.28); border-radius:10px; padding:12px 14px; margin:10px 0; }
+    .rules b { color:#ffc85a; }
+    .keys { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0; font-size:13px; }
+    .keys div { background:rgba(0,0,0,0.28); border-radius:8px; padding:8px 10px; text-align:left; }
+    kbd { background:#2a1d0c; border:1px solid #8a6a2a; border-bottom-width:2px;
+          border-radius:5px; padding:1px 6px; font-size:12px; color:#ffe1a6; }
+    .label { font-size:12px; color:#e2c894; margin:10px 0 3px; letter-spacing:1px; }
+    .row { display:flex; gap:7px; justify-content:center; flex-wrap:wrap; }
+    .btn {
+        background:linear-gradient(135deg,#ffb43a,#c97a0d); color:#2a1a04;
+        border:2px solid #ffe1a6; border-radius:10px; cursor:pointer;
+        padding:11px 24px; font-size:16px; font-weight:bold; box-shadow:0 4px 0 #7a4b06;
+    }
+    .btn:hover { filter:brightness(1.1); }
+    .btn:active { transform:translateY(2px); box-shadow:0 2px 0 #7a4b06; }
+    .btn.small { padding:6px 12px; font-size:13px; min-width:56px; color:#f6efe4;
+                 background:linear-gradient(135deg,#5d4520,#33240f); border-color:#a3803c;
+                 box-shadow:0 3px 0 #24190a; }
+    .btn.small.sel { background:linear-gradient(135deg,#ffb43a,#c97a0d); color:#2a1a04; border-color:#ffe9c4; }
+    .btn.team { min-width:74px; font-weight:bold; color:#20160a; }
+    .btn.team.sel { box-shadow:0 0 12px rgba(255,255,255,0.5); border-color:#fff; }
+    .final { font-size:17px; color:#ffc85a; margin:8px 0; }
+    .standing { font-size:14px; margin:3px 0; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<div class="overlay" id="titleOv">
+  <div class="panel">
+    <h1>👑 KING OF THE HILL</h1>
+    <h2>Hold the ground. Swing first.</h2>
+    <div class="rules">
+      Whichever team has <b>more players standing on the hill</b> owns it, and every second they
+      own it is a point. Equal numbers and nobody scores — so one extra body on the hill decides it.<br><br>
+      <b>Sticks</b> wash up around the edges. Pick one up and swing it: whoever you hit goes
+      <b>flying</b>, right off the hill and halfway across the field, and they are dazed when they
+      land. A stick is good for three swings and then it snaps.<br><br>
+      The hill <b>moves every twenty seconds</b>, so nobody camps it for long.
+    </div>
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — run</div>
+      <div><kbd>Space</kbd> — swing your stick</div>
+      <div>Walk over a stick to pick it up</div>
+      <div><kbd>Esc</kbd> — pause</div>
+    </div>
+    <div class="label">TEAMS</div>
+    <div class="row" id="teams">
+      <button class="btn small" data-t="2">2</button>
+      <button class="btn small sel" data-t="3">3</button>
+      <button class="btn small" data-t="4">4</button>
+      <button class="btn small" data-t="5">5</button>
+      <button class="btn small" data-t="6">6</button>
+    </div>
+    <div class="label">PLAYERS PER TEAM</div>
+    <div class="row" id="size">
+      <button class="btn small" data-n="2">2</button>
+      <button class="btn small sel" data-n="3">3</button>
+      <button class="btn small" data-n="4">4</button>
+      <button class="btn small" data-n="5">5</button>
+    </div>
+    <div class="label">YOUR TEAM</div>
+    <div class="row" id="teamPick"></div>
+    <div class="label">MATCH LENGTH</div>
+    <div class="row" id="dur">
+      <button class="btn small" data-s="60">1 MIN</button>
+      <button class="btn small sel" data-s="120">2 MIN</button>
+      <button class="btn small" data-s="180">3 MIN</button>
+    </div>
+    <div class="label">BOT SKILL</div>
+    <div class="row" id="skill">
+      <button class="btn small" data-k="easy">EASY</button>
+      <button class="btn small sel" data-k="normal">NORMAL</button>
+      <button class="btn small" data-k="hard">HARD</button>
+    </div>
+    <div style="color:#c8ae7e; font-size:12px; margin-top:8px;" id="roster"></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="start">TAKE THE HILL</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overOv">
+  <div class="panel">
+    <h1 id="overTitle">FULL TIME</h1>
+    <div class="final" id="finalText"></div>
+    <div id="standings" style="margin:10px 0;"></div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn" id="again">REMATCH</button>
+      <button class="btn small" id="menu">MENU</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener('resize', resize); resize();
+
+/* ==================================================================
+   CONSTANTS
+   ================================================================== */
+const R = 17;                    // body radius
+const SPEED = 240;
+const HILL_R = 135;
+const HILL_MOVE = 20;            // seconds before the hill picks a new spot
+const STICK_SWINGS = 3;
+const SWING_ARC = 0.95;          // half-angle of the swing
+const SWING_REACH = 74;
+const SWING_TIME = 0.26;
+const SWING_COOL = 0.5;
+const KNOCK_SPEED = 1150;        // how hard you go flying
+const KNOCK_DRAG = 2.6;
+const DAZED = 1.1;               // seconds you're out of control after a hit
+const STICK_MAX = 6;             // how many lie about at once
+const STICK_SPAWN = 4;
+
+const TEAMS = [
+    { name:'AMBER',  color:'#ffb43a', dark:'#a35f06' },
+    { name:'TEAL',   color:'#2fd9c8', dark:'#0f6b60' },
+    { name:'ROSE',   color:'#ff6b8e', dark:'#8f2340' },
+    { name:'INDIGO', color:'#8f8bff', dark:'#3b357f' },
+    { name:'LIME',   color:'#b6e34a', dark:'#5c7414' },
+    { name:'SLATE',  color:'#b9c6d6', dark:'#4a5666' },
+];
+const SKILL = {
+    easy:   { react:0.65, swing:0.35, stick:0.5 },
+    normal: { react:0.88, swing:0.7,  stick:0.8 },
+    hard:   { react:1.0,  swing:1.0,  stick:1.0 },
+};
+const BOT_NAMES = ['Rook','Pike','Vance','Odie','Bex','Kit','Sol','Wren','Ash','Nim','Bo','Tao',
+                   'Juno','Rio','Fen','Cass','Ivo','Lux','Moss','Rune','Sage','Tilo','Vex','Yara'];
+
+let nTeams = 3, teamSize = 3, myTeam = 0, matchSecs = 120, skill = 'normal';
+
+/* ==================================================================
+   SOUND
+   ================================================================== */
+let audio = null;
+function actx() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); return audio; }
+function tone(f, dur = 0.1, type = 'sine', vol = 0.05, slide = 0) {
+    try {
+        const a = actx(), o = a.createOscillator(), g = a.createGain();
+        o.type = type; o.frequency.setValueAtTime(f, a.currentTime);
+        if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, f + slide), a.currentTime + dur);
+        g.gain.setValueAtTime(vol, a.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+        o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+    } catch (e) {}
+}
+const whack  = () => { tone(190, 0.16, 'square', 0.08, -110); tone(90, 0.22, 'sawtooth', 0.05); };
+const whoosh = () => tone(420, 0.09, 'triangle', 0.035, -220);
+const pickup = () => { tone(760, 0.08, 'sine', 0.05); tone(1050, 0.1, 'sine', 0.04); };
+const horn   = () => { tone(330, 0.3, 'square', 0.06); tone(440, 0.36, 'square', 0.05); };
+
+/* ==================================================================
+   STATE
+   ================================================================== */
+let state = null;
+const keys = {};
+addEventListener('keydown', e => {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    if (e.code === 'Escape' && state && !state.over) state.paused = !state.paused;
+    if (e.code === 'Space' && state && !state.paused) swing(state.players[0]);
+    keys[e.code] = true;
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+function makePlayer(idx, team, isBot, name) {
+    return {
+        idx, team, isBot, name,
+        x: 0, y: 0, face: 0,
+        kx: 0, ky: 0,              // knockback velocity, separate from your own running
+        dazed: 0,
+        stick: 0,                  // swings left in the stick you're holding
+        swingT: 0, coolT: 0,
+        step: 0, moving: false,
+        hits: 0, flown: 0,
+    };
+}
+
+function newGame() {
+    const players = [];
+    const names = BOT_NAMES.slice();
+    for (let i = names.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [names[i], names[j]] = [names[j], names[i]];
+    }
+    players.push(makePlayer(0, myTeam, false, 'You'));
+    const bots = nTeams * teamSize - 1;
+    for (let i = 0; i < bots; i++) {
+        players.push(makePlayer(i + 1, (myTeam + 1 + i) % nTeams, true, names[i % names.length]));
+    }
+
+    state = {
+        players,
+        scores: new Array(nTeams).fill(0),
+        hill: { x: W / 2, y: H / 2, t: HILL_MOVE },
+        sticks: [],
+        stickT: 2,
+        rocks: [],
+        owner: -1,
+        time: matchSecs,
+        elapsed: 0,
+        pops: [],
+        shake: 0,
+        paused: false,
+        over: false,
+        message: '', messageT: 0,
+    };
+
+    // a little cover, kept off the hill
+    for (let i = 0; i < 7; i++) {
+        for (let t = 0; t < 40; t++) {
+            const x = 90 + Math.random() * (W - 180);
+            const y = 90 + Math.random() * (H - 180);
+            if (Math.hypot(x - state.hill.x, y - state.hill.y) < HILL_R + 90) continue;
+            if (state.rocks.some(r => Math.hypot(r.x - x, r.y - y) < 150)) continue;
+            state.rocks.push({ x, y, r: 26 + Math.random() * 16, seed: Math.random() * 99 });
+            break;
+        }
+    }
+
+    // spread the teams round the edge
+    players.forEach((p, i) => {
+        const a = (p.team / nTeams) * Math.PI * 2 - Math.PI / 2;
+        const rad = Math.min(W, H) * 0.40;
+        p.x = Math.max(40, Math.min(W - 40, W / 2 + Math.cos(a) * rad + (Math.random() - 0.5) * 90));
+        p.y = Math.max(40, Math.min(H - 40, H / 2 + Math.sin(a) * rad + (Math.random() - 0.5) * 90));
+        p.face = Math.atan2(state.hill.y - p.y, state.hill.x - p.x);
+    });
+
+    for (let i = 0; i < 3; i++) spawnStick();
+    say('TAKE THE HILL', 1.6);
+}
+
+function say(t, s) { state.message = t; state.messageT = s || 1.5; }
+
+function spawnStick() {
+    if (state.sticks.length >= STICK_MAX) return;
+    for (let t = 0; t < 40; t++) {
+        const x = 60 + Math.random() * (W - 120);
+        const y = 60 + Math.random() * (H - 120);
+        if (Math.hypot(x - state.hill.x, y - state.hill.y) < HILL_R + 40) continue;
+        if (state.rocks.some(r => Math.hypot(r.x - x, r.y - y) < r.r + 30)) continue;
+        state.sticks.push({ x, y, spin: Math.random() * Math.PI, bob: Math.random() * 6 });
+        return;
+    }
+}
+
+/* ==================================================================
+   SWINGING
+   ================================================================== */
+function swing(p) {
+    if (!p || state.over || p.stick <= 0 || p.coolT > 0 || p.dazed > 0) return;
+    p.swingT = SWING_TIME;
+    p.coolT = SWING_COOL;
+    p.stick--;
+    whoosh();
+
+    for (const q of state.players) {
+        if (q === p || q.team === p.team) continue;      // your own side is safe from you
+        const dx = q.x - p.x, dy = q.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d > SWING_REACH + R) continue;
+        let da = Math.atan2(dy, dx) - p.face;
+        while (da > Math.PI) da -= Math.PI * 2;
+        while (da < -Math.PI) da += Math.PI * 2;
+        if (Math.abs(da) > SWING_ARC) continue;
+
+        // and away they go
+        const m = d || 1;
+        q.kx = (dx / m) * KNOCK_SPEED;
+        q.ky = (dy / m) * KNOCK_SPEED;
+        q.dazed = DAZED;
+        p.hits++; q.flown++;
+        state.shake = 16;
+        whack();
+        state.pops.push({ x: q.x, y: q.y - 26, text: 'WHACK!', color: TEAMS[p.team].color, life: 1.1 });
+        // knocked clean out of a stick, if they had one
+        if (q.stick > 0 && Math.random() < 0.5) {
+            q.stick = 0;
+            state.sticks.push({ x: q.x, y: q.y, spin: Math.random() * 3, bob: 0 });
+        }
+    }
+    if (p.stick === 0) state.pops.push({ x: p.x, y: p.y - 30, text: 'snapped', color: '#c8ae7e', life: 0.9 });
+}
+
+/* ==================================================================
+   UPDATE
+   ================================================================== */
+function update(dt) {
+    state.elapsed += dt;
+    state.shake = Math.max(0, state.shake - dt * 55);
+    if (state.messageT > 0) state.messageT -= dt;
+
+    // the hill wanders
+    const h = state.hill;
+    h.t -= dt;
+    if (h.t <= 0) {
+        h.t = HILL_MOVE;
+        h.x = 180 + Math.random() * (W - 360);
+        h.y = 180 + Math.random() * (H - 360);
+        say('THE HILL HAS MOVED', 1.4);
+        horn();
+    }
+
+    state.stickT -= dt;
+    if (state.stickT <= 0) { state.stickT = STICK_SPAWN; spawnStick(); }
+
+    for (const p of state.players) {
+        p.swingT = Math.max(0, p.swingT - dt);
+        p.coolT = Math.max(0, p.coolT - dt);
+        p.dazed = Math.max(0, p.dazed - dt);
+
+        let ix = 0, iy = 0;
+        if (p.dazed <= 0) {
+            if (p.isBot) {
+                const c = botThink(p, dt);
+                ix = c.ix; iy = c.iy;
+            } else {
+                if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
+                if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
+                if (keys['KeyW'] || keys['ArrowUp']) iy -= 1;
+                if (keys['KeyS'] || keys['ArrowDown']) iy += 1;
+            }
+            const m = Math.hypot(ix, iy);
+            if (m > 0) { ix /= m; iy /= m; p.face = Math.atan2(iy, ix); }
+            p.moving = m > 0;
+        } else p.moving = false;
+
+        const sp = SPEED * (p.swingT > 0 ? 0.4 : 1);
+        p.x += ix * sp * dt + p.kx * dt;
+        p.y += iy * sp * dt + p.ky * dt;
+        if (p.moving) p.step += dt * 11;
+
+        // knockback bleeds off
+        const drag = Math.exp(-KNOCK_DRAG * dt);
+        p.kx *= drag; p.ky *= drag;
+        if (Math.abs(p.kx) < 6) p.kx = 0;
+        if (Math.abs(p.ky) < 6) p.ky = 0;
+
+        // walls bounce you a little, which is funnier than stopping dead
+        if (p.x < R) { p.x = R; p.kx = Math.abs(p.kx) * 0.45; }
+        if (p.x > W - R) { p.x = W - R; p.kx = -Math.abs(p.kx) * 0.45; }
+        if (p.y < R) { p.y = R; p.ky = Math.abs(p.ky) * 0.45; }
+        if (p.y > H - R) { p.y = H - R; p.ky = -Math.abs(p.ky) * 0.45; }
+
+        // rocks
+        for (const r of state.rocks) {
+            const dx = p.x - r.x, dy = p.y - r.y, d = Math.hypot(dx, dy), min = r.r + R;
+            if (d < min && d > 0.001) {
+                p.x = r.x + (dx / d) * min;
+                p.y = r.y + (dy / d) * min;
+                p.kx *= 0.4; p.ky *= 0.4;
+            }
+        }
+
+        // pick a stick up by walking over it
+        if (p.stick <= 0) {
+            for (let i = 0; i < state.sticks.length; i++) {
+                const s = state.sticks[i];
+                if (Math.hypot(s.x - p.x, s.y - p.y) < R + 16) {
+                    state.sticks.splice(i, 1);
+                    p.stick = STICK_SWINGS;
+                    if (!p.isBot) pickup();
+                    break;
+                }
+            }
+        }
+    }
+
+    // gentle separation so bodies don't merge
+    for (let i = 0; i < state.players.length; i++) {
+        for (let j = i + 1; j < state.players.length; j++) {
+            const a = state.players[i], b = state.players[j];
+            const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+            if (d < R * 2 && d > 0.001) {
+                const push = (R * 2 - d) / 2 * 0.5;
+                a.x -= (dx / d) * push; a.y -= (dy / d) * push;
+                b.x += (dx / d) * push; b.y += (dy / d) * push;
+            }
+        }
+    }
+
+    // who owns the hill? most bodies on it, and a tie owns nothing
+    const on = new Array(nTeams).fill(0);
+    for (const p of state.players) {
+        if (Math.hypot(p.x - h.x, p.y - h.y) <= HILL_R) on[p.team]++;
+    }
+    let best = -1, bestN = 0, tie = false;
+    on.forEach((n, t) => {
+        if (n > bestN) { bestN = n; best = t; tie = false; }
+        else if (n === bestN && n > 0) tie = true;
+    });
+    state.onHill = on;
+    const newOwner = (bestN > 0 && !tie) ? best : -1;
+    if (newOwner !== state.owner && newOwner >= 0) {
+        say(`${TEAMS[newOwner].name} HOLDS THE HILL`, 1.2);
+        tone(560, 0.1, 'triangle', 0.05);
+    }
+    state.owner = newOwner;
+    if (state.owner >= 0) state.scores[state.owner] += dt;
+
+    for (const p of state.pops) { p.life -= dt; p.y -= dt * 26; }
+    state.pops = state.pops.filter(p => p.life > 0);
+
+    state.time -= dt;
+    if (state.time <= 0) { state.time = 0; state.over = true; showOver(); }
+}
+
+/* ==================================================================
+   BOTS
+   ================================================================== */
+function botThink(p, dt) {
+    const cfg = SKILL[skill];
+    const h = state.hill;
+    const out = { ix: 0, iy: 0 };
+
+    // nearest enemy, and nearest loose stick
+    let foe = null, fd = Infinity, stick = null, sd = Infinity;
+    for (const q of state.players) {
+        if (q.team === p.team || q.dazed > 0) continue;
+        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        if (d < fd) { fd = d; foe = q; }
+    }
+    for (const s of state.sticks) {
+        const d = Math.hypot(s.x - p.x, s.y - p.y);
+        if (d < sd) { sd = d; stick = s; }
+    }
+
+    // with a stick in hand and an enemy in reach, swing
+    if (p.stick > 0 && foe && fd < SWING_REACH && p.coolT <= 0 && Math.random() < cfg.swing) {
+        p.face = Math.atan2(foe.y - p.y, foe.x - p.x);
+        swing(p);
+    }
+
+    let tx, ty;
+    const onHill = Math.hypot(p.x - h.x, p.y - h.y) <= HILL_R;
+    if (p.stick <= 0 && stick && sd < 320 * cfg.stick) {
+        tx = stick.x; ty = stick.y;                       // grab that first
+    } else if (p.stick > 0 && foe && fd < 200 && onHill) {
+        tx = foe.x; ty = foe.y;                           // clear them off
+    } else if (!onHill) {
+        tx = h.x; ty = h.y;                               // get on it
+    } else {
+        // hold it, drifting round the middle rather than standing still
+        const a = state.elapsed * 0.6 + p.idx;
+        tx = h.x + Math.cos(a) * HILL_R * 0.45;
+        ty = h.y + Math.sin(a) * HILL_R * 0.45;
+    }
+
+    let dx = tx - p.x, dy = ty - p.y;
+    // round the rocks
+    for (const r of state.rocks) {
+        const rd = Math.hypot(p.x - r.x, p.y - r.y);
+        if (rd < r.r + 60) { dx += (p.x - r.x) / (rd || 1) * 70; dy += (p.y - r.y) / (rd || 1) * 70; }
+    }
+    const m = Math.hypot(dx, dy) || 1;
+    out.ix = (dx / m) * cfg.react;
+    out.iy = (dy / m) * cfg.react;
+    return out;
+}
+
+/* ==================================================================
+   RENDER
+   ================================================================== */
+function drawGround() {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#4a7a35');
+    g.addColorStop(1, '#33561f');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(20,40,12,0.35)';
+    for (let i = 0; i < 900; i++) {
+        const x = (i * 97) % W, y = (i * 149) % H;
+        ctx.fillRect(x, y, 3, 1);
+    }
+    ctx.fillStyle = 'rgba(190,225,140,0.30)';
+    for (let i = 0; i < 300; i++) {
+        const x = (i * 173 + 31) % W, y = (i * 211 + 17) % H;
+        ctx.fillRect(x, y, 1, 3);
+    }
+}
+
+function drawHill() {
+    const h = state.hill;
+    const owner = state.owner;
+    const col = owner >= 0 ? TEAMS[owner].color : '#e8e0cc';
+    const warn = h.t < 3 && Math.floor(state.elapsed * 6) % 2 === 0;
+
+    const g = ctx.createRadialGradient(h.x, h.y, 12, h.x, h.y, HILL_R);
+    g.addColorStop(0, owner >= 0 ? hexA(col, 0.34) : 'rgba(232,224,204,0.20)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(h.x, h.y, HILL_R, 0, Math.PI * 2); ctx.fill();
+
+    ctx.strokeStyle = warn ? '#fff' : col;
+    ctx.lineWidth = 5;
+    ctx.setLineDash([16, 11]);
+    ctx.lineDashOffset = -state.elapsed * 26;
+    ctx.beginPath(); ctx.arc(h.x, h.y, HILL_R, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.textAlign = 'center';
+    ctx.font = '34px Segoe UI';
+    ctx.fillText('👑', h.x, h.y + 12);
+    ctx.font = 'bold 13px Segoe UI';
+    ctx.fillStyle = warn ? '#fff' : hexA(col, 0.9);
+    ctx.fillText(owner >= 0 ? `${TEAMS[owner].name} HOLDS IT` : 'UP FOR GRABS', h.x, h.y - HILL_R + 22);
+    ctx.fillText(`moves in ${Math.ceil(h.t)}s`, h.x, h.y + HILL_R - 12);
+}
+
+function hexA(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+function drawStick(s) {
+    ctx.save();
+    ctx.translate(s.x, s.y + Math.sin(state.elapsed * 3 + s.bob) * 3);
+    ctx.rotate(s.spin);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(-16, 5, 32, 4);
+    ctx.strokeStyle = '#a9762f';
+    ctx.lineWidth = 6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(15, 0); ctx.stroke();
+    ctx.strokeStyle = '#7a5220'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-6, -1); ctx.lineTo(4, -1); ctx.stroke();
+    ctx.restore();
+}
+
+// A plain runner: round head, team tunic, two legs. No coat, no hat, no beard.
+function drawPlayer(p) {
+    const t = TEAMS[p.team];
+    const bob = p.moving ? Math.abs(Math.sin(p.step)) * 2.5 : 0;
+    const x = p.x, y = p.y - bob;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y + R * 0.78, R * 0.95, R * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+
+    // legs
+    const sw = p.moving ? Math.sin(p.step) * 5 : 0;
+    ctx.strokeStyle = '#3a3227'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - 5, y + R * 0.35); ctx.lineTo(x - 5 + sw, y + R * 0.95);
+    ctx.moveTo(x + 5, y + R * 0.35); ctx.lineTo(x + 5 - sw, y + R * 0.95);
+    ctx.stroke();
+
+    // tunic
+    ctx.fillStyle = p.dazed > 0 ? '#9a9a9a' : t.color;
+    ctx.beginPath();
+    ctx.moveTo(x - R * 0.72, y + R * 0.42);
+    ctx.lineTo(x - R * 0.52, y - R * 0.34);
+    ctx.lineTo(x + R * 0.52, y - R * 0.34);
+    ctx.lineTo(x + R * 0.72, y + R * 0.42);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = p.dazed > 0 ? '#6f6f6f' : t.dark;
+    ctx.fillRect(x - R * 0.62, y + R * 0.18, R * 1.24, R * 0.24);
+
+    // head
+    ctx.fillStyle = '#f0c9a4';
+    ctx.beginPath(); ctx.arc(x, y - R * 0.66, R * 0.46, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.6; ctx.stroke();
+    // headband in the team colour, so you can read sides at a glance
+    ctx.strokeStyle = p.dazed > 0 ? '#8a8a8a' : t.color;
+    ctx.lineWidth = 3.4;
+    ctx.beginPath(); ctx.arc(x, y - R * 0.66, R * 0.46, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke();
+    // eyes, pointing where they're facing
+    const ex = Math.cos(p.face) * 2.6, ey = Math.sin(p.face) * 1.8;
+    ctx.fillStyle = '#2a2118';
+    ctx.beginPath(); ctx.arc(x - 3.4 + ex, y - R * 0.68 + ey, 1.7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 3.4 + ex, y - R * 0.68 + ey, 1.7, 0, Math.PI * 2); ctx.fill();
+
+    // the stick, held out and swung
+    if (p.stick > 0) {
+        const sweep = p.swingT > 0 ? (1 - p.swingT / SWING_TIME) * SWING_ARC * 2 - SWING_ARC : 0.45;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(p.face + sweep);
+        ctx.strokeStyle = '#a9762f'; ctx.lineWidth = 5.5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(R * 0.3, 0); ctx.lineTo(R * 0.3 + SWING_REACH * 0.72, 0); ctx.stroke();
+        ctx.restore();
+        // swings left
+        ctx.fillStyle = '#ffe1a6'; ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('|'.repeat(p.stick), x, y - R * 1.5);
+    }
+
+    if (p.dazed > 0) {
+        ctx.fillStyle = '#fff'; ctx.font = '13px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('✦', x - 7, y - R * 1.45);
+        ctx.fillText('✦', x + 7, y - R * 1.6);
+    }
+    if (!p.isBot) {
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('YOU', x, y + R * 1.9);
+    }
+}
+
+function drawHUD() {
+    // team scoreboard down the left
+    ctx.textAlign = 'left';
+    for (let t = 0; t < nTeams; t++) {
+        const y = 26 + t * 24;
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(14, y - 14, 210, 20);
+        ctx.fillStyle = TEAMS[t].color;
+        ctx.fillRect(14, y - 14, 6, 20);
+        ctx.font = (t === myTeam ? 'bold ' : '') + '14px Segoe UI';
+        ctx.fillText(`${TEAMS[t].name}${t === myTeam ? ' (you)' : ''}`, 28, y);
+        ctx.textAlign = 'right';
+        ctx.fillText(`${state.scores[t].toFixed(1)}`, 218, y);
+        if (state.onHill && state.onHill[t] > 0) {
+            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+            ctx.fillText('●'.repeat(Math.min(5, state.onHill[t])), 176, y);
+        }
+        ctx.textAlign = 'left';
+    }
+
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 30px Segoe UI';
+    ctx.fillStyle = state.time < 15 ? '#ff8a65' : '#f6efe4';
+    const m = Math.floor(state.time / 60), s = Math.floor(state.time % 60);
+    ctx.fillText(`${m}:${String(s).padStart(2, '0')}`, W / 2, 38);
+
+    const me = state.players[0];
+    ctx.font = 'bold 15px Segoe UI';
+    ctx.fillStyle = me.stick > 0 ? '#ffc85a' : '#c8ae7e';
+    ctx.fillText(me.stick > 0 ? `🏏 ${me.stick} swings left — SPACE` : 'no stick — go and find one',
+                 W / 2, H - 22);
+
+    if (state.messageT > 0) {
+        ctx.globalAlpha = Math.min(1, state.messageT);
+        ctx.font = 'bold 30px Segoe UI';
+        ctx.fillStyle = '#ffc85a';
+        ctx.fillText(state.message, W / 2, 92);
+        ctx.globalAlpha = 1;
+    }
+    if (state.paused) {
+        ctx.fillStyle = 'rgba(14,10,6,0.62)'; ctx.fillRect(0, 0, W, H);
+        ctx.font = 'bold 46px Segoe UI'; ctx.fillStyle = '#f6efe4';
+        ctx.fillText('PAUSED', W / 2, H / 2);
+    }
+}
+
+function render() {
+    ctx.save();
+    if (state.shake > 0.5) ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
+    drawGround();
+    drawHill();
+    for (const s of state.sticks) drawStick(s);
+    for (const r of state.rocks) {
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath(); ctx.ellipse(r.x, r.y + r.r * 0.45, r.r * 1.05, r.r * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+        const g = ctx.createRadialGradient(r.x - r.r * 0.3, r.y - r.r * 0.4, 4, r.x, r.y, r.r);
+        g.addColorStop(0, '#9aa0a6'); g.addColorStop(1, '#4c5257');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.fill();
+    }
+    const order = state.players.slice().sort((a, b) => a.y - b.y);
+    for (const p of order) drawPlayer(p);
+    for (const p of state.pops) {
+        ctx.globalAlpha = Math.min(1, p.life);
+        ctx.fillStyle = p.color; ctx.font = 'bold 17px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText(p.text, p.x, p.y);
+        ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    drawHUD();
+}
+
+/* ==================================================================
+   END
+   ================================================================== */
+function showOver() {
+    const rank = state.scores.map((s, t) => ({ t, s })).sort((a, b) => b.s - a.s);
+    const win = rank[0];
+    const iWon = win.t === myTeam;
+    document.getElementById('overTitle').textContent = iWon ? 'YOU HELD IT' : 'FULL TIME';
+    document.getElementById('overTitle').style.color = iWon ? '#b6e34a' : '#ff8a65';
+    const me = state.players[0];
+    document.getElementById('finalText').innerHTML =
+        `<b style="color:${TEAMS[win.t].color}">${TEAMS[win.t].name}</b> takes it with ` +
+        `<b>${win.s.toFixed(1)}s</b> on the hill.<br>` +
+        `<span style="font-size:14px;color:#c8ae7e">You landed <b>${me.hits}</b> hit${me.hits === 1 ? '' : 's'} ` +
+        `and were sent flying <b>${me.flown}</b> time${me.flown === 1 ? '' : 's'}.</span>`;
+    document.getElementById('standings').innerHTML = rank.map(r =>
+        `<div class="standing"><b style="color:${TEAMS[r.t].color}">${TEAMS[r.t].name}</b> — ${r.s.toFixed(1)}s</div>`).join('');
+    document.getElementById('overOv').classList.remove('hidden');
+}
+
+/* ==================================================================
+   LOOP
+   ================================================================== */
+let last = 0;
+function loop(now) {
+    const dt = last ? Math.min((now - last) / 1000, 0.033) : 0.016;
+    last = now;
+    if (state) {
+        if (!state.paused && !state.over) update(dt);
+        render();
+    } else {
+        ctx.fillStyle = '#14100c'; ctx.fillRect(0, 0, W, H);
+    }
+    requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ==================================================================
+   MENU
+   ================================================================== */
+function buildTeamPick() {
+    const row = document.getElementById('teamPick');
+    row.innerHTML = '';
+    if (myTeam >= nTeams) myTeam = 0;
+    for (let t = 0; t < nTeams; t++) {
+        const b = document.createElement('button');
+        b.className = 'btn small team' + (t === myTeam ? ' sel' : '');
+        b.textContent = TEAMS[t].name;
+        b.style.background = TEAMS[t].color;
+        b.onclick = () => { myTeam = t; buildTeamPick(); roster(); };
+        row.appendChild(b);
+    }
+}
+function roster() {
+    const el = document.getElementById('roster');
+    el.innerHTML = `${nTeams} teams of ${teamSize} — <b>${nTeams * teamSize} players</b>. ` +
+        `You fill a slot on <b style="color:${TEAMS[myTeam].color}">${TEAMS[myTeam].name}</b>, ` +
+        `so it runs one bot short of the others.`;
+}
+function pick(sel, attr, fn) {
+    document.querySelectorAll(sel + ' button').forEach(b => {
+        b.onclick = () => {
+            document.querySelectorAll(sel + ' button').forEach(x => x.classList.remove('sel'));
+            b.classList.add('sel');
+            fn(b.dataset[attr]);
+        };
+    });
+}
+pick('#teams', 't', v => { nTeams = parseInt(v, 10); buildTeamPick(); roster(); });
+pick('#size', 'n', v => { teamSize = parseInt(v, 10); roster(); });
+pick('#dur', 's', v => { matchSecs = parseInt(v, 10); });
+pick('#skill', 'k', v => { skill = v; });
+buildTeamPick(); roster();
+
+document.getElementById('start').onclick = () => {
+    actx();
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('overOv').classList.add('hidden');
+    newGame();
+};
+document.getElementById('again').onclick = () => {
+    document.getElementById('overOv').classList.add('hidden');
+    newGame();
+};
+document.getElementById('menu').onclick = () => {
+    document.getElementById('overOv').classList.add('hidden');
+    document.getElementById('titleOv').classList.remove('hidden');
+    state = null;
+};
+})();
+</script>
+</body>
+</html>

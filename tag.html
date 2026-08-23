@@ -169,7 +169,6 @@ h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; 
             <button class="btn diff kind" data-kind="rabbit">🐇 Rabbit</button>
             <button class="btn diff kind" data-kind="line">📏 Line Tag</button>
             <button class="btn diff kind" data-kind="double">👥 Double Tag</button>
-            <button class="btn diff kind" data-kind="hill">👑 King of the Hill</button>
         </div>
         <div id="backBlurb" style="font-size:12px;color:#cce0c1;margin:4px 0 2px;"></div>
 
@@ -265,11 +264,7 @@ const IT_RAMP_PER_SEC = 0.01;
 // own pack so the carrier gets the full climb; Freeze has one tagger all
 // round, so theirs builds at half speed; Classic hands It around and never
 // ramps at all.
-const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, jail: 0.5, rabbit: 0, line: 0, hill: 0, double: 1 };
-
-// King of the Hill: the scoring circle, and how often it moves.
-const HILL_R = 130;
-const HILL_MOVE = 20;
+const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, jail: 0.5, rabbit: 0, line: 0, double: 1 };
 
 // Line Tag: spacing of the painted grid, and how close counts as "on a line".
 const LINE_GAP = 165;
@@ -452,12 +447,6 @@ const TAG_KINDS = {
         tagline: 'One tagger can never catch you. Two can.',
         blurb: 'A single touch does <b>nothing at all</b> — it takes <b style="color:#ff7043;">two taggers at once</b> to catch you, so they have to work as a pair and pin you between them.<br>Caught players join the hunt, which makes pairing up easier and easier. <b>Last one clean wins.</b>',
         go: 'DOUBLE TAG — THEY NEED TWO!',
-    },
-    hill: {
-        name: 'King of the Hill',
-        tagline: 'Stand on the hill. It cannot, and It wants out.',
-        blurb: 'A <b style="color:#ffd54f;">hill</b> sits on the field and every second you stand on it is a point — but <b>whoever is It scores nothing</b>, so they are desperate to hand it on.<br>A tag passes It straight to you. The hill moves every twenty seconds. <b>Most seconds on the hill wins.</b>',
-        go: 'KING OF THE HILL — TAKE IT!',
     },
     line: {
         name: 'Line Tag',
@@ -674,10 +663,6 @@ function makeState(mode, difficulty, bots) {
         roundTimer: ROUND_DURATION_BASE,
         roundDuration: ROUND_DURATION_BASE,
         blob: currentKind === 'blob' ? [itIdx] : [],
-        // Hill: where it is and when it moves
-        hill: currentKind === 'hill' ? {
-            x: arena.x + arena.w / 2, y: arena.y + arena.h / 2, t: HILL_MOVE,
-        } : null,
         jail: currentKind === 'jail' ? {
             x: arena.x + arena.w / 2 - JAIL_W / 2,
             y: arena.y + arena.h * 0.5 - JAIL_H / 2,
@@ -775,7 +760,6 @@ function makePlayer(idx, x, y, isBot, palIdx) {
         timeAsIt: 0,        // classic tag: what you are scored on
         jailed: false,      // jail tag: locked up until somebody springs you
         timeAsRabbit: 0,    // rabbit: the only thing that scores
-        hillTime: 0,        // king of the hill: seconds stood on it
     };
 }
 
@@ -863,8 +847,6 @@ function showGameOver() {
             line += ' Everybody else went off.';
         } else if (state.kind === 'double') {
             line += w.isIt ? ' Every runner pinned between two.' : ' Never caught between two.';
-        } else if (state.kind === 'hill') {
-            line += ` ${w.hillTime.toFixed(1)}s stood on the hill.`;
         } else if (state.kind === 'jail') {
             line += w.isIt ? ' Everyone locked up.' : ' Still free at the bell.';
         } else if (state.kind === 'rabbit') {
@@ -1295,8 +1277,6 @@ function updatePlayer(p, dt) {
                 const pick = touched[Math.floor(Math.random() * touched.length)];
                 if (touched.length > 1) announce('CAUGHT TWO — COIN TOSS!', 1.1);
                 passItOn(p, pick);
-            } else if (state.kind === 'hill') {
-                passItOn(p, touched[Math.floor(Math.random() * touched.length)]);
             } else if (state.kind === 'jail') {
                 touched.forEach(q => sendToJail(p, q));
             } else if (state.kind === 'rabbit' || state.kind === 'line') {
@@ -1506,33 +1486,6 @@ function knockOut(byP, victim) {
     }
     const left = state.players.filter(q => !q.isIt && q.alive).length;
     if (left > 0) announce(`${left} LEFT`, 1.0);
-}
-
-// King of the Hill — a point a second, and It never scores.
-function updateHill(dt) {
-    if (state.kind !== 'hill' || !state.hill) return;
-    const h = state.hill;
-    h.t -= dt;
-    if (h.t <= 0) {
-        h.t = HILL_MOVE;
-        const a = state.arena;
-        h.x = a.x + 200 + Math.random() * (a.w - 400);
-        h.y = a.y + 200 + Math.random() * (a.h - 400);
-        announce('THE HILL HAS MOVED', 1.3);
-        tone(560, 0.1, 'triangle', 0.06);
-        tone(760, 0.12, 'triangle', 0.05);
-    }
-    for (const p of state.players) {
-        if (!p.alive || p.isIt || p.iced || p.freezeTimer > 0) continue;
-        if (Math.hypot(p.x - h.x, p.y - h.y) > HILL_R) continue;
-        p.hillTime += dt;
-        if (Math.random() < dt * 6) {
-            state.particles.push({
-                x: p.x + (Math.random() - 0.5) * 20, y: p.y - 6,
-                vx: 0, vy: -40, life: 0.5, maxLife: 0.5, size: 1.6, color: '#ffd54f',
-            });
-        }
-    }
 }
 
 // Jail Tag — marched off to the pen, and stuck there until somebody comes.
@@ -1949,15 +1902,6 @@ function checkWinCondition() {
         return;
     }
 
-    if (state.kind === 'hill') {
-        if (state.timeLeft <= 0) {
-            let best = null;
-            for (const p of state.players) if (!best || p.hillTime > best.hillTime) best = p;
-            endGame(best ? best.idx : -1);
-        }
-        return;
-    }
-
     if (state.kind === 'rabbit') {
         // Only the rabbit scores. Longest run wins it at the bell.
         if (state.timeLeft <= 0) {
@@ -2102,23 +2046,6 @@ function aiCommand(p, dt) {
             out.ix = (dx / m) * cfg.reactSpeed;
             out.iy = (dy / m) * cfg.reactSpeed;
             p.wantBoost = false;
-            return out;
-        }
-    }
-
-    // King of the Hill: runners want to stand on it; whoever is It wants to
-    // get rid of It, and the hill is where everyone will be.
-    if (state.kind === 'hill' && state.hill) {
-        const h = state.hill;
-        const d = Math.hypot(h.x - p.x, h.y - p.y);
-        if (!p.isIt && (!nearestIt || nearestItD > 200) && d > HILL_R * 0.55) {
-            const dx = h.x - p.x, dy = h.y - p.y, m = Math.hypot(dx, dy) || 1;
-            out.ix = dx / m; out.iy = dy / m;
-            return out;
-        }
-        if (p.isIt && (!nearestClean || nearestCleanD > 320) && d > HILL_R) {
-            const dx = h.x - p.x, dy = h.y - p.y, m = Math.hypot(dx, dy) || 1;
-            out.ix = dx / m; out.iy = dy / m;
             return out;
         }
     }
@@ -2392,31 +2319,6 @@ function drawGridLines() {
         for (let y = a.y; y <= a.y + a.h; y += LINE_GAP) {
             ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
         }
-    }
-}
-
-// The safe water at either end, and the hill.
-function drawZones() {
-    if (state.kind === 'hill' && state.hill) {
-        const h = state.hill;
-        const warn = h.t < 3 && Math.floor(state.time * 6) % 2 === 0;
-        const g = ctx.createRadialGradient(h.x, h.y, 10, h.x, h.y, HILL_R);
-        g.addColorStop(0, warn ? 'rgba(255,138,101,0.35)' : 'rgba(255,213,79,0.28)');
-        g.addColorStop(1, 'rgba(255,213,79,0)');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(h.x, h.y, HILL_R, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = warn ? '#ff8a65' : '#ffd54f';
-        ctx.lineWidth = 4;
-        ctx.setLineDash([14, 10]);
-        ctx.lineDashOffset = -state.time * 22;
-        ctx.beginPath(); ctx.arc(h.x, h.y, HILL_R, 0, Math.PI * 2); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.font = '30px Segoe UI';
-        ctx.textAlign = 'center';
-        ctx.fillText('👑', h.x, h.y + 10);
-        ctx.font = 'bold 13px Segoe UI';
-        ctx.fillStyle = warn ? '#ff8a65' : 'rgba(255,213,79,0.85)';
-        ctx.fillText(`moves in ${Math.ceil(h.t)}s`, h.x, h.y + HILL_R - 12);
     }
 }
 
@@ -3113,16 +3015,6 @@ function drawHUD() {
         ctx.font = 'bold 18px Segoe UI';
         ctx.fillStyle = '#cce0c1';
         ctx.fillText('it takes two of them at once', W / 2, 96);
-    } else if (state.kind === 'hill') {
-        const me4 = state.players[0];
-        let lead = null;
-        for (const p of state.players) if (!lead || p.hillTime > lead.hillTime) lead = p;
-        ctx.fillStyle = (lead === me4) ? '#7cffa3' : '#ffe082';
-        const who4 = lead.isBot ? `BOT ${lead.idx + 1}` : `P${lead.idx + 1}`;
-        ctx.fillText(`👑 ${who4} — ${lead.hillTime.toFixed(1)}s`, W / 2, 50);
-        ctx.font = 'bold 18px Segoe UI';
-        ctx.fillStyle = me4.isIt ? '#ff8a65' : '#cce0c1';
-        ctx.fillText(me4.isIt ? "you're It — you score nothing" : `your hill time: ${me4.hillTime.toFixed(1)}s`, W / 2, 96);
     } else if (state.kind === 'rabbit') {
         const r = state.players.find(p => !p.isIt);
         const me2 = state.players[0];
@@ -3407,7 +3299,6 @@ function loop(ts) {
             updateBlob(dt);
             updateFuse(dt);
             processJailbreak(dt);
-            updateHill(dt);
             updatePowerups(dt);
             checkWinCondition();
             updateCamera(dt);
@@ -3429,7 +3320,6 @@ function loop(ts) {
         ctx.translate(W / 2 - state.camX, H / 2 - state.camY);
         drawArena();
         drawGridLines();
-        drawZones();
         drawJail();
         drawKeyButton();
         drawDecorations();

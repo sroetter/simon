@@ -132,11 +132,23 @@ const MINE_TIME = 0.9;            // seconds of pickaxe to break one
 const MINE_REACH = 58;
 const ROCK_FROM = 3;              // the crossing rock starts appearing on
 const PICKAXE_FROM = 3;           // ...which is when you're handed the pickaxe
+const SHARK_FROM = 2;             // sharks are the extra that turns up later
+
+// The swim gets longer every crossing.
+const WATER_BASE = 1150;
+const WATER_GROW = 300;
+const WATER_MAX = 5200;
 
 const DIFF = {
-    calm:    { name:'Calm',           sharkBase:2, sharkPer:0.6, speed:0.82, rockPer:1.4 },
-    choppy:  { name:'Choppy',         sharkBase:3, sharkPer:0.9, speed:1.0,  rockPer:2.0 },
-    feeding: { name:'Feeding Frenzy', sharkBase:4, sharkPer:1.3, speed:1.22, rockPer:2.8 },
+    calm:    { name:'Calm',
+               hunterBase:1, hunterPer:0.4, hunterSpeed:0.80,
+               sharkBase:1, sharkPer:0.5, speed:0.82, rockPer:1.4 },
+    choppy:  { name:'Choppy',
+               hunterBase:1, hunterPer:0.7, hunterSpeed:0.88,
+               sharkBase:2, sharkPer:0.8, speed:1.0,  rockPer:2.0 },
+    feeding: { name:'Feeding Frenzy',
+               hunterBase:2, hunterPer:1.0, hunterSpeed:0.94,
+               sharkBase:3, sharkPer:1.1, speed:1.22, rockPer:2.8 },
 };
 let diff = 'choppy';
 
@@ -174,14 +186,19 @@ addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
 function waterTop() { return SHORE; }
-function waterBottom() { return H - SHORE; }
+function waterBottom() { return state.worldH - SHORE; }
+function worldHeightFor(n) { return Math.min(WATER_MAX, WATER_BASE + n * WATER_GROW); }
 
 function newGame() {
+    const wh = worldHeightFor(0);
     state = {
         cfg: DIFF[diff],
         crossings: 0,
         goingUp: true,                 // which reef you're heading for
-        fish: { x: W / 2, y: H - SHORE / 2, vx: 0, vy: 0, face: -Math.PI / 2, wig: 0 },
+        worldH: wh,
+        camY: 0,
+        hunters: [],
+        fish: { x: W / 2, y: wh - SHORE / 2, vx: 0, vy: 0, face: -Math.PI / 2, wig: 0 },
         blocks: [],                    // ones you've dropped
         rocks: [],                     // ones the sea floor threw up
         sharks: [],
@@ -190,6 +207,7 @@ function newGame() {
         mining: null,
         mineT: 0,
         dead: false,
+        grace: 1.4,
         paused: false,
         time: 0,
         flash: 0,
@@ -204,21 +222,50 @@ function buildLevel() {
     const n = state.crossings;
     const cfg = state.cfg;
     state.sharks = [];
+    state.hunters = [];
     state.rocks = [];
 
-    const count = Math.round(cfg.sharkBase + n * cfg.sharkPer);
+    // the water itself gets longer every time
+    state.worldH = worldHeightFor(n);
     const top = waterTop(), bot = waterBottom();
-    for (let i = 0; i < count; i++) {
-        const lane = top + 60 + (i + 0.5) * ((bot - top - 120) / Math.max(1, count));
-        const dir = Math.random() < 0.5 ? 1 : -1;
-        state.sharks.push({
-            x: dir > 0 ? -80 - Math.random() * 400 : W + 80 + Math.random() * 400,
-            y: lane + (Math.random() - 0.5) * 40,
-            dir,
-            speed: (95 + Math.random() * 70 + n * 7) * cfg.speed,
+
+    // Hunters are the real threat: they come straight for you, all crossing long.
+    const hunters = Math.max(1, Math.round(cfg.hunterBase + n * cfg.hunterPer));
+    for (let i = 0; i < hunters; i++) {
+        // spread them down the water, never right on top of you
+        const f = (i + 1) / (hunters + 1);
+        let hy = top + f * (bot - top);
+        let hx = 80 + Math.random() * (W - 160);
+        // never drop one within reach of where you're standing
+        for (let g = 0; g < 30 && Math.hypot(hx - state.fish.x, hy - state.fish.y) < 430; g++) {
+            hy = top + 60 + Math.random() * (bot - top - 120);
+            hx = 80 + Math.random() * (W - 160);
+        }
+        state.hunters.push({
+            x: hx,
+            y: Math.max(top + 40, Math.min(bot - 40, hy)),
+            vx: 0, vy: 0,
+            speed: FISH_SPEED * cfg.hunterSpeed * (1 + n * 0.012),
             wig: Math.random() * 6,
-            turn: 0,
+            stun: 0,
         });
+    }
+
+    // Sharks turn up later — an extra hazard sweeping the lanes, not a chaser.
+    if (n + 1 >= SHARK_FROM) {
+        const count = Math.round(cfg.sharkBase + (n + 1 - SHARK_FROM) * cfg.sharkPer);
+        for (let i = 0; i < count; i++) {
+            const lane = top + 60 + (i + 0.5) * ((bot - top - 120) / Math.max(1, count));
+            const dir = Math.random() < 0.5 ? 1 : -1;
+            state.sharks.push({
+                x: dir > 0 ? -80 - Math.random() * 400 : W + 80 + Math.random() * 400,
+                y: lane + (Math.random() - 0.5) * 40,
+                dir,
+                speed: (95 + Math.random() * 70 + n * 7) * cfg.speed,
+                wig: Math.random() * 6,
+                turn: 0,
+            });
+        }
     }
 
     // Rock only starts showing up once you're a few crossings in.
@@ -237,8 +284,9 @@ function buildLevel() {
     }
 
     if (n + 1 === PICKAXE_FROM) say('ROCK AHEAD — TAKE THE PICKAXE ⛏', 2.6);
+    else if (n + 1 === SHARK_FROM) say('SHARKS IN THE WATER 🦈', 2.4);
     else if (n === 0) say('SWIM FOR THE FAR REEF', 2.0);
-    else say(`CROSSING ${n + 1}`, 1.4);
+    else say(`CROSSING ${n + 1} — LONGER SWIM`, 1.6);
 }
 
 /* ==================================================================
@@ -313,6 +361,7 @@ function updateMining(dt) {
    ================================================================== */
 function update(dt) {
     state.time += dt;
+    if (state.grace > 0) state.grace -= dt;
     state.flash = Math.max(0, state.flash - dt * 2);
     if (state.messageT > 0) state.messageT -= dt;
 
@@ -359,6 +408,55 @@ function update(dt) {
 
     updateMining(dt);
 
+    // Hunters — straight for you, and they don't turn round at the edge.
+    for (const h of state.hunters) {
+        h.wig += dt * 8;
+        if (h.stun > 0) { h.stun -= dt; continue; }
+        let dx = f.x - h.x, dy = f.y - h.y;
+        const d = Math.hypot(dx, dy) || 1;
+        dx /= d; dy /= d;
+
+        // steer round anything solid rather than grinding into it
+        for (const o of state.blocks.concat(state.rocks)) {
+            const cx = o.x + BLOCK / 2, cy = o.y + BLOCK / 2;
+            const od = Math.hypot(cx - h.x, cy - h.y);
+            if (od < BLOCK * 1.5) {
+                dx += (h.x - cx) / (od || 1) * 1.1;
+                dy += (h.y - cy) / (od || 1) * 1.1;
+            }
+        }
+        const m2 = Math.hypot(dx, dy) || 1;
+        h.x += (dx / m2) * h.speed * dt;
+        h.y += (dy / m2) * h.speed * dt;
+
+        // and they're stopped by blocks just like you are
+        for (const o of state.blocks.concat(state.rocks)) {
+            const cx = Math.max(o.x, Math.min(h.x, o.x + BLOCK));
+            const cy = Math.max(o.y, Math.min(h.y, o.y + BLOCK));
+            const ddx = h.x - cx, ddy = h.y - cy;
+            const dd = Math.hypot(ddx, ddy);
+            if (dd < 18 && dd > 0.001) {
+                h.x = cx + (ddx / dd) * 18;
+                h.y = cy + (ddy / dd) * 18;
+                h.stun = 0.22;                    // a moment lost going round
+            }
+        }
+        // spread out — three hunters stacked read as one, and are unfair
+        for (const o of state.hunters) {
+            if (o === h) continue;
+            const sx = h.x - o.x, sy = h.y - o.y;
+            const sd = Math.hypot(sx, sy);
+            if (sd < 52 && sd > 0.001) {
+                h.x += (sx / sd) * (52 - sd) * 0.5;
+                h.y += (sy / sd) * (52 - sd) * 0.5;
+            }
+        }
+        h.x = Math.max(20, Math.min(W - 20, h.x));
+        h.y = Math.max(waterTop() + 20, Math.min(waterBottom() - 20, h.y));
+
+        if (Math.hypot(h.x - f.x, h.y - f.y) < FISH_R + 17) die();
+    }
+
     // sharks
     for (const s of state.sharks) {
         s.wig += dt * 6;
@@ -390,6 +488,10 @@ function update(dt) {
     }
     state.bubbles = state.bubbles.filter(b => b.life > 0);
 
+    // camera follows you down the water
+    const want = f.y - H / 2;
+    state.camY += (Math.max(0, Math.min(state.worldH - H, want)) - state.camY) * Math.min(1, 8 * dt);
+
     // made it?
     const reached = state.goingUp ? f.y < waterTop() - 4 : f.y > waterBottom() + 4;
     if (reached) {
@@ -399,12 +501,16 @@ function update(dt) {
         state.spare = Math.max(state.spare, 6) + 4;
         state.flash = 1;
         ding(); ding();
+        state.worldH = worldHeightFor(state.crossings);
+        state.fish.y = state.goingUp ? state.worldH - SHORE / 2 : SHORE / 2;
         buildLevel();
+        state.camY = Math.max(0, Math.min(state.worldH - H, state.fish.y - H / 2));
+        state.grace = 1.4;            // a breath before anything can reach you
     }
 }
 
 function die() {
-    if (state.dead) return;
+    if (state.dead || state.grace > 0) return;
     state.dead = true;
     chomp();
     for (let i = 0; i < 40; i++) {
@@ -436,6 +542,13 @@ function drawWater() {
     g.addColorStop(1, '#082f4b');
     ctx.fillStyle = g;
     ctx.fillRect(0, top, W, bot - top);
+    // depth haze so a long swim reads as deep water
+    const haze = ctx.createLinearGradient(0, top, 0, bot);
+    haze.addColorStop(0, 'rgba(0,0,0,0)');
+    haze.addColorStop(0.5, 'rgba(0,10,24,0.30)');
+    haze.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, top, W, bot - top);
 
     // moving caustics
     ctx.save();
@@ -455,7 +568,7 @@ function drawWater() {
 
     // the two reefs
     [0, bot].forEach((yy, i) => {
-        const h = i === 0 ? top : SHORE;
+        const h = SHORE;
         const sg = ctx.createLinearGradient(0, yy, 0, yy + h);
         sg.addColorStop(0, i === 0 ? '#e8d6a8' : '#d9c391');
         sg.addColorStop(1, i === 0 ? '#d9c391' : '#e8d6a8');
@@ -553,6 +666,22 @@ function drawShark(s) {
     }
 }
 
+function drawHunter(h) {
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    ctx.rotate(Math.sin(h.wig) * 0.14);
+    // a ring so you can pick them out of the water at a glance
+    ctx.strokeStyle = h.stun > 0 ? 'rgba(255,255,255,0.5)' : 'rgba(255,90,70,0.65)';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.stroke();
+    ctx.font = '34px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🐙', 0, 0);
+    ctx.restore();
+    ctx.textBaseline = 'alphabetic';
+}
+
 function drawFish() {
     const f = state.fish;
     if (state.dead) return;
@@ -597,13 +726,36 @@ function drawHUD() {
     ctx.textAlign = 'center';
     ctx.font = 'bold 15px Segoe UI';
     ctx.fillStyle = '#a9dcf5';
-    ctx.fillText(`${DIFF[diff].name} · ${state.sharks.length} sharks in the water`, W / 2, H - 22);
+    ctx.fillText(`${DIFF[diff].name} · 🐙 ${state.hunters.length} hunting` +
+                 (state.sharks.length ? ` · 🦈 ${state.sharks.length} patrolling` : ''), W / 2, H - 22);
 
+    // how much water is left to cross
+    const top = waterTop(), bot = waterBottom();
+    const goalY = state.goingUp ? top : bot;
+    const startY = state.goingUp ? bot : top;
+    const prog = Math.max(0, Math.min(1, Math.abs(state.fish.y - startY) / Math.abs(goalY - startY)));
+    const bx = W / 2 - 150, by = 22, bw = 300, bh = 10;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(bx - 2, by - 2, bw + 4, bh + 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = '#ffd76a';
+    ctx.fillRect(bx, by, bw * prog, bh);
+    ctx.font = 'bold 12px Segoe UI';
+    ctx.fillStyle = '#cfeaf8';
+    ctx.fillText(`${Math.round((1 - prog) * (bot - top))}px of water to go`, W / 2, by + 26);
+
+    if (state.grace > 0) {
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 15px Segoe UI';
+        ctx.fillStyle = 'rgba(124,255,163,0.9)';
+        ctx.fillText('SAFE FOR ' + state.grace.toFixed(1) + 's', W / 2, 78);
+    }
     if (state.messageT > 0) {
         ctx.globalAlpha = Math.min(1, state.messageT);
         ctx.font = 'bold 30px Segoe UI';
         ctx.fillStyle = '#ffd76a';
-        ctx.fillText(state.message, W / 2, waterTop() + 70);
+        ctx.fillText(state.message, W / 2, 110);
         ctx.globalAlpha = 1;
     }
     if (state.paused) {
@@ -616,6 +768,11 @@ function drawHUD() {
 }
 
 function render() {
+    ctx.fillStyle = '#04121f';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(0, -state.camY);           // the water is taller than the screen
     drawWater();
     for (const r of state.rocks) drawBlock(r, true);
     for (const b of state.blocks) drawBlock(b, false);
@@ -628,7 +785,9 @@ function render() {
     ctx.globalAlpha = 1;
 
     for (const s of state.sharks) drawShark(s);
+    for (const h of state.hunters) drawHunter(h);
     drawFish();
+    ctx.restore();
 
     if (state.flash > 0) {
         ctx.fillStyle = `rgba(255,255,255,${state.flash * 0.25})`;
