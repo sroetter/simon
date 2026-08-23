@@ -82,8 +82,8 @@
       then you turn round and do it again, and the water gets worse every time.<br><br>
       <b>Sharks</b> hunt you — they come straight for you and keep coming, and there are more of
       them every crossing. Touch one and it is over.<br>
-      You carry <b>16 blocks</b>. Drop one in a shark's path and it turns away — sharks will not
-      swim through a block.<br>
+      You carry <b>16 blocks</b> and drop them <b>behind you</b> as you swim — right into the path of
+      whatever is chasing. Sharks will not swim through a block.<br>
       From crossing three the sea floor throws up <b>rock</b>, and that is when you are handed a
       <b>pickaxe</b>: hold it against rock, or against your own block, to break it down. Blocks you
       mine back go straight into your pocket.<br><br>
@@ -97,7 +97,7 @@
     </div>
     <div class="keys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — swim</div>
-      <div><kbd>Space</kbd> — drop a block in front of you</div>
+      <div><kbd>Space</kbd> — drop a block behind you</div>
       <div>Hold <kbd>Shift</kbd> — swing the pickaxe</div>
       <div><kbd>Esc</kbd> — pause</div>
     </div>
@@ -383,15 +383,24 @@ function solidsAt(x, y, pad) {
 function placeBlock() {
     if (!state || state.dead || state.spare <= 0) return;
     const f = state.fish;
-    // drop it just ahead of you, snapped to a tidy grid
-    const gx = Math.round((f.x + Math.cos(f.face) * BLOCK - BLOCK / 2) / BLOCK) * BLOCK;
-    const gy = Math.round((f.y + Math.sin(f.face) * BLOCK - BLOCK / 2) / BLOCK) * BLOCK;
+    // Drop it behind you, snapped to a tidy grid — you're running from
+    // something, so the wall wants to go between you and it. Snapping can
+    // land the cell on top of you, so step further back until it doesn't.
+    const bx = -Math.cos(f.face), by = -Math.sin(f.face);
+    let gx = 0, gy = 0, ok = false;
+    for (let step = 1; step <= 3; step++) {
+        gx = Math.round((f.x + bx * BLOCK * step - BLOCK / 2) / BLOCK) * BLOCK;
+        gy = Math.round((f.y + by * BLOCK * step - BLOCK / 2) / BLOCK) * BLOCK;
+        const onMe = f.x > gx - FISH_R && f.x < gx + BLOCK + FISH_R &&
+                     f.y > gy - FISH_R && f.y < gy + BLOCK + FISH_R;
+        if (!onMe) { ok = true; break; }
+    }
+    if (!ok) return;
     if (gy < waterTop() || gy + BLOCK > waterBottom()) return;
     if (gx < 0 || gx + BLOCK > W) return;
-    // not on top of something already there, and not on top of yourself
+    // and not on top of something already there
     if (state.blocks.some(b => b.x === gx && b.y === gy)) return;
     if (state.rocks.some(r => Math.abs(r.x - gx) < BLOCK && Math.abs(r.y - gy) < BLOCK)) return;
-    if (f.x > gx - FISH_R && f.x < gx + BLOCK + FISH_R && f.y > gy - FISH_R && f.y < gy + BLOCK + FISH_R) return;
     state.blocks.push({ x: gx, y: gy, mine: 0 });
     state.spare--;
     thud();
