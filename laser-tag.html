@@ -105,8 +105,8 @@
     </div>
     <div id="takeoverOpts" class="hidden" style="color:#888; font-size:12px; margin-top:6px;">
       Tagged means <b style="color:#ffd54f;">turned</b> — you start shooting for whoever tagged you.
-      A side wins by absorbing everybody, and <b>everyone standing on it at the end wins with it</b> —
-      it does not matter which side you started on.
+      A side wins by absorbing everybody — but <b>you only win if you finish in the colour you
+      started in</b>. Get turned back to your own colour and it counts again.
     </div>
     <div id="timerOpts">
       <label>MATCH LENGTH</label>
@@ -497,8 +497,9 @@
   function makePlayer(name, team, isBot) {
     return {
       name, team, isBot,
-      origTeam: team,        // takeover: only a side's founders win with it
-      converted: false,
+      origTeam: team,        // takeover: the colour you have to finish in to win
+      converted: false,      // currently wearing somebody else's colour
+      everTurned: false,     // ...and whether that ever happened at all
       id: nextId++,                                   // stable identity, even in a free-for-all
       color: (TEAM[team] && TEAM[team].color) || '#fff',   // solo players get a palette colour instead
       x:0, y:0, vx:0, vy:0,
@@ -702,7 +703,9 @@
       if (by && by.team !== p.team) {
         p.team = by.team;
         p.color = TEAM[by.team].color;
-        p.converted = true;
+        // converted tracks where you are NOW, so shooting your way home clears it
+        p.converted = (p.team !== p.origTeam);
+        p.everTurned = true;
         p.taggedBy = by;
         p.invuln = TAG_COOLDOWN * 2;         // a moment to get clear before anyone shoots again
         p.aimTarget = null;
@@ -992,8 +995,9 @@
       const counts = sideKeys().map(k => ({ k, n: state.players.filter(p => p.team === k).length }));
       const top = Math.max(...counts.map(x => x.n));
       winners = counts.filter(x => x.n === top).map(x => x.k);
-      // Finish on the winning side and it's yours, however you got there.
-      const iWon = winners.includes(human.team);
+      // You win only by finishing in the colour you started in — get turned
+      // and stay turned and it's gone, but shoot your way back and it counts.
+      const iWon = winners.includes(human.origTeam) && human.team === human.origTeam;
       const swept = new Set(state.players.map(p => p.team)).size === 1;
       const wk = winners[0];
       const founders = state.players.filter(p => p.team === wk && !p.converted).length;
@@ -1007,16 +1011,18 @@
         ? `${wlabel} absorbed the entire arena — all ${state.players.length} players.`
         : `Time called it. ${wlabel} was biggest at ${top}.`;
       l2 += `<br><span style="color:#9ab">`;
-      if (human.converted && iWon) {
-        l2 += `You were turned along the way and finished on <b style="color:${TEAM[human.team].color}">${TEAM[human.team].name}</b> — which is all that counts.`;
-      } else if (human.converted) {
-        l2 += `You were turned and finished on <b style="color:${TEAM[human.team].color}">${TEAM[human.team].name}</b>, which came up short.`;
-      } else if (iWon) {
-        l2 += `You held <b style="color:${TEAM[human.origTeam].color}">${TEAM[human.origTeam].name}</b> from the first shot to the last.`;
+      const home = `<b style="color:${TEAM[human.origTeam].color}">${TEAM[human.origTeam].name}</b>`;
+      const now = `<b style="color:${TEAM[human.team].color}">${TEAM[human.team].name}</b>`;
+      if (iWon) {
+        l2 += human.everTurned
+          ? `You were turned, shot your way back to ${home}, and finished there. That counts.`
+          : `You held ${home} from the first shot to the last.`;
+      } else if (human.team !== human.origTeam) {
+        l2 += `You finished in ${now}, not the ${home} you started in — so it isn't yours, whoever won.`;
       } else {
-        l2 += `You stayed loyal to <b style="color:${TEAM[human.origTeam].color}">${TEAM[human.origTeam].name}</b>, but they were absorbed.`;
+        l2 += `You held ${home} to the end, but they weren't the biggest side.`;
       }
-      l2 += ` The winning side finished ${founders} original${founders === 1 ? '' : 's'} and ${turncoats} turned. You turned <b>${human.hits}</b>.</span>`;
+      l2 += ` The winning side finished ${founders} still in their own colour and ${turncoats} turned. You turned <b>${human.hits}</b>.</span>`;
       txt.innerHTML = l2;
       ov.classList.remove('hidden');
       document.getElementById('hud').classList.add('hidden');
