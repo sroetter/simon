@@ -168,6 +168,8 @@ h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; 
             <button class="btn diff kind" data-kind="jail">🔒 Jail Tag</button>
             <button class="btn diff kind" data-kind="rabbit">🐇 Rabbit</button>
             <button class="btn diff kind" data-kind="line">📏 Line Tag</button>
+            <button class="btn diff kind" data-kind="torch">🔦 Flashlight</button>
+            <button class="btn diff kind" data-kind="tail">🎏 Tail Tag</button>
         </div>
 
         <div class="label">Backdrop:</div>
@@ -272,7 +274,16 @@ const IT_RAMP_PER_SEC = 0.01;
 // own pack so the carrier gets the full climb; Freeze has one tagger all
 // round, so theirs builds at half speed; Classic hands It around and never
 // ramps at all.
-const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, jail: 0.5, rabbit: 0, line: 0 };
+const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, jail: 0.5, rabbit: 0, line: 0, torch: 0.35, tail: 0 };
+
+// Flashlight Tag: the seeker's beam.
+const TORCH_RANGE = 560;
+const TORCH_HALF = 0.40;      // half-angle of the cone, radians
+const TORCH_NEAR = 120;       // they'll notice you this close whatever the beam is doing
+
+// Tail Tag: how far behind you the tail trails, and the grab distance.
+const TAIL_LEN = 26;
+const TAIL_GRAB = 20;
 
 // Line Tag: spacing of the painted grid, and how close counts as "on a line".
 const LINE_GAP = 165;
@@ -450,6 +461,18 @@ const TAG_KINDS = {
         blurb: 'One tagger. Get touched and you are marched to <b style="color:#ff7043;">the jail</b> and stuck there.<br>Somewhere across the map there is a <b style="color:#43d86a;">green key button</b> — stand on it for <b>2 seconds</b> and everyone inside walks free, then it moves somewhere new. <b>It wins with everyone locked up; you win if anyone is still free at the bell.</b>',
         go: 'JAIL TAG — BREAK THEM OUT!',
     },
+    torch: {
+        name: 'Flashlight Tag',
+        tagline: 'Lights out. One seeker, one torch beam.',
+        blurb: 'The field goes <b>dark</b> — you can only see what is right around you, and the seeker\'s <b style="color:#ffe082;">torch beam</b> sweeping the field.<br>Anything the beam lands on has been found, and one touch puts you out. <b>Hide in the bushes. Survive to the bell, or be the last one found.</b>',
+        go: 'LIGHTS OUT — HIDE!',
+    },
+    tail: {
+        name: 'Tail Tag',
+        tagline: 'Everyone has a tail. Everyone wants yours.',
+        blurb: 'No taggers at all — <b>everybody is hunting everybody</b>. Each player trails a <b style="color:#ffd54f;">tail</b>, and you take one by touching it from <b>behind</b>.<br>Lose yours and you are out, so watch your back while you chase. <b>Last tail on the field wins.</b>',
+        go: 'TAIL TAG — WATCH YOUR BACK!',
+    },
     line: {
         name: 'Line Tag',
         tagline: 'Stay on the painted lines. Nobody may leave them.',
@@ -617,6 +640,11 @@ function makeState(mode, difficulty, bots) {
     players[itIdx].isIt = true;
     players[itIdx].isOriginalIt = true;
 
+    // Tail Tag: nobody is It — everyone is hunting everyone.
+    if (currentKind === 'tail') {
+        players.forEach(pl => { pl.isIt = false; pl.isOriginalIt = false; pl.hasTail = true; });
+    }
+
     // Line Tag: everyone starts standing on a crossing.
     if (currentKind === 'line') {
         players.forEach(pl => {
@@ -755,6 +783,7 @@ function makePlayer(idx, x, y, isBot, palIdx) {
         thaw: 0,            // how far along that thawing is
         timeAsIt: 0,        // classic tag: what you are scored on
         jailed: false,      // jail tag: locked up until somebody springs you
+        hasTail: true,      // tail tag: still carrying yours
         timeAsRabbit: 0,    // rabbit: the only thing that scores
     };
 }
@@ -841,6 +870,10 @@ function showGameOver() {
         // A word about how, so the ending reads as the end of that round.
         if (state.kind === 'potato') {
             line += ' Everybody else went off.';
+        } else if (state.kind === 'torch') {
+            line += w.isIt ? ' Found every last one of them.' : ' Never found in the dark.';
+        } else if (state.kind === 'tail') {
+            line += ` ${w.tails || 0} tail${(w.tails || 0) === 1 ? '' : 's'} taken, and kept their own.`;
         } else if (state.kind === 'jail') {
             line += w.isIt ? ' Everyone locked up.' : ' Still free at the bell.';
         } else if (state.kind === 'rabbit') {
@@ -1263,6 +1296,8 @@ function updatePlayer(p, dt) {
                 const pick = touched[Math.floor(Math.random() * touched.length)];
                 if (touched.length > 1) announce('CAUGHT TWO — COIN TOSS!', 1.1);
                 passItOn(p, pick);
+            } else if (state.kind === 'torch') {
+                touched.forEach(q => foundOut(p, q));
             } else if (state.kind === 'jail') {
                 touched.forEach(q => sendToJail(p, q));
             } else if (state.kind === 'rabbit' || state.kind === 'line') {
@@ -1472,6 +1507,81 @@ function knockOut(byP, victim) {
     }
     const left = state.players.filter(q => !q.isIt && q.alive).length;
     if (left > 0) announce(`${left} LEFT`, 1.0);
+}
+
+// Flashlight Tag — is this runner in the beam?
+function torchLights(seeker, q) {
+    const dx = q.x - seeker.x, dy = q.y - seeker.y;
+    const d = Math.hypot(dx, dy);
+    if (d < TORCH_NEAR) return true;              // close enough to hear them
+    if (d > TORCH_RANGE) return false;
+    const fl = Math.hypot(seeker.facingX, seeker.facingY) || 1;
+    const dot = (dx * seeker.facingX + dy * seeker.facingY) / (d * fl);
+    return dot > Math.cos(TORCH_HALF);
+}
+
+// Found in the dark — you're out for the round.
+function foundOut(byP, victim) {
+    if (victim.shieldActive) { breakShield(victim); return; }
+    victim.alive = false;
+    victim.eliminatedTimer = 0;
+    state.tagFlashTimer = 0.45;
+    tagSound();
+    state.particles.push({
+        x: victim.x, y: victim.y - 35, vx: 0, vy: -30, life: 1.4, maxLife: 1.4,
+        size: 0, color: '#ffe082', isText: true, text: 'FOUND!',
+    });
+    for (let i = 0; i < 26; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 80 + Math.random() * 190;
+        state.particles.push({
+            x: victim.x, y: victim.y - 8,
+            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30,
+            life: 0.5, maxLife: 0.8, size: 1.5 + Math.random() * 2,
+            color: '#ffe082', gravity: 80,
+        });
+    }
+    const left = state.players.filter(q => !q.isIt && q.alive).length;
+    if (left > 0) announce(`${left} STILL HIDDEN`, 1.1);
+}
+
+// Tail Tag — where your tail is trailing right now.
+function tailPoint(p) {
+    const fl = Math.hypot(p.facingX, p.facingY) || 1;
+    return { x: p.x - (p.facingX / fl) * TAIL_LEN, y: p.y - (p.facingY / fl) * TAIL_LEN };
+}
+
+// Everyone hunts everyone; you take a tail by reaching it from behind.
+function processTails(dt) {
+    if (state.kind !== 'tail') return;
+    const live = state.players.filter(q => q.alive && q.hasTail);
+    for (const grabber of live) {
+        if (grabber.freezeTimer > 0) continue;
+        for (const victim of live) {
+            if (victim === grabber || !victim.hasTail || victim.tagbackTimer > 0) continue;
+            const t = tailPoint(victim);
+            if (Math.hypot(grabber.x - t.x, grabber.y - t.y) > TAIL_GRAB) continue;
+            victim.hasTail = false;
+            victim.alive = false;
+            grabber.tails = (grabber.tails || 0) + 1;
+            state.tagFlashTimer = 0.4;
+            tagSound();
+            state.particles.push({
+                x: victim.x, y: victim.y - 35, vx: 0, vy: -30, life: 1.4, maxLife: 1.4,
+                size: 0, color: '#ffd54f', isText: true, text: 'TAIL TAKEN!',
+            });
+            for (let i = 0; i < 22; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const sp = 70 + Math.random() * 180;
+                state.particles.push({
+                    x: t.x, y: t.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30,
+                    life: 0.5, maxLife: 0.5, size: 1.5 + Math.random() * 2, color: '#ffd54f',
+                });
+            }
+            const left = state.players.filter(q => q.hasTail).length;
+            if (left > 1) announce(`${left} TAILS LEFT`, 1.0);
+        }
+    }
 }
 
 // Jail Tag — marched off to the pen, and stuck there until somebody comes.
@@ -1888,6 +1998,29 @@ function checkWinCondition() {
         return;
     }
 
+    if (state.kind === 'torch') {
+        const hidden = state.players.filter(p => !p.isIt && p.alive);
+        if (hidden.length === 0) {
+            const it = state.players.find(p => p.isIt);
+            endGame(it ? it.idx : -1);
+            return;
+        }
+        if (state.timeLeft <= 0) endGame(hidden[0].idx);
+        return;
+    }
+
+    if (state.kind === 'tail') {
+        const withTail = state.players.filter(p => p.hasTail);
+        if (withTail.length <= 1) { endGame(withTail[0] ? withTail[0].idx : -1); return; }
+        if (state.timeLeft <= 0) {
+            // bell — most tails taken wins, and you must still have your own
+            let best = null;
+            for (const p of withTail) if (!best || (p.tails || 0) > (best.tails || 0)) best = p;
+            endGame(best ? best.idx : -1);
+        }
+        return;
+    }
+
     if (state.kind === 'rabbit') {
         // Only the rabbit scores. Longest run wins it at the bell.
         if (state.timeLeft <= 0) {
@@ -2010,6 +2143,75 @@ function aiCommand(p, dt) {
         if (q.iced || q.jailed) continue;        // frozen or locked up — no point chasing them
         const d = Math.hypot(q.x - p.x, q.y - p.y);
         if (d < nearestCleanD) { nearestCleanD = d; nearestClean = q; }
+    }
+
+    // Tail Tag: go for the nearest tail, but keep your own away from whoever
+    // is nearest to it.
+    if (state.kind === 'tail') {
+        let prey = null, pd = Infinity, threat = null, td = Infinity;
+        const myTail = tailPoint(p);
+        for (const q of state.players) {
+            if (q === p || !q.alive || !q.hasTail) continue;
+            const t = tailPoint(q);
+            const d = Math.hypot(t.x - p.x, t.y - p.y);
+            if (d < pd) { pd = d; prey = q; }
+            const dz = Math.hypot(q.x - myTail.x, q.y - myTail.y);
+            if (dz < td) { td = dz; threat = q; }
+        }
+        if (threat && td < 150) {
+            // somebody is on your tail — swing round to face them
+            const dx = threat.x - p.x, dy = threat.y - p.y, m = Math.hypot(dx, dy) || 1;
+            out.ix = dx / m; out.iy = dy / m;
+            if (td < 70) { out.ix = -dy / m; out.iy = dx / m; }   // and peel away
+            return out;
+        }
+        if (prey) {
+            const t = tailPoint(prey);
+            const dx = t.x - p.x, dy = t.y - p.y, m = Math.hypot(dx, dy) || 1;
+            out.ix = dx / m; out.iy = dy / m;
+            p.wantBoost = canBoost(p) && pd < 200;
+            return out;
+        }
+        return out;
+    }
+
+    // Flashlight Tag: the seeker only knows what the beam has landed on, and
+    // sweeps the field otherwise. Runners only bolt once they're lit.
+    if (state.kind === 'torch') {
+        if (p.isIt) {
+            let seen = null, sd = Infinity;
+            for (const q of state.players) {
+                if (q === p || !q.alive || q.isIt) continue;
+                if (!torchLights(p, q)) continue;
+                const d = Math.hypot(q.x - p.x, q.y - p.y);
+                if (d < sd) { sd = d; seen = q; }
+            }
+            if (seen) {
+                const dx = seen.x - p.x, dy = seen.y - p.y, m = Math.hypot(dx, dy) || 1;
+                out.ix = dx / m; out.iy = dy / m;
+                return out;
+            }
+            // nothing in the beam — sweep towards somewhere new
+            p.ai.jukeTimer -= dt;
+            if (p.ai.jukeTimer <= 0 || !p.ai.target) {
+                p.ai.target = {
+                    x: state.arena.x + 100 + Math.random() * (state.arena.w - 200),
+                    y: state.arena.y + 100 + Math.random() * (state.arena.h - 200),
+                };
+                p.ai.jukeTimer = 3 + Math.random() * 3;
+            }
+            const dx = p.ai.target.x - p.x, dy = p.ai.target.y - p.y, m = Math.hypot(dx, dy) || 1;
+            if (m < 90) p.ai.jukeTimer = 0;
+            out.ix = dx / m; out.iy = dy / m;
+            return out;
+        }
+        // a runner who isn't lit stays put in the dark rather than giving
+        // themselves away by moving
+        const seeker = state.players.find(q => q.isIt);
+        if (seeker && !torchLights(seeker, p) && Math.hypot(seeker.x - p.x, seeker.y - p.y) > 220) {
+            p.wantBoost = false;
+            return out;
+        }
     }
 
     // Jail Tag: free runners make for the key button and hold it; the tagger
@@ -2281,6 +2483,50 @@ function drawGridLines() {
         for (let y = a.y; y <= a.y + a.h; y += LINE_GAP) {
             ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
         }
+    }
+}
+
+// Flashlight Tag: drop the lights, then lay the torch beam over the top.
+// Drawn in world space, after everything else, still inside the camera.
+function drawDarkness() {
+    if (state.kind !== 'torch') return;
+    const a = state.arena;
+    const me = state.players[0];
+    const seeker = state.players.find(p => p.isIt);
+    const seeMe = me.alive ? me : (seeker || me);
+
+    // Night over the whole field, with what's around you left legible.
+    const halo = 250;
+    ctx.fillStyle = 'rgba(3,5,12,0.90)';
+    ctx.fillRect(a.x - 400, a.y - 400, a.w + 800, a.h + 800);
+
+    // punch your own little pool of light back out of it
+    const hole = ctx.createRadialGradient(seeMe.x, seeMe.y, halo * 0.35, seeMe.x, seeMe.y, halo);
+    hole.addColorStop(0, 'rgba(0,0,0,1)');
+    hole.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = hole;
+    ctx.beginPath(); ctx.arc(seeMe.x, seeMe.y, halo, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // The beam itself — everyone can see it sweeping, which is the fun of it.
+    if (seeker) {
+        const fl = Math.hypot(seeker.facingX, seeker.facingY) || 1;
+        const ang = Math.atan2(seeker.facingY / fl, seeker.facingX / fl);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const beam = ctx.createRadialGradient(seeker.x, seeker.y, 20, seeker.x, seeker.y, TORCH_RANGE);
+        beam.addColorStop(0, 'rgba(255,236,170,0.55)');
+        beam.addColorStop(0.55, 'rgba(255,225,140,0.22)');
+        beam.addColorStop(1, 'rgba(255,220,130,0)');
+        ctx.fillStyle = beam;
+        ctx.beginPath();
+        ctx.moveTo(seeker.x, seeker.y);
+        ctx.arc(seeker.x, seeker.y, TORCH_RANGE, ang - TORCH_HALF, ang + TORCH_HALF);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
     }
 }
 
@@ -2782,7 +3028,32 @@ function drawPlayer(p) {
     }
 }
 
+// Tail Tag: the ribbon everyone is trying to reach.
+function drawTail(p) {
+    if (state.kind !== 'tail' || !p.hasTail) return;
+    const fl = Math.hypot(p.facingX, p.facingY) || 1;
+    const fx = p.facingX / fl, fy = p.facingY / fl;
+    const wag = Math.sin(state.time * 9 + p.idx) * 5;
+    const px = -fy, py = fx;
+    ctx.strokeStyle = p.scarfColor || '#ffd54f';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(p.x - fx * 8, p.y - fy * 8);
+    ctx.quadraticCurveTo(
+        p.x - fx * (TAIL_LEN * 0.6) + px * wag, p.y - fy * (TAIL_LEN * 0.6) + py * wag,
+        p.x - fx * TAIL_LEN + px * wag * 1.4, p.y - fy * TAIL_LEN + py * wag * 1.4);
+    ctx.stroke();
+    // the grabbable end
+    const t = tailPoint(p);
+    ctx.fillStyle = '#fff3c4';
+    ctx.beginPath(); ctx.arc(t.x + px * wag * 1.4, t.y + py * wag * 1.4, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.4; ctx.stroke();
+}
+
 function drawPlayerBody(x, y, p, eliminated) {
+    drawTail(p);
+
     // Legs
     const legSwing = p.moving ? Math.sin(p.animTime * 12) * 4 : 0;
     ctx.fillStyle = '#3b2a1f';
@@ -2970,6 +3241,18 @@ function drawHUD() {
                 ? `holding the key… ${(KEY_HOLD - state.keyBtn.hold).toFixed(1)}s`
                 : 'find the green key button', W / 2, 96);
         }
+    } else if (state.kind === 'torch') {
+        const hidden = state.players.filter(p => !p.isIt && p.alive).length;
+        ctx.fillStyle = hidden <= 1 ? '#ff5252' : '#ffe082';
+        ctx.fillText(`${hidden} still hidden`, W / 2, 50);
+    } else if (state.kind === 'tail') {
+        const tails = state.players.filter(p => p.hasTail).length;
+        const me3 = state.players[0];
+        ctx.fillStyle = me3.hasTail ? '#ffe082' : '#ff5252';
+        ctx.fillText(`${tails} tails left`, W / 2, 50);
+        ctx.font = 'bold 18px Segoe UI';
+        ctx.fillStyle = '#cce0c1';
+        ctx.fillText(me3.hasTail ? `you've taken ${me3.tails || 0}` : 'your tail is gone', W / 2, 96);
     } else if (state.kind === 'rabbit') {
         const r = state.players.find(p => !p.isIt);
         const me2 = state.players[0];
@@ -3254,6 +3537,7 @@ function loop(ts) {
             updateBlob(dt);
             updateFuse(dt);
             processJailbreak(dt);
+            processTails(dt);
             updatePowerups(dt);
             checkWinCondition();
             updateCamera(dt);
@@ -3290,6 +3574,7 @@ function loop(ts) {
         layered.sort((a, b) => a.y - b.y);
         layered.forEach(it => it.draw());
         drawParticles();
+        drawDarkness();          // Flashlight Tag drops the lights over the lot
         ctx.restore();
 
         // Screen-space overlays (HUD, leaves, minimap, winner)
