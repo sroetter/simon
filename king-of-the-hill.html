@@ -77,15 +77,21 @@
     <div class="rules">
       Whichever team has <b>more players standing on the hill</b> owns it, and every second they
       own it is a point. Equal numbers and nobody scores — so one extra body on the hill decides it.<br><br>
-      <b>Sticks</b> wash up around the edges. Pick one up and swing it: whoever you hit goes
-      <b>flying</b>, right off the hill and halfway across the field, and they are dazed when they
-      land. A stick is good for three swings and then it snaps.<br><br>
-      The hill <b>moves every twenty seconds</b>, so nobody camps it for long.
+      Hold it with <b>nobody contesting you for three seconds</b> and you <b>plant your flag</b> —
+      the hill is locked to your team and scores <b>double</b> until an enemy stands on it long
+      enough to pull it down.<br><br>
+      <b>Sticks</b> wash up around the edges — five swings each. Whoever you hit goes <b>flying</b>,
+      right off the hill and halfway across the field. You can also <b>throw</b> your stick for a
+      long-range hit, but then you have nothing until you find another.<br><br>
+      A <b>golden stick</b> appears <b>on the hill itself</b>: ten seconds of unlimited swinging that
+      hit harder. Worth wading in for.<br><br>
+      Mind the ground — <b>mud</b> drags you to a crawl and <b>ice</b> means a whack sends you
+      sliding a very long way. The hill <b>moves every twenty seconds</b>.
     </div>
     <div class="keys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — run</div>
       <div><kbd>Space</kbd> — swing your stick</div>
-      <div>Walk over a stick to pick it up</div>
+      <div><kbd>Shift</kbd> — throw it</div>
       <div><kbd>Esc</kbd> — pause</div>
     </div>
     <div class="label">TEAMS</div>
@@ -151,7 +157,7 @@ const R = 17;                    // body radius
 const SPEED = 240;
 const HILL_R = 135;
 const HILL_MOVE = 20;            // seconds before the hill picks a new spot
-const STICK_SWINGS = 3;
+const STICK_SWINGS = 5;          // an ordinary stick is good for five
 const SWING_ARC = 0.95;          // half-angle of the swing
 const SWING_REACH = 74;
 const SWING_TIME = 0.26;
@@ -161,6 +167,26 @@ const KNOCK_DRAG = 2.6;
 const DAZED = 1.1;               // seconds you're out of control after a hit
 const STICK_MAX = 6;             // how many lie about at once
 const STICK_SPAWN = 4;
+
+// Plant the flag: hold the hill with nobody contesting it and it locks to you.
+const PLANT_TIME = 3;            // seconds uncontested before it goes in
+const PLANT_PULL = 1.6;          // seconds an enemy needs on the hill to pull it down
+const PLANT_MULT = 2;            // a planted flag scores double
+
+// The golden stick only ever appears on the hill itself.
+const GOLD_TIME = 10;            // seconds of unlimited swinging
+const GOLD_RESPAWN = 26;
+const GOLD_KNOCK = 1.45;         // and it hits harder
+
+// Throwing your stick — long reach, but now you're empty-handed.
+const THROW_SPEED = 940;
+const THROW_RANGE = 640;
+const THROW_KNOCK = 0.8;         // a thrown stick lands a little softer than a swing
+
+// Ground you don't want to be standing on.
+const MUD_SLOW = 0.52;
+const ICE_DRAG = 0.18;           // knockback barely bleeds off on ice
+const ICE_GRIP = 0.22;           // ...and you can't turn on it either
 
 const TEAMS = [
     { name:'AMBER',  color:'#ffb43a', dark:'#a35f06' },
@@ -209,6 +235,7 @@ addEventListener('keydown', e => {
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
     if (e.code === 'Escape' && state && !state.over) state.paused = !state.paused;
     if (e.code === 'Space' && state && !state.paused) swing(state.players[0]);
+    if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && state && !state.paused) throwStick(state.players[0]);
     keys[e.code] = true;
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -221,7 +248,8 @@ function makePlayer(idx, team, isBot, name) {
         kx: 0, ky: 0,              // knockback velocity, separate from your own running
         dazed: 0,
         stick: 0,                  // swings left in the stick you're holding
-        swingT: 0, coolT: 0,
+        gold: 0,                   // seconds of golden stick left
+        swingT: 0, coolT: 0, throwT: 0,
         step: 0, moving: false,
         hits: 0, flown: 0,
     };
@@ -246,6 +274,11 @@ function newGame() {
         hill: { x: W / 2, y: H / 2, t: HILL_MOVE },
         sticks: [],
         stickT: 2,
+        thrown: [],
+        gold: null,
+        goldT: 8,
+        flag: { team: -1, progress: 0, pull: 0, planted: false },
+        patches: [],
         rocks: [],
         owner: -1,
         time: matchSecs,
@@ -278,11 +311,36 @@ function newGame() {
         p.face = Math.atan2(state.hill.y - p.y, state.hill.x - p.x);
     });
 
+    // mud and ice, kept clear of the hill's starting spot
+    for (let i = 0; i < 7; i++) {
+        for (let t = 0; t < 40; t++) {
+            const x = 110 + Math.random() * (W - 220);
+            const y = 110 + Math.random() * (H - 220);
+            if (Math.hypot(x - state.hill.x, y - state.hill.y) < HILL_R + 60) continue;
+            if (state.patches.some(q => Math.hypot(q.x - x, q.y - y) < q.r + 110)) continue;
+            if (state.rocks.some(r => Math.hypot(r.x - x, r.y - y) < r.r + 70)) continue;
+            state.patches.push({
+                x, y, r: 70 + Math.random() * 60,
+                type: Math.random() < 0.5 ? 'mud' : 'ice',
+                seed: Math.random() * 99,
+            });
+            break;
+        }
+    }
+
     for (let i = 0; i < 3; i++) spawnStick();
     say('TAKE THE HILL', 1.6);
 }
 
 function say(t, s) { state.message = t; state.messageT = s || 1.5; }
+
+// Which patch, if any, are you standing on?
+function patchAt(p) {
+    for (const q of state.patches) {
+        if (Math.hypot(p.x - q.x, p.y - q.y) < q.r) return q;
+    }
+    return null;
+}
 
 function spawnStick() {
     if (state.sticks.length >= STICK_MAX) return;
@@ -300,10 +358,12 @@ function spawnStick() {
    SWINGING
    ================================================================== */
 function swing(p) {
-    if (!p || state.over || p.stick <= 0 || p.coolT > 0 || p.dazed > 0) return;
+    if (!p || state.over || p.coolT > 0 || p.dazed > 0) return;
+    const golden = p.gold > 0;
+    if (p.stick <= 0 && !golden) return;
     p.swingT = SWING_TIME;
     p.coolT = SWING_COOL;
-    p.stick--;
+    if (!golden) p.stick--;          // the golden one never runs down
     whoosh();
 
     for (const q of state.players) {
@@ -318,8 +378,9 @@ function swing(p) {
 
         // and away they go
         const m = d || 1;
-        q.kx = (dx / m) * KNOCK_SPEED;
-        q.ky = (dy / m) * KNOCK_SPEED;
+        const power = KNOCK_SPEED * (golden ? GOLD_KNOCK : 1);
+        q.kx = (dx / m) * power;
+        q.ky = (dy / m) * power;
         q.dazed = DAZED;
         p.hits++; q.flown++;
         state.shake = 16;
@@ -331,7 +392,72 @@ function swing(p) {
             state.sticks.push({ x: q.x, y: q.y, spin: Math.random() * 3, bob: 0 });
         }
     }
-    if (p.stick === 0) state.pops.push({ x: p.x, y: p.y - 30, text: 'snapped', color: '#c8ae7e', life: 0.9 });
+    if (p.stick === 0 && !golden) state.pops.push({ x: p.x, y: p.y - 30, text: 'snapped', color: '#c8ae7e', life: 0.9 });
+}
+
+// Throw it. Long reach, and then you have nothing.
+function throwStick(p) {
+    if (!p || state.over || p.dazed > 0 || p.throwT > 0) return;
+    if (p.gold > 0) return;                    // you're not throwing the golden one away
+    if (p.stick <= 0) return;
+    p.stick = 0;
+    p.throwT = 0.5;
+    whoosh();
+    state.thrown.push({
+        x: p.x + Math.cos(p.face) * R,
+        y: p.y + Math.sin(p.face) * R,
+        vx: Math.cos(p.face) * THROW_SPEED,
+        vy: Math.sin(p.face) * THROW_SPEED,
+        spin: 0,
+        team: p.team,
+        by: p,
+        travelled: 0,
+    });
+    state.pops.push({ x: p.x, y: p.y - 30, text: 'THROWN', color: '#ffe1a6', life: 0.8 });
+}
+
+function updateThrown(dt) {
+    for (let i = state.thrown.length - 1; i >= 0; i--) {
+        const t = state.thrown[i];
+        const step = Math.hypot(t.vx, t.vy) * dt;
+        t.x += t.vx * dt; t.y += t.vy * dt;
+        t.spin += dt * 22;
+        t.travelled += step;
+
+        let done = false;
+        // anyone on another team catches it in the chest
+        for (const q of state.players) {
+            if (q.team === t.team || q.dazed > 0) continue;
+            if (Math.hypot(q.x - t.x, q.y - t.y) > R + 12) continue;
+            const m = Math.hypot(t.vx, t.vy) || 1;
+            q.kx = (t.vx / m) * KNOCK_SPEED * THROW_KNOCK;
+            q.ky = (t.vy / m) * KNOCK_SPEED * THROW_KNOCK;
+            q.dazed = DAZED;
+            t.by.hits++; q.flown++;
+            state.shake = 13;
+            whack();
+            state.pops.push({ x: q.x, y: q.y - 26, text: 'THWACK!', color: TEAMS[t.team].color, life: 1.1 });
+            done = true;
+            break;
+        }
+        // rocks stop it dead
+        if (!done) {
+            for (const r of state.rocks) {
+                if (Math.hypot(t.x - r.x, t.y - r.y) < r.r + 8) { done = true; break; }
+            }
+        }
+        if (!done && (t.travelled > THROW_RANGE || t.x < 10 || t.x > W - 10 || t.y < 10 || t.y > H - 10)) done = true;
+
+        if (done) {
+            // it lands, and it's anybody's again
+            state.thrown.splice(i, 1);
+            state.sticks.push({
+                x: Math.max(30, Math.min(W - 30, t.x)),
+                y: Math.max(30, Math.min(H - 30, t.y)),
+                spin: t.spin, bob: Math.random() * 6,
+            });
+        }
+    }
 }
 
 /* ==================================================================
@@ -351,14 +477,28 @@ function update(dt) {
         h.y = 180 + Math.random() * (H - 360);
         say('THE HILL HAS MOVED', 1.4);
         horn();
+        state.flag.planted = false; state.flag.team = -1;
+        state.flag.progress = 0; state.flag.pull = 0;
+        state.gold = null; state.goldT = Math.min(state.goldT, 6);
     }
 
     state.stickT -= dt;
     if (state.stickT <= 0) { state.stickT = STICK_SPAWN; spawnStick(); }
 
+    // the golden stick, and only ever on the hill
+    state.goldT -= dt;
+    if (!state.gold && state.goldT <= 0) {
+        const a = Math.random() * Math.PI * 2, rr = Math.random() * HILL_R * 0.55;
+        state.gold = { x: h.x + Math.cos(a) * rr, y: h.y + Math.sin(a) * rr, bob: 0 };
+        say('GOLDEN STICK ON THE HILL', 1.6);
+        tone(880, 0.1, 'sine', 0.06); tone(1240, 0.14, 'sine', 0.05);
+    }
+    for (const p of state.players) p.gold = Math.max(0, p.gold - dt);
+
     for (const p of state.players) {
         p.swingT = Math.max(0, p.swingT - dt);
         p.coolT = Math.max(0, p.coolT - dt);
+        p.throwT = Math.max(0, p.throwT - dt);
         p.dazed = Math.max(0, p.dazed - dt);
 
         let ix = 0, iy = 0;
@@ -377,13 +517,25 @@ function update(dt) {
             p.moving = m > 0;
         } else p.moving = false;
 
-        const sp = SPEED * (p.swingT > 0 ? 0.4 : 1);
-        p.x += ix * sp * dt + p.kx * dt;
-        p.y += iy * sp * dt + p.ky * dt;
-        if (p.moving) p.step += dt * 11;
+        // what you're standing on changes everything
+        const patch = patchAt(p);
+        const mud = patch && patch.type === 'mud';
+        const ice = patch && patch.type === 'ice';
 
-        // knockback bleeds off
-        const drag = Math.exp(-KNOCK_DRAG * dt);
+        const sp = SPEED * (p.swingT > 0 ? 0.4 : 1) * (mud ? MUD_SLOW : 1);
+        if (ice) {
+            // no grip — you keep going the way you were going
+            p.sx = (p.sx || 0) + (ix * sp - (p.sx || 0)) * Math.min(1, ICE_GRIP * 4 * dt);
+            p.sy = (p.sy || 0) + (iy * sp - (p.sy || 0)) * Math.min(1, ICE_GRIP * 4 * dt);
+        } else {
+            p.sx = ix * sp; p.sy = iy * sp;
+        }
+        p.x += p.sx * dt + p.kx * dt;
+        p.y += p.sy * dt + p.ky * dt;
+        if (p.moving) p.step += dt * (mud ? 6 : 11);
+
+        // knockback bleeds off — but barely at all on ice
+        const drag = Math.exp(-KNOCK_DRAG * (ice ? ICE_DRAG : 1) * dt);
         p.kx *= drag; p.ky *= drag;
         if (Math.abs(p.kx) < 6) p.kx = 0;
         if (Math.abs(p.ky) < 6) p.ky = 0;
@@ -402,6 +554,16 @@ function update(dt) {
                 p.y = r.y + (dy / d) * min;
                 p.kx *= 0.4; p.ky *= 0.4;
             }
+        }
+
+        // the golden stick is picked up by anyone, held or not
+        if (state.gold && Math.hypot(state.gold.x - p.x, state.gold.y - p.y) < R + 18) {
+            state.gold = null;
+            state.goldT = GOLD_RESPAWN;
+            p.gold = GOLD_TIME;
+            state.pops.push({ x: p.x, y: p.y - 34, text: 'GOLDEN STICK!', color: '#ffe14a', life: 1.4 });
+            if (!p.isBot) { pickup(); tone(1320, 0.14, 'sine', 0.05); }
+            say(`${p.isBot ? p.name : 'YOU'} HAVE THE GOLDEN STICK`, 1.6);
         }
 
         // pick a stick up by walking over it
@@ -448,7 +610,41 @@ function update(dt) {
         tone(560, 0.1, 'triangle', 0.05);
     }
     state.owner = newOwner;
-    if (state.owner >= 0) state.scores[state.owner] += dt;
+
+    // planting the flag: hold it with nobody contesting you
+    const fl = state.flag;
+    const contested = state.owner >= 0 && on.some((n, t) => t !== state.owner && n > 0);
+    if (fl.planted) {
+        // an enemy standing on it pulls it back down
+        const enemyOn = on.some((n, t) => t !== fl.team && n > 0);
+        fl.pull = enemyOn ? fl.pull + dt : Math.max(0, fl.pull - dt * 0.8);
+        if (fl.pull >= PLANT_PULL) {
+            say(`${TEAMS[fl.team].name}'S FLAG IS DOWN`, 1.5);
+            horn();
+            fl.planted = false; fl.team = -1; fl.pull = 0; fl.progress = 0;
+        }
+    } else if (state.owner >= 0 && !contested) {
+        fl.team = state.owner;
+        fl.progress += dt;
+        if (fl.progress >= PLANT_TIME) {
+            fl.planted = true; fl.pull = 0;
+            say(`${TEAMS[fl.team].name} PLANTS THE FLAG — DOUBLE POINTS`, 2.0);
+            tone(520, 0.12, 'triangle', 0.06); tone(780, 0.16, 'triangle', 0.05);
+        }
+    } else {
+        fl.progress = Math.max(0, fl.progress - dt * 1.5);
+        if (fl.progress <= 0) fl.team = state.owner;
+    }
+
+    // a planted flag holds the hill for its team and scores double
+    if (fl.planted) {
+        state.owner = fl.team;
+        state.scores[fl.team] += dt * PLANT_MULT;
+    } else if (state.owner >= 0) {
+        state.scores[state.owner] += dt;
+    }
+
+    updateThrown(dt);
 
     for (const p of state.pops) { p.life -= dt; p.y -= dt * 26; }
     state.pops = state.pops.filter(p => p.life > 0);
@@ -477,15 +673,30 @@ function botThink(p, dt) {
         if (d < sd) { sd = d; stick = s; }
     }
 
-    // with a stick in hand and an enemy in reach, swing
-    if (p.stick > 0 && foe && fd < SWING_REACH && p.coolT <= 0 && Math.random() < cfg.swing) {
+    // with something in hand and an enemy in reach, swing
+    if ((p.stick > 0 || p.gold > 0) && foe && fd < SWING_REACH && p.coolT <= 0 && Math.random() < cfg.swing) {
         p.face = Math.atan2(foe.y - p.y, foe.x - p.x);
         swing(p);
+    }
+    // out of reach but lined up? throw it
+    if (p.stick > 0 && p.gold <= 0 && foe && fd > SWING_REACH * 1.6 && fd < THROW_RANGE * 0.75 &&
+        p.throwT <= 0 && Math.random() < cfg.swing * 0.9 * dt * 6) {
+        let clear = true;
+        for (const r of state.rocks) {
+            const t2 = ((r.x - p.x) * (foe.x - p.x) + (r.y - p.y) * (foe.y - p.y)) / (fd * fd);
+            if (t2 > 0 && t2 < 1) {
+                const px2 = p.x + (foe.x - p.x) * t2, py2 = p.y + (foe.y - p.y) * t2;
+                if (Math.hypot(px2 - r.x, py2 - r.y) < r.r + 10) { clear = false; break; }
+            }
+        }
+        if (clear) { p.face = Math.atan2(foe.y - p.y, foe.x - p.x); throwStick(p); }
     }
 
     let tx, ty;
     const onHill = Math.hypot(p.x - h.x, p.y - h.y) <= HILL_R;
-    if (p.stick <= 0 && stick && sd < 320 * cfg.stick) {
+    if (state.gold && Math.hypot(state.gold.x - p.x, state.gold.y - p.y) < 460 * cfg.stick) {
+        tx = state.gold.x; ty = state.gold.y;             // gold beats everything
+    } else if (p.stick <= 0 && p.gold <= 0 && stick && sd < 320 * cfg.stick) {
         tx = stick.x; ty = stick.y;                       // grab that first
     } else if (p.stick > 0 && foe && fd < 200 && onHill) {
         tx = foe.x; ty = foe.y;                           // clear them off
@@ -550,18 +761,130 @@ function drawHill() {
     ctx.beginPath(); ctx.arc(h.x, h.y, HILL_R, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
 
+    // the flag, and how close somebody is to planting or pulling it
+    const fl = state.flag;
+    if (fl.planted) {
+        const t = TEAMS[fl.team];
+        ctx.strokeStyle = '#6b4a20'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(h.x, h.y + 6); ctx.lineTo(h.x, h.y - 54); ctx.stroke();
+        const wave = Math.sin(state.elapsed * 5) * 4;
+        ctx.fillStyle = t.color;
+        ctx.beginPath();
+        ctx.moveTo(h.x, h.y - 54);
+        ctx.lineTo(h.x + 40, h.y - 46 + wave);
+        ctx.lineTo(h.x, h.y - 32);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = t.dark; ctx.lineWidth = 2; ctx.stroke();
+        if (fl.pull > 0) {
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.arc(h.x, h.y, HILL_R - 14, -Math.PI / 2, -Math.PI / 2 + (fl.pull / PLANT_PULL) * Math.PI * 2);
+            ctx.stroke();
+        }
+    } else if (fl.progress > 0 && fl.team >= 0) {
+        ctx.strokeStyle = TEAMS[fl.team].color; ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(h.x, h.y, HILL_R - 14, -Math.PI / 2, -Math.PI / 2 + (fl.progress / PLANT_TIME) * Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = TEAMS[fl.team].color;
+        ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('PLANTING…', h.x, h.y + 40);
+    }
+
     ctx.textAlign = 'center';
     ctx.font = '34px Segoe UI';
     ctx.fillText('👑', h.x, h.y + 12);
     ctx.font = 'bold 13px Segoe UI';
     ctx.fillStyle = warn ? '#fff' : hexA(col, 0.9);
-    ctx.fillText(owner >= 0 ? `${TEAMS[owner].name} HOLDS IT` : 'UP FOR GRABS', h.x, h.y - HILL_R + 22);
+    ctx.fillText(state.flag.planted ? `${TEAMS[state.flag.team].name} FLAG — DOUBLE`
+                 : owner >= 0 ? `${TEAMS[owner].name} HOLDS IT` : 'UP FOR GRABS',
+                 h.x, h.y - HILL_R + 22);
     ctx.fillText(`moves in ${Math.ceil(h.t)}s`, h.x, h.y + HILL_R - 12);
 }
 
 function hexA(hex, a) {
     const n = parseInt(hex.slice(1), 16);
     return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+function drawPatches() {
+    for (const q of state.patches) {
+        ctx.save();
+        if (q.type === 'mud') {
+            const g = ctx.createRadialGradient(q.x, q.y, q.r * 0.2, q.x, q.y, q.r);
+            g.addColorStop(0, 'rgba(86,60,28,0.85)');
+            g.addColorStop(1, 'rgba(86,60,28,0.35)');
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(52,36,16,0.7)';
+            for (let i = 0; i < 10; i++) {
+                const a = (i / 10) * Math.PI * 2 + q.seed;
+                const rr = q.r * (0.25 + ((q.seed * (i + 2)) % 60) / 100);
+                ctx.beginPath();
+                ctx.ellipse(q.x + Math.cos(a) * rr, q.y + Math.sin(a) * rr, 13, 8, a, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+            ctx.fillText('MUD', q.x, q.y + 4);
+        } else {
+            const g = ctx.createRadialGradient(q.x - q.r * 0.3, q.y - q.r * 0.3, q.r * 0.1, q.x, q.y, q.r);
+            g.addColorStop(0, 'rgba(226,246,255,0.92)');
+            g.addColorStop(1, 'rgba(150,205,235,0.55)');
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 2;
+            for (let i = 0; i < 5; i++) {
+                const a = (i / 5) * Math.PI * 2 + q.seed;
+                ctx.beginPath();
+                ctx.moveTo(q.x + Math.cos(a) * q.r * 0.25, q.y + Math.sin(a) * q.r * 0.25);
+                ctx.lineTo(q.x + Math.cos(a) * q.r * 0.8, q.y + Math.sin(a) * q.r * 0.8);
+                ctx.stroke();
+            }
+            ctx.fillStyle = 'rgba(40,80,110,0.65)';
+            ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+            ctx.fillText('ICE', q.x, q.y + 4);
+        }
+        ctx.restore();
+    }
+}
+
+function drawGoldStick() {
+    if (!state.gold) return;
+    const g = state.gold;
+    const bob = Math.sin(state.elapsed * 4) * 4;
+    const glow = ctx.createRadialGradient(g.x, g.y + bob, 3, g.x, g.y + bob, 44);
+    glow.addColorStop(0, 'rgba(255,225,74,0.55)');
+    glow.addColorStop(1, 'rgba(255,225,74,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(g.x, g.y + bob, 44, 0, Math.PI * 2); ctx.fill();
+    ctx.save();
+    ctx.translate(g.x, g.y + bob);
+    ctx.rotate(state.elapsed * 1.6);
+    ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-17, 0); ctx.lineTo(17, 0); ctx.stroke();
+    ctx.strokeStyle = '#fff8c0'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-10, -1.5); ctx.lineTo(10, -1.5); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#ffe14a'; ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillText('GOLDEN STICK', g.x, g.y + bob - 30);
+}
+
+function drawThrown() {
+    for (const t of state.thrown) {
+        ctx.save();
+        ctx.translate(t.x, t.y);
+        ctx.rotate(t.spin);
+        ctx.strokeStyle = '#c78c3a'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(16, 0); ctx.stroke();
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(255,225,166,0.35)'; ctx.lineWidth = 3;
+        const m = Math.hypot(t.vx, t.vy) || 1;
+        ctx.beginPath();
+        ctx.moveTo(t.x - t.vx / m * 26, t.y - t.vy / m * 26);
+        ctx.lineTo(t.x, t.y);
+        ctx.stroke();
+    }
 }
 
 function drawStick(s) {
@@ -621,17 +944,18 @@ function drawPlayer(p) {
     ctx.beginPath(); ctx.arc(x + 3.4 + ex, y - R * 0.68 + ey, 1.7, 0, Math.PI * 2); ctx.fill();
 
     // the stick, held out and swung
-    if (p.stick > 0) {
+    if (p.stick > 0 || p.gold > 0) {
         const sweep = p.swingT > 0 ? (1 - p.swingT / SWING_TIME) * SWING_ARC * 2 - SWING_ARC : 0.45;
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(p.face + sweep);
-        ctx.strokeStyle = '#a9762f'; ctx.lineWidth = 5.5; ctx.lineCap = 'round';
+        ctx.strokeStyle = p.gold > 0 ? '#ffe14a' : '#a9762f';
+        ctx.lineWidth = p.gold > 0 ? 7 : 5.5; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(R * 0.3, 0); ctx.lineTo(R * 0.3 + SWING_REACH * 0.72, 0); ctx.stroke();
         ctx.restore();
-        // swings left
-        ctx.fillStyle = '#ffe1a6'; ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
-        ctx.fillText('|'.repeat(p.stick), x, y - R * 1.5);
+        ctx.fillStyle = p.gold > 0 ? '#ffe14a' : '#ffe1a6';
+        ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText(p.gold > 0 ? '★ ' + p.gold.toFixed(1) + 's' : '|'.repeat(p.stick), x, y - R * 1.5);
     }
 
     if (p.dazed > 0) {
@@ -673,8 +997,10 @@ function drawHUD() {
 
     const me = state.players[0];
     ctx.font = 'bold 15px Segoe UI';
-    ctx.fillStyle = me.stick > 0 ? '#ffc85a' : '#c8ae7e';
-    ctx.fillText(me.stick > 0 ? `🏏 ${me.stick} swings left — SPACE` : 'no stick — go and find one',
+    ctx.fillStyle = me.gold > 0 ? '#ffe14a' : me.stick > 0 ? '#ffc85a' : '#c8ae7e';
+    ctx.fillText(me.gold > 0 ? `★ GOLDEN STICK — ${me.gold.toFixed(1)}s of unlimited swinging`
+                 : me.stick > 0 ? `🏏 ${me.stick} swings — SPACE to swing, SHIFT to throw`
+                 : 'no stick — go and find one',
                  W / 2, H - 22);
 
     if (state.messageT > 0) {
@@ -695,8 +1021,11 @@ function render() {
     ctx.save();
     if (state.shake > 0.5) ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
     drawGround();
+    drawPatches();
     drawHill();
     for (const s of state.sticks) drawStick(s);
+    drawGoldStick();
+    drawThrown();
     for (const r of state.rocks) {
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
         ctx.beginPath(); ctx.ellipse(r.x, r.y + r.r * 0.45, r.r * 1.05, r.r * 0.4, 0, 0, Math.PI * 2); ctx.fill();
