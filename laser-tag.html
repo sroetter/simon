@@ -46,6 +46,9 @@
   .teampick button[data-t=red].sel { background:#ff3b47; border-color:#fff; }
   .teampick button[data-t=blue].sel { background:#3a8bff; border-color:#fff; }
   .teampick button[data-t=none].sel { background:#7a4fd0; border-color:#fff; }
+  #colourPick { flex-wrap:wrap; }
+  #colourPick button { flex:0 0 auto; min-width:60px; padding:9px 10px; font-size:12px; font-weight:bold; color:#0d0f16; }
+  #colourPick button.sel { border-color:#fff; box-shadow:0 0 12px rgba(255,255,255,0.45); }
 </style>
 </head>
 <body>
@@ -80,6 +83,10 @@
       <button data-t="10">10</button>
       <button data-t="none">NO TEAMS</button>
     </div>
+    <div id="colourOpts">
+      <label id="colourLabel">YOUR COLOUR</label>
+      <div class="teampick" id="colourPick"></div>
+    </div>
     <div id="sizeOpts">
       <label>PLAYERS PER TEAM</label>
       <div class="row" id="size">
@@ -98,7 +105,8 @@
     </div>
     <div id="takeoverOpts" class="hidden" style="color:#888; font-size:12px; margin-top:6px;">
       Tagged means <b style="color:#ffd54f;">turned</b> — you start shooting for whoever tagged you.
-      A side wins by absorbing everybody, but <b>only its founding members win with it</b>.
+      A side wins by absorbing everybody, and <b>everyone standing on it at the end wins with it</b> —
+      it does not matter which side you started on.
     </div>
     <div id="timerOpts">
       <label>MATCH LENGTH</label>
@@ -223,17 +231,23 @@
     { name:'BONE',   color:'#e8e2d0', dim:'#6b6656', glow:'#f7f3e6' },
   ];
   // free-for-all colours, used when teams are switched off
-  const PALETTE = ['#ff3366','#ffaa00','#ffd700','#7eff5a','#39e3ff','#5a8bff','#b66bff','#ff66cc','#ffffff','#ff9966'];
+  const PALETTE = [
+    '#ff3366','#ff6b3d','#ffaa00','#ffd700','#c3f53c','#7eff5a','#2fd96b','#2fd9c8',
+    '#39e3ff','#4aa3ff','#5a8bff','#8f6bff','#b66bff','#e05bff','#ff66cc','#ff8fb1',
+    '#ffffff','#c8d4e6','#a1785a','#ff9966',
+  ];
   // How many sides are in the fight. 'none' is the old free-for-all.
   let teamCount = 2;                         // 2..10, or 'none' for no teams at all
   let teamSize = 3;                          // players on EVERY team — you fill one slot on yours
-  const myTeam = 0;                          // you always lead the first side
+  let myTeam = 0;                            // which side you line up for
+  let myColorIdx = 0;                        // your own colour in a free-for-all
   const teamsOn = () => teamCount !== 'none';
   document.querySelectorAll('#teamPick button').forEach(b => {
     b.onclick = () => {
       document.querySelectorAll('#teamPick button').forEach(x=>x.classList.remove('sel'));
       b.classList.add('sel');
       teamCount = b.dataset.t === 'none' ? 'none' : parseInt(b.dataset.t, 10);
+      buildColourPick();
       refreshRoster();
     };
   });
@@ -244,6 +258,39 @@
       refreshRoster();
     };
   });
+  // Your colour: in a team game that means which side you line up for, since
+  // everyone wears their side's colour. In a free-for-all it's your own.
+  function buildColourPick() {
+    const row = document.getElementById('colourPick');
+    const label = document.getElementById('colourLabel');
+    if (!row) return;
+    row.innerHTML = '';
+    if (teamsOn()) {
+      if (myTeam >= teamCount) myTeam = 0;
+      label.textContent = 'YOUR TEAM';
+      for (let t = 0; t < teamCount; t++) {
+        const b = document.createElement('button');
+        b.textContent = TEAM[t].name;
+        b.style.background = TEAM[t].color;
+        if (t === myTeam) b.classList.add('sel');
+        b.onclick = () => { myTeam = t; buildColourPick(); refreshRoster(); };
+        row.appendChild(b);
+      }
+    } else {
+      label.textContent = 'YOUR COLOUR';
+      PALETTE.forEach((col, i) => {
+        const b = document.createElement('button');
+        b.textContent = '\u2022';
+        b.style.background = col;
+        b.style.fontSize = '18px';
+        b.style.minWidth = '44px';
+        if (i === myColorIdx) b.classList.add('sel');
+        b.onclick = () => { myColorIdx = i; buildColourPick(); };
+        row.appendChild(b);
+      });
+    }
+  }
+
   function refreshRoster() {
     const el = document.getElementById('rosterNote');
     const sizeRow = document.getElementById('sizeOpts');
@@ -254,7 +301,7 @@
     if (!teamsOn()) { el.textContent = 'No teams: everyone for themselves, every player their own colour.'; return; }
     const total = teamCount * teamSize;
     el.innerHTML = `${teamCount} even teams of ${teamSize} — <b>${total} players</b>. ` +
-      `You fill a slot on ${TEAM[0].name}, so it runs one bot short of the others. ` +
+      `You fill a slot on <b style="color:${TEAM[myTeam].color}">${TEAM[myTeam].name}</b>, so it runs one bot short of the others. ` +
       `More teams means a bigger arena.`;
   }
 
@@ -281,6 +328,7 @@
     if (m === 'takeover' && !teamsOn()) {
       teamCount = 2;
       document.querySelectorAll('#teamPick button').forEach(x => x.classList.toggle('sel', x.dataset.t === '2'));
+      buildColourPick();
       refreshRoster();
     }
   }
@@ -493,7 +541,7 @@
     }
 
     const human = makePlayer(myName, teamed ? myTeam : 'solo0', false);
-    if (!teamed) human.color = PALETTE[0];
+    if (!teamed) human.color = PALETTE[myColorIdx % PALETTE.length];
     const sp = spawnPoint(walls, []);
     human.x = sp.x; human.y = sp.y;
     players.push(human);
@@ -504,14 +552,14 @@
     for (let i=0;i<nBots;i++) {
       let team;
       if (teamed) {
-        // deal round-robin starting on the side after yours, so your team is
-        // the one that ends up short by exactly one
-        team = (i + 1) % teamCount;
+        // deal round-robin starting on the side after yours, so whichever team
+        // you picked is the one that ends up short by exactly one
+        team = (myTeam + 1 + i) % teamCount;
       } else {
         team = 'solo' + (i + 1);
       }
       const bot = makePlayer(names[i % names.length], team, true);
-      if (!teamed) bot.color = PALETTE[(i + 1) % PALETTE.length];
+      if (!teamed) bot.color = PALETTE[(myColorIdx + 1 + i) % PALETTE.length];
       const sp2 = spawnPoint(walls, players);
       bot.x = sp2.x; bot.y = sp2.y;
       players.push(bot);
@@ -537,6 +585,7 @@
     cam.y = human.y - innerHeight/2;
   }
 
+  buildColourPick();
   refreshRoster();
   document.getElementById('start').onclick = () => { actx(); startGame(); };
   document.getElementById('again').onclick = () => {
@@ -943,11 +992,12 @@
       const counts = sideKeys().map(k => ({ k, n: state.players.filter(p => p.team === k).length }));
       const top = Math.max(...counts.map(x => x.n));
       winners = counts.filter(x => x.n === top).map(x => x.k);
-      // ...but you only share in it if you never got turned
-      const iWon = winners.includes(human.team) && !human.converted;
+      // Finish on the winning side and it's yours, however you got there.
+      const iWon = winners.includes(human.team);
       const swept = new Set(state.players.map(p => p.team)).size === 1;
       const wk = winners[0];
       const founders = state.players.filter(p => p.team === wk && !p.converted).length;
+      const turncoats = state.players.filter(p => p.team === wk && p.converted).length;
       t.textContent = iWon ? 'VICTORY' : 'DEFEAT';
       const col2 = iWon ? '#7eff5a' : '#ff3366';
       t.style.color = col2;
@@ -957,10 +1007,16 @@
         ? `${wlabel} absorbed the entire arena — all ${state.players.length} players.`
         : `Time called it. ${wlabel} was biggest at ${top}.`;
       l2 += `<br><span style="color:#9ab">`;
-      l2 += human.converted
-        ? `You were turned and finished the round shooting for <b style="color:${TEAM[human.team].color}">${TEAM[human.team].name}</b> — only founders win it.`
-        : `You held out as a founding member of <b style="color:${TEAM[human.origTeam].color}">${TEAM[human.origTeam].name}</b>.`;
-      l2 += ` ${founders} founder${founders === 1 ? '' : 's'} share the win. You turned <b>${human.hits}</b>.</span>`;
+      if (human.converted && iWon) {
+        l2 += `You were turned along the way and finished on <b style="color:${TEAM[human.team].color}">${TEAM[human.team].name}</b> — which is all that counts.`;
+      } else if (human.converted) {
+        l2 += `You were turned and finished on <b style="color:${TEAM[human.team].color}">${TEAM[human.team].name}</b>, which came up short.`;
+      } else if (iWon) {
+        l2 += `You held <b style="color:${TEAM[human.origTeam].color}">${TEAM[human.origTeam].name}</b> from the first shot to the last.`;
+      } else {
+        l2 += `You stayed loyal to <b style="color:${TEAM[human.origTeam].color}">${TEAM[human.origTeam].name}</b>, but they were absorbed.`;
+      }
+      l2 += ` The winning side finished ${founders} original${founders === 1 ? '' : 's'} and ${turncoats} turned. You turned <b>${human.hits}</b>.</span>`;
       txt.innerHTML = l2;
       ov.classList.remove('hidden');
       document.getElementById('hud').classList.add('hidden');
