@@ -80,12 +80,20 @@
     <div class="rules">
       You are the <b>fish</b>. Swim from your reef to the far reef and you have made a crossing —
       then you turn round and do it again, and the water gets worse every time.<br><br>
-      <b>Sharks</b> patrol the open water, more of them each crossing. Touch one and it is over.<br>
+      <b>Sharks</b> hunt you — they come straight for you and keep coming, and there are more of
+      them every crossing. Touch one and it is over.<br>
       You carry <b>16 blocks</b>. Drop one in a shark's path and it turns away — sharks will not
       swim through a block.<br>
       From crossing three the sea floor throws up <b>rock</b>, and that is when you are handed a
       <b>pickaxe</b>: hold it against rock, or against your own block, to break it down. Blocks you
-      mine back go straight into your pocket.
+      mine back go straight into your pocket.<br><br>
+      <b>Three other minnows</b> swim it with you. Sharks take whoever is nearest — so they are
+      cover as much as company.<br>
+      Hide in the <b>kelp</b> and a shark will swim right past you, though you can barely see out of
+      it either. <b>Pearls</b> lie about the water and sit in <b>chests</b> off to the sides: each one
+      you carry slows you down, and each one you land is worth double. Bank them by reaching a reef.<br>
+      Every <b>fifth crossing</b> something much bigger turns up — and it goes straight through
+      blocks instead of round them.
     </div>
     <div class="keys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — swim</div>
@@ -136,7 +144,22 @@ const MINE_TIME = 0.9;            // seconds of pickaxe to break one
 const MINE_REACH = 58;
 const ROCK_FROM = 3;              // the crossing rock starts appearing on
 const PICKAXE_FROM = 3;           // ...which is when you're handed the pickaxe
-const SHARK_FROM = 2;             // sharks are the extra that turns up later
+
+// Three other minnows make the crossing with you. Sharks take whoever is
+// nearest, so they are cover as much as company.
+const MINNOWS = 3;
+const MINNOW_SPEED = 0.86;
+
+// Kelp: sharks lose you in it, but you can't see out of it either.
+const KELP_HIDE = 96;            // how close a shark must be to find you in kelp
+
+// Pearls slow you down and multiply what the crossing is worth.
+const PEARL_SLOW = 0.045;        // per pearl
+const PEARL_WORTH = 2;
+
+// Every fifth crossing something much bigger turns up.
+const BOSS_EVERY = 5;
+const BOSS_SPEED = 0.72;
 
 // The swim gets longer every crossing.
 const WATER_BASE = 1150;
@@ -144,15 +167,9 @@ const WATER_GROW = 300;
 const WATER_MAX = 5200;
 
 const DIFF = {
-    calm:    { name:'Calm',
-               hunterBase:1, hunterPer:0.4, hunterSpeed:0.80,
-               sharkBase:1, sharkPer:0.5, speed:0.82, rockPer:1.4 },
-    choppy:  { name:'Choppy',
-               hunterBase:1, hunterPer:0.7, hunterSpeed:0.88,
-               sharkBase:2, sharkPer:0.8, speed:1.0,  rockPer:2.0 },
-    feeding: { name:'Feeding Frenzy',
-               hunterBase:2, hunterPer:1.0, hunterSpeed:0.94,
-               sharkBase:3, sharkPer:1.1, speed:1.22, rockPer:2.8 },
+    calm:    { name:'Calm',           sharkBase:1, sharkPer:0.4, sharkSpeed:0.80, rockPer:1.4 },
+    choppy:  { name:'Choppy',         sharkBase:1, sharkPer:0.7, sharkSpeed:0.88, rockPer:2.0 },
+    feeding: { name:'Feeding Frenzy', sharkBase:2, sharkPer:1.0, sharkSpeed:0.94, rockPer:2.8 },
 };
 let diff = 'choppy';
 
@@ -201,11 +218,17 @@ function newGame() {
         goingUp: true,                 // which reef you're heading for
         worldH: wh,
         camY: 0,
-        hunters: [],
         fish: { x: W / 2, y: wh - SHORE / 2, vx: 0, vy: 0, face: -Math.PI / 2, wig: 0 },
         blocks: [],                    // ones you've dropped
         rocks: [],                     // ones the sea floor threw up
         sharks: [],
+        minnows: [],
+        kelp: [],
+        chests: [],
+        pearls: [],
+        boss: null,
+        carrying: 0,
+        banked: 0,
         bubbles: [],
         spare: START_BLOCKS,
         mining: null,
@@ -226,18 +249,23 @@ function buildLevel() {
     const n = state.crossings;
     const cfg = state.cfg;
     state.sharks = [];
-    state.hunters = [];
+    state.sharks = [];
+    state.minnows = [];
+    state.kelp = [];
+    state.chests = [];
+    state.pearls = [];
+    state.boss = null;
     state.rocks = [];
 
     // the water itself gets longer every time
     state.worldH = worldHeightFor(n);
     const top = waterTop(), bot = waterBottom();
 
-    // Hunters are the real threat: they come straight for you, all crossing long.
-    const hunters = Math.max(1, Math.round(cfg.hunterBase + n * cfg.hunterPer));
-    for (let i = 0; i < hunters; i++) {
+    // Sharks come straight for you, all crossing long.
+    const count = Math.max(1, Math.round(cfg.sharkBase + n * cfg.sharkPer));
+    for (let i = 0; i < count; i++) {
         // spread them down the water, never right on top of you
-        const f = (i + 1) / (hunters + 1);
+        const f = (i + 1) / (count + 1);
         let hy = top + f * (bot - top);
         let hx = 80 + Math.random() * (W - 160);
         // never drop one within reach of where you're standing
@@ -245,31 +273,14 @@ function buildLevel() {
             hy = top + 60 + Math.random() * (bot - top - 120);
             hx = 80 + Math.random() * (W - 160);
         }
-        state.hunters.push({
+        state.sharks.push({
             x: hx,
             y: Math.max(top + 40, Math.min(bot - 40, hy)),
             vx: 0, vy: 0,
-            speed: FISH_SPEED * cfg.hunterSpeed * (1 + n * 0.012),
+            speed: FISH_SPEED * cfg.sharkSpeed * (1 + n * 0.012),
             wig: Math.random() * 6,
             stun: 0,
         });
-    }
-
-    // Sharks turn up later — an extra hazard sweeping the lanes, not a chaser.
-    if (n + 1 >= SHARK_FROM) {
-        const count = Math.round(cfg.sharkBase + (n + 1 - SHARK_FROM) * cfg.sharkPer);
-        for (let i = 0; i < count; i++) {
-            const lane = top + 60 + (i + 0.5) * ((bot - top - 120) / Math.max(1, count));
-            const dir = Math.random() < 0.5 ? 1 : -1;
-            state.sharks.push({
-                x: dir > 0 ? -80 - Math.random() * 400 : W + 80 + Math.random() * 400,
-                y: lane + (Math.random() - 0.5) * 40,
-                dir,
-                speed: (95 + Math.random() * 70 + n * 7) * cfg.speed,
-                wig: Math.random() * 6,
-                turn: 0,
-            });
-        }
     }
 
     // Rock only starts showing up once you're a few crossings in.
@@ -287,8 +298,56 @@ function buildLevel() {
         }
     }
 
-    if (n + 1 === PICKAXE_FROM) say('ROCK AHEAD — TAKE THE PICKAXE ⛏', 2.6);
-    else if (n + 1 === SHARK_FROM) say('SHARKS IN THE WATER 🦈', 2.4);
+    // kelp — thick enough to lose a shark in
+    const kelpCount = 3 + Math.floor(n * 0.5);
+    for (let i = 0; i < kelpCount; i++) {
+        for (let t = 0; t < 40; t++) {
+            const x = 90 + Math.random() * (W - 180);
+            const y = top + 90 + Math.random() * (bot - top - 180);
+            if (state.kelp.some(k => Math.hypot(k.x - x, k.y - y) < k.r + 130)) continue;
+            state.kelp.push({ x, y, r: 78 + Math.random() * 54, seed: Math.random() * 99 });
+            break;
+        }
+    }
+
+    // pearls scattered through the water, and a chest or two off the line
+    const pearlCount = 2 + Math.floor(n * 0.6);
+    for (let i = 0; i < pearlCount; i++) {
+        state.pearls.push({
+            x: 60 + Math.random() * (W - 120),
+            y: top + 70 + Math.random() * (bot - top - 140),
+            bob: Math.random() * 6,
+        });
+    }
+    for (let i = 0; i < (n === 0 ? 1 : 2); i++) {
+        const side = Math.random() < 0.5;
+        state.chests.push({
+            x: side ? 50 + Math.random() * 130 : W - 180 + Math.random() * 130,
+            y: top + 90 + Math.random() * (bot - top - 180),
+            open: false,
+        });
+    }
+
+    // the other three minnows, setting off from the same reef as you
+    for (let i = 0; i < MINNOWS; i++) {
+        state.minnows.push({
+            x: Math.max(40, Math.min(W - 40, state.fish.x + (i - 1) * 90 + (Math.random() - 0.5) * 50)),
+            y: state.fish.y + (Math.random() - 0.5) * 40,
+            face: 0, wig: Math.random() * 6, alive: true, across: false,
+        });
+    }
+
+    // and every fifth crossing, something that eats blocks
+    if ((n + 1) % BOSS_EVERY === 0) {
+        state.boss = {
+            x: W / 2, y: top + (bot - top) / 2,
+            speed: FISH_SPEED * BOSS_SPEED * (1 + n * 0.01),
+            wig: 0, smash: 0,
+        };
+    }
+
+    if ((n + 1) % BOSS_EVERY === 0) say('SOMETHING BIG IS DOWN THERE 🦈', 2.6);
+    else if (n + 1 === PICKAXE_FROM) say('ROCK AHEAD — TAKE THE PICKAXE ⛏', 2.6);
     else if (n === 0) say('SWIM FOR THE FAR REEF', 2.0);
     else say(`CROSSING ${n + 1} — LONGER SWIM`, 1.6);
 }
@@ -296,6 +355,22 @@ function buildLevel() {
 /* ==================================================================
    BLOCKS AND MINING
    ================================================================== */
+// Deep in the kelp, and moving gently, a shark will swim right past you.
+function inKelp(e) {
+    for (const k of state.kelp) {
+        if (Math.hypot(e.x - k.x, e.y - k.y) < k.r * 0.85) return k;
+    }
+    return null;
+}
+function hiddenFrom(e, shark) {
+    if (!inKelp(e)) return false;
+    return Math.hypot(shark.x - e.x, shark.y - e.y) > KELP_HIDE;
+}
+// Your speed, once the pearls in your pockets are accounted for.
+function fishSpeed() {
+    return FISH_SPEED * Math.max(0.55, 1 - state.carrying * PEARL_SLOW);
+}
+
 function solidsAt(x, y, pad) {
     const p = pad || 0;
     const all = [];
@@ -386,7 +461,7 @@ function update(dt) {
         f.wig += dt * 14;
     }
     const swinging = (keys['ShiftLeft'] || keys['ShiftRight']) && state.mining;
-    const sp = FISH_SPEED * (swinging ? 0.45 : 1);      // mining slows you right down
+    const sp = fishSpeed() * (swinging ? 0.45 : 1);     // mining slows you right down
     f.vx = ix * sp; f.vy = iy * sp;
 
     // move, then push out of anything solid
@@ -414,11 +489,27 @@ function update(dt) {
 
     updateMining(dt);
 
-    // Hunters — straight for you, and they don't turn round at the edge.
-    for (const h of state.hunters) {
+    // Sharks — straight for whoever is nearest, and they never turn back.
+    for (const h of state.sharks) {
         h.wig += dt * 8;
         if (h.stun > 0) { h.stun -= dt; continue; }
-        let dx = f.x - h.x, dy = f.y - h.y;
+        // whoever is closest and not tucked into the kelp
+        let prey = null, pd = Infinity;
+        for (const cand of [f].concat(state.minnows.filter(mm => mm.alive && !mm.across))) {
+            if (hiddenFrom(cand, h)) continue;
+            const cd = Math.hypot(cand.x - h.x, cand.y - h.y);
+            if (cd < pd) { pd = cd; prey = cand; }
+        }
+        if (!prey) {                                  // lost the lot — patrol the middle
+            h.wanderT = (h.wanderT || 0) - dt;
+            if (h.wanderT <= 0 || !h.wander) {
+                h.wander = { x: 80 + Math.random() * (W - 160),
+                             y: waterTop() + 60 + Math.random() * (waterBottom() - waterTop() - 120) };
+                h.wanderT = 2.5 + Math.random() * 2;
+            }
+            prey = h.wander;
+        }
+        let dx = prey.x - h.x, dy = prey.y - h.y;
         const d = Math.hypot(dx, dy) || 1;
         dx /= d; dy /= d;
 
@@ -447,8 +538,8 @@ function update(dt) {
                 h.stun = 0.22;                    // a moment lost going round
             }
         }
-        // spread out — three hunters stacked read as one, and are unfair
-        for (const o of state.hunters) {
+        // spread out — three sharks stacked read as one, and are unfair
+        for (const o of state.sharks) {
             if (o === h) continue;
             const sx = h.x - o.x, sy = h.y - o.y;
             const sd = Math.hypot(sx, sy);
@@ -460,30 +551,105 @@ function update(dt) {
         h.x = Math.max(20, Math.min(W - 20, h.x));
         h.y = Math.max(waterTop() + 20, Math.min(waterBottom() - 20, h.y));
 
-        if (Math.hypot(h.x - f.x, h.y - f.y) < FISH_R + 17) die();
-    }
-
-    // sharks
-    for (const s of state.sharks) {
-        s.wig += dt * 6;
-        if (s.turn > 0) { s.turn -= dt; }
-        s.x += s.dir * s.speed * dt;
-        s.y += Math.sin(s.wig) * 14 * dt;
-
-        // blocks and rock turn them back
-        const nose = s.x + s.dir * 26;
-        if (solidsAt(nose, s.y, 6).length) {
-            s.dir *= -1;
-            s.turn = 0.5;
-            s.x += s.dir * 8;
+        if (Math.hypot(h.x - f.x, h.y - f.y) < FISH_R + 17 && !hiddenFrom(f, h)) die();
+        // and they'll take a minnow just as happily
+        for (const mm of state.minnows) {
+            if (!mm.alive || mm.across) continue;
+            if (Math.hypot(h.x - mm.x, h.y - mm.y) > FISH_R + 15) continue;
+            if (hiddenFrom(mm, h)) continue;
+            mm.alive = false;
+            state.pops = state.pops || [];
+            for (let i = 0; i < 16; i++) {
+                const a = Math.random() * Math.PI * 2;
+                state.bubbles.push({ x: mm.x, y: mm.y, r: 2 + Math.random() * 3,
+                    vx: Math.cos(a) * 140, vy: Math.sin(a) * 140 - 40, life: 0.6 });
+            }
             splash();
         }
-        if (s.x < -140) { s.x = -140; s.dir = 1; }
-        if (s.x > W + 140) { s.x = W + 140; s.dir = -1; }
-        s.y = Math.max(waterTop() + 26, Math.min(waterBottom() - 26, s.y));
+    }
 
-        // and a bite ends it
-        if (Math.hypot(s.x - f.x, s.y - f.y) < FISH_R + 22) die();
+    // the other minnows, making their own way across
+    for (const mm of state.minnows) {
+        if (!mm.alive || mm.across) continue;
+        mm.wig += dt * 12;
+        const goal = state.goingUp ? waterTop() - 10 : waterBottom() + 10;
+        let mx = 0, my = Math.sign(goal - mm.y);
+        // swerve away from whatever is closest
+        let near = null, nd = 1e9;
+        for (const h of state.sharks.concat(state.boss ? [state.boss] : [])) {
+            const dd = Math.hypot(h.x - mm.x, h.y - mm.y);
+            if (dd < nd) { nd = dd; near = h; }
+        }
+        if (near && nd < 220) {
+            mx = Math.sign(mm.x - near.x) * 1.1;
+            my = my * 0.5 + Math.sign(mm.y - near.y) * 0.6;
+        }
+        // round the rock
+        for (const o of state.rocks.concat(state.blocks)) {
+            const cd = Math.hypot(mm.x - (o.x + BLOCK / 2), mm.y - (o.y + BLOCK / 2));
+            if (cd < BLOCK * 1.4) { mx += (mm.x - o.x - BLOCK / 2) / (cd || 1) * 1.2; }
+        }
+        const mm2 = Math.hypot(mx, my) || 1;
+        mm.x += (mx / mm2) * FISH_SPEED * MINNOW_SPEED * dt;
+        mm.y += (my / mm2) * FISH_SPEED * MINNOW_SPEED * dt;
+        mm.x = Math.max(FISH_R, Math.min(W - FISH_R, mm.x));
+        mm.face = Math.atan2(my, mx);
+        if (state.goingUp ? mm.y < waterTop() : mm.y > waterBottom()) mm.across = true;
+    }
+
+    // the big one, which goes through blocks rather than round them
+    if (state.boss) {
+        const b = state.boss;
+        b.wig += dt * 5;
+        let dx = f.x - b.x, dy = f.y - b.y;
+        const d = Math.hypot(dx, dy) || 1;
+        b.x += (dx / d) * b.speed * dt;
+        b.y += (dy / d) * b.speed * dt;
+        b.y = Math.max(waterTop() + 30, Math.min(waterBottom() - 30, b.y));
+        b.smash = Math.max(0, b.smash - dt);
+        // straight through anything in the way
+        for (let i = state.blocks.length - 1; i >= 0; i--) {
+            const o = state.blocks[i];
+            if (Math.hypot(b.x - (o.x + BLOCK / 2), b.y - (o.y + BLOCK / 2)) < 46) {
+                state.blocks.splice(i, 1);
+                b.smash = 0.4;
+                thud();
+                for (let k = 0; k < 12; k++) {
+                    const a = Math.random() * Math.PI * 2;
+                    state.bubbles.push({ x: o.x + BLOCK / 2, y: o.y + BLOCK / 2, r: 2 + Math.random() * 3,
+                        vx: Math.cos(a) * 160, vy: Math.sin(a) * 160 - 40, life: 0.5 });
+                }
+            }
+        }
+        for (let i = state.rocks.length - 1; i >= 0; i--) {
+            const o = state.rocks[i];
+            if (Math.hypot(b.x - (o.x + BLOCK / 2), b.y - (o.y + BLOCK / 2)) < 46) {
+                state.rocks.splice(i, 1); b.smash = 0.4; thud();
+            }
+        }
+        if (Math.hypot(b.x - f.x, b.y - f.y) < FISH_R + 34) die();
+    }
+
+    // pearls, and the chests they sometimes come out of
+    for (let i = state.pearls.length - 1; i >= 0; i--) {
+        const pe = state.pearls[i];
+        if (Math.hypot(pe.x - f.x, pe.y - f.y) > FISH_R + 14) continue;
+        state.pearls.splice(i, 1);
+        state.carrying++;
+        ding();
+    }
+    for (const ch of state.chests) {
+        if (ch.open) continue;
+        if (Math.hypot(ch.x - f.x, ch.y - f.y) > FISH_R + 22) continue;
+        ch.open = true;
+        if (Math.random() < 0.5) {
+            state.spare += 6;
+            say('+6 BLOCKS', 1.4);
+        } else {
+            state.carrying += 2;
+            say('+2 PEARLS', 1.4);
+        }
+        ding(); ding();
     }
 
     // bubbles
@@ -501,6 +667,11 @@ function update(dt) {
     // made it?
     const reached = state.goingUp ? f.y < waterTop() - 4 : f.y > waterBottom() + 4;
     if (reached) {
+        if (state.carrying > 0) {
+            state.banked += state.carrying * PEARL_WORTH;
+            say(`${state.carrying} PEARL${state.carrying === 1 ? '' : 'S'} BANKED`, 1.8);
+            state.carrying = 0;
+        }
         state.crossings++;
         state.goingUp = !state.goingUp;
         state.blocks = [];                 // fresh water, fresh start
@@ -533,7 +704,7 @@ function showOver() {
     document.getElementById('overTitle').textContent = state.crossings > 0 ? 'EATEN' : 'EATEN ALREADY?';
     const c = state.crossings;
     document.getElementById('finalText').innerHTML =
-        `<b>${c}</b> crossing${c === 1 ? '' : 's'} on ${DIFF[diff].name}.` +
+        `<b>${c}</b> crossing${c === 1 ? '' : 's'} and <b>${state.banked}</b> pearls banked on ${DIFF[diff].name}.` +
         (c >= 6 ? '<br>That is proper swimming.' : c >= 3 ? '<br>The rock nearly saved you.' : '<br>The far reef is further than it looks.');
 }
 
@@ -651,39 +822,102 @@ function drawBlock(o, isRock) {
     }
 }
 
-function drawShark(s) {
-    ctx.save();
-    ctx.translate(s.x, s.y);
-    ctx.scale(s.dir, 1);
-    ctx.rotate(Math.sin(s.wig) * 0.06);
-    ctx.font = '46px Segoe UI';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    // the emoji faces left, so flip it back the way it is swimming
-    ctx.scale(-1, 1);
-    ctx.fillText('🦈', 0, 0);
-    ctx.restore();
-    ctx.textBaseline = 'alphabetic';
-    if (s.turn > 0) {
-        ctx.fillStyle = `rgba(255,255,255,${s.turn})`;
-        ctx.font = 'bold 13px Segoe UI';
-        ctx.textAlign = 'center';
-        ctx.fillText('!', s.x + s.dir * 26, s.y - 22);
+function drawKelp() {
+    for (const k of state.kelp) {
+        const n = Math.round(k.r / 11);
+        for (let i = 0; i < n; i++) {
+            const a = (i / n) * Math.PI * 2 + k.seed;
+            const rr = k.r * (0.25 + ((k.seed * (i + 3)) % 70) / 100);
+            const bx = k.x + Math.cos(a) * rr, by = k.y + Math.sin(a) * rr;
+            const sway = Math.sin(state.time * 1.6 + i + k.seed) * 9;
+            ctx.strokeStyle = i % 2 ? 'rgba(28,110,72,0.85)' : 'rgba(44,150,96,0.8)';
+            ctx.lineWidth = 7; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(bx, by + 34);
+            ctx.quadraticCurveTo(bx + sway * 0.5, by, bx + sway, by - 40);
+            ctx.stroke();
+        }
     }
 }
 
-function drawHunter(h) {
+function drawMinnow(mm) {
+    if (!mm.alive || mm.across) return;
     ctx.save();
-    ctx.translate(h.x, h.y);
-    ctx.rotate(Math.sin(h.wig) * 0.14);
-    // a ring so you can pick them out of the water at a glance
-    ctx.strokeStyle = h.stun > 0 ? 'rgba(255,255,255,0.5)' : 'rgba(255,90,70,0.65)';
+    ctx.translate(mm.x, mm.y);
+    ctx.rotate(Math.sin(mm.wig) * 0.16);
+    if (Math.cos(mm.face) < 0) ctx.scale(-1, 1);
+    ctx.font = '24px Segoe UI';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🐠', 0, 0);
+    ctx.restore();
+    ctx.textBaseline = 'alphabetic';
+}
+
+function drawBoss() {
+    if (!state.boss) return;
+    const b = state.boss;
+    const glow = ctx.createRadialGradient(b.x, b.y, 10, b.x, b.y, 90);
+    glow.addColorStop(0, b.smash > 0 ? 'rgba(255,120,80,0.4)' : 'rgba(255,60,60,0.22)');
+    glow.addColorStop(1, 'rgba(255,60,60,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(b.x, b.y, 90, 0, Math.PI * 2); ctx.fill();
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(Math.sin(b.wig) * 0.08);
+    if (b.lastX !== undefined && b.x > b.lastX) ctx.scale(-1, 1);
+    ctx.font = '86px Segoe UI';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🦈', 0, 0);
+    ctx.restore();
+    b.lastX = b.x;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#ff8a80'; ctx.font = 'bold 13px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillText('IT GOES THROUGH BLOCKS', b.x, b.y - 64);
+}
+
+function drawPearlsAndChests() {
+    for (const pe of state.pearls) {
+        const bob = Math.sin(state.time * 3 + pe.bob) * 3;
+        const g = ctx.createRadialGradient(pe.x - 3, pe.y - 3 + bob, 1, pe.x, pe.y + bob, 11);
+        g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#bfd8e8');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(pe.x, pe.y + bob, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    for (const ch of state.chests) {
+        const y = ch.y + Math.sin(state.time * 2) * 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fillRect(ch.x - 20, y + 12, 40, 6);
+        ctx.fillStyle = ch.open ? '#6b5637' : '#a9762f';
+        ctx.fillRect(ch.x - 19, y - 6, 38, 20);
+        ctx.fillStyle = ch.open ? '#4e4128' : '#7a5220';
+        ctx.fillRect(ch.x - 19, y - 16, 38, 12);
+        ctx.fillStyle = '#ffd76a';
+        ctx.fillRect(ch.x - 3, y - 8, 6, 9);
+        if (!ch.open) {
+            ctx.fillStyle = 'rgba(255,215,106,0.85)';
+            ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+            ctx.fillText('CHEST', ch.x, y - 24);
+        }
+    }
+}
+
+function drawShark(s) {
+    const goingLeft = s.lastX !== undefined ? s.x < s.lastX : true;
+    s.lastX = s.x;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(Math.sin(s.wig) * 0.12);
+    // a ring so you can pick them out of deep water
+    ctx.strokeStyle = s.stun > 0 ? 'rgba(255,255,255,0.5)' : 'rgba(255,90,70,0.6)';
     ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.stroke();
-    ctx.font = '34px Segoe UI';
+    ctx.beginPath(); ctx.arc(0, 0, 25, 0, Math.PI * 2); ctx.stroke();
+    // the emoji faces left, so flip it when it's swimming right
+    if (!goingLeft) ctx.scale(-1, 1);
+    ctx.font = '38px Segoe UI';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('🐙', 0, 0);
+    ctx.fillText('🦈', 0, 0);
     ctx.restore();
     ctx.textBaseline = 'alphabetic';
 }
@@ -719,6 +953,11 @@ function drawHUD() {
     ctx.font = 'bold 22px Segoe UI';
     ctx.fillStyle = '#eaf6ff';
     ctx.fillText(`Crossings: ${state.crossings}`, 18, H - 22);
+    ctx.font = 'bold 15px Segoe UI';
+    ctx.fillStyle = state.carrying > 0 ? '#ffffff' : '#9fb8c8';
+    ctx.fillText(state.carrying > 0
+        ? `◦ ${state.carrying} pearls in hand (slower) · ${state.banked} banked`
+        : `◦ ${state.banked} pearls banked`, 18, H - 46);
 
     ctx.textAlign = 'right';
     ctx.fillStyle = state.spare > 0 ? '#ffd98a' : '#ff8a80';
@@ -731,8 +970,10 @@ function drawHUD() {
     ctx.textAlign = 'center';
     ctx.font = 'bold 15px Segoe UI';
     ctx.fillStyle = '#a9dcf5';
-    ctx.fillText(`${DIFF[diff].name} · 🐙 ${state.hunters.length} hunting` +
-                 (state.sharks.length ? ` · 🦈 ${state.sharks.length} patrolling` : ''), W / 2, H - 22);
+    const swimming = state.minnows.filter(m => m.alive && !m.across).length;
+    ctx.fillText(`${DIFF[diff].name} · 🦈 ${state.sharks.length + (state.boss ? 1 : 0)} hunting` +
+                 ` · 🐠 ${swimming} still with you` +
+                 (inKelp(state.fish) ? ' · HIDDEN IN THE KELP' : ''), W / 2, H - 22);
 
     // how much water is left to cross
     const top = waterTop(), bot = waterBottom();
@@ -789,9 +1030,27 @@ function render() {
     }
     ctx.globalAlpha = 1;
 
+    drawPearlsAndChests();
+    drawKelp();
+    for (const mm of state.minnows) drawMinnow(mm);
     for (const s of state.sharks) drawShark(s);
-    for (const h of state.hunters) drawHunter(h);
+    drawBoss();
     drawFish();
+
+    // in the kelp you're hidden, and half blind with it
+    if (inKelp(state.fish) && !state.dead) {
+        const f = state.fish;
+        ctx.save();
+        ctx.fillStyle = 'rgba(6,40,28,0.72)';
+        ctx.fillRect(0, state.camY - 200, W, H + 400);
+        ctx.globalCompositeOperation = 'destination-out';
+        const hole = ctx.createRadialGradient(f.x, f.y, 60, f.x, f.y, 230);
+        hole.addColorStop(0, 'rgba(0,0,0,1)');
+        hole.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = hole;
+        ctx.beginPath(); ctx.arc(f.x, f.y, 230, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    }
     ctx.restore();
 
     if (state.flash > 0) {
