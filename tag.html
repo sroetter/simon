@@ -168,7 +168,7 @@ h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; 
             <button class="btn diff kind" data-kind="jail">🔒 Jail Tag</button>
             <button class="btn diff kind" data-kind="rabbit">🐇 Rabbit</button>
             <button class="btn diff kind" data-kind="line">📏 Line Tag</button>
-            <button class="btn diff kind" data-kind="sharks">🦈 Sharks</button>
+            <button class="btn diff kind" data-kind="double">👥 Double Tag</button>
             <button class="btn diff kind" data-kind="hill">👑 King of the Hill</button>
         </div>
         <div id="backBlurb" style="font-size:12px;color:#cce0c1;margin:4px 0 2px;"></div>
@@ -265,12 +265,7 @@ const IT_RAMP_PER_SEC = 0.01;
 // own pack so the carrier gets the full climb; Freeze has one tagger all
 // round, so theirs builds at half speed; Classic hands It around and never
 // ramps at all.
-const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, jail: 0.5, rabbit: 0, line: 0, sharks: 0.4, hill: 0 };
-
-// Sharks & Minnows: the safe water at each end, and the rhythm of the whistle.
-const SAFE_FRAC = 0.16;      // how much of the field each end zone takes
-const REST_SECS = 7;         // safe time between crossings
-const CROSS_SECS = 9;        // how long you have to get across
+const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, jail: 0.5, rabbit: 0, line: 0, hill: 0, double: 1 };
 
 // King of the Hill: the scoring circle, and how often it moves.
 const HILL_R = 130;
@@ -452,11 +447,11 @@ const TAG_KINDS = {
         blurb: 'One tagger. Get touched and you are marched to <b style="color:#ff7043;">the jail</b> and stuck there.<br>Somewhere across the map there is a <b style="color:#43d86a;">green key button</b> — stand on it for <b>2 seconds</b> and everyone inside walks free, then it moves somewhere new. <b>It wins with everyone locked up; you win if anyone is still free at the bell.</b>',
         go: 'JAIL TAG — BREAK THEM OUT!',
     },
-    sharks: {
-        name: 'Sharks & Minnows',
-        tagline: 'Safe at the ends. Then the whistle blows.',
-        blurb: 'The two ends of the field are <b style="color:#7cffa3;">safe water</b> — nothing can touch you there. But every few seconds the <b style="color:#ff7043;">whistle</b> goes and everybody has to cross to the far end.<br>Anyone caught in open water joins the sharks. <b>Still a minnow at the bell and you win.</b>',
-        go: 'SHARKS AND MINNOWS — GET READY!',
+    double: {
+        name: 'Double Tag',
+        tagline: 'One tagger can never catch you. Two can.',
+        blurb: 'A single touch does <b>nothing at all</b> — it takes <b style="color:#ff7043;">two taggers at once</b> to catch you, so they have to work as a pair and pin you between them.<br>Caught players join the hunt, which makes pairing up easier and easier. <b>Last one clean wins.</b>',
+        go: 'DOUBLE TAG — THEY NEED TWO!',
     },
     hill: {
         name: 'King of the Hill',
@@ -631,16 +626,6 @@ function makeState(mode, difficulty, bots) {
     players[itIdx].isIt = true;
     players[itIdx].isOriginalIt = true;
 
-    // Sharks & Minnows: everyone but the shark starts in the left-hand water.
-    if (currentKind === 'sharks') {
-        const zw = arena.w * SAFE_FRAC;
-        players.forEach(pl => {
-            if (pl.isIt) { pl.x = arena.x + arena.w / 2; pl.y = arena.y + arena.h / 2; return; }
-            pl.x = arena.x + 40 + Math.random() * (zw - 80);
-            pl.y = arena.y + 60 + Math.random() * (arena.h - 120);
-        });
-    }
-
     // Line Tag: everyone starts standing on a crossing.
     if (currentKind === 'line') {
         players.forEach(pl => {
@@ -649,6 +634,12 @@ function makeState(mode, difficulty, bots) {
             pl.x = Math.max(arena.x + LINE_GAP, Math.min(arena.x + arena.w - LINE_GAP, pl.x));
             pl.y = Math.max(arena.y + LINE_GAP, Math.min(arena.y + arena.h - LINE_GAP, pl.y));
         });
+    }
+
+    // Double Tag: one tagger could never catch a soul, so start with a pair.
+    if (currentKind === 'double' && total > 2) {
+        const pool = players.map((_, i) => i).filter(i => i !== itIdx);
+        players[pool[Math.floor(Math.random() * pool.length)]].isIt = true;
     }
 
     // Rabbit: it's the other way round — everyone chases the one runner.
@@ -683,10 +674,6 @@ function makeState(mode, difficulty, bots) {
         roundTimer: ROUND_DURATION_BASE,
         roundDuration: ROUND_DURATION_BASE,
         blob: currentKind === 'blob' ? [itIdx] : [],
-        // Sharks: which way the crossing is going, and how long is left of it
-        crossing: false,
-        whistle: REST_SECS,
-        crossDir: 1,
         // Hill: where it is and when it moves
         hill: currentKind === 'hill' ? {
             x: arena.x + arena.w / 2, y: arena.y + arena.h / 2, t: HILL_MOVE,
@@ -874,8 +861,8 @@ function showGameOver() {
         // A word about how, so the ending reads as the end of that round.
         if (state.kind === 'potato') {
             line += ' Everybody else went off.';
-        } else if (state.kind === 'sharks') {
-            line += w.isIt ? ' Every minnow caught in open water.' : ' Made every crossing.';
+        } else if (state.kind === 'double') {
+            line += w.isIt ? ' Every runner pinned between two.' : ' Never caught between two.';
         } else if (state.kind === 'hill') {
             line += ` ${w.hillTime.toFixed(1)}s stood on the hill.`;
         } else if (state.kind === 'jail') {
@@ -1284,8 +1271,16 @@ function updatePlayer(p, dt) {
         }
     });
 
+    // Double Tag: a runner is only caught when two taggers have them at once.
+    if (state.kind === 'double' && !p.isIt && p.alive && !p.iced && p.tagbackTimer <= 0) {
+        const onMe = state.players.filter(q =>
+            q.isIt && q.alive && !q.iced && q.freezeTimer <= 0 &&
+            Math.hypot(q.x - p.x, q.y - p.y) < TAG_RANGE);
+        if (onMe.length >= 2) infectPlayer(onMe[0], p);
+    }
+
     // Tag touch — what it does depends on the kind of tag being played
-    if (p.isIt && !p.iced) {
+    if (p.isIt && !p.iced && state.kind !== 'double') {
         const touched = [];
         for (const q of state.players) {
             if (q === p || !q.alive || q.isIt || q.tagbackTimer > 0 || q.iced || q.jailed) continue;
@@ -1300,8 +1295,6 @@ function updatePlayer(p, dt) {
                 const pick = touched[Math.floor(Math.random() * touched.length)];
                 if (touched.length > 1) announce('CAUGHT TWO — COIN TOSS!', 1.1);
                 passItOn(p, pick);
-            } else if (state.kind === 'sharks') {
-                touched.forEach(q => { if (!sharkSafe(q)) infectPlayer(p, q); });
             } else if (state.kind === 'hill') {
                 passItOn(p, touched[Math.floor(Math.random() * touched.length)]);
             } else if (state.kind === 'jail') {
@@ -1513,45 +1506,6 @@ function knockOut(byP, victim) {
     }
     const left = state.players.filter(q => !q.isIt && q.alive).length;
     if (left > 0) announce(`${left} LEFT`, 1.0);
-}
-
-// Sharks & Minnows — the safe water at either end.
-function safeZones() {
-    const a = state.arena, zw = a.w * SAFE_FRAC;
-    return [
-        { x: a.x, y: a.y, w: zw, h: a.h },
-        { x: a.x + a.w - zw, y: a.y, w: zw, h: a.h },
-    ];
-}
-function inZone(p, z) { return p.x > z.x && p.x < z.x + z.w && p.y > z.y && p.y < z.y + z.h; }
-function whichZone(p) {
-    const z = safeZones();
-    if (inZone(p, z[0])) return 0;
-    if (inZone(p, z[1])) return 1;
-    return -1;
-}
-// Safe only while the whistle hasn't gone.
-function sharkSafe(p) { return !state.crossing && whichZone(p) >= 0; }
-
-function updateWhistle(dt) {
-    if (state.kind !== 'sharks') return;
-    state.whistle -= dt;
-    if (state.whistle > 0) return;
-    if (!state.crossing) {
-        state.crossing = true;
-        state.whistle = CROSS_SECS;
-        // send them towards whichever end most of them aren't in
-        const inLeft = state.players.filter(q => !q.isIt && q.alive && whichZone(q) === 0).length;
-        const inRight = state.players.filter(q => !q.isIt && q.alive && whichZone(q) === 1).length;
-        state.crossDir = inLeft >= inRight ? 1 : 0;
-        announce('WHISTLE — CROSS!', 1.4);
-        buzzerSound();
-    } else {
-        state.crossing = false;
-        state.whistle = REST_SECS;
-        announce('SAFE WATER', 1.1);
-        tone(660, 0.12, 'sine', 0.07);
-    }
 }
 
 // King of the Hill — a point a second, and It never scores.
@@ -1995,17 +1949,6 @@ function checkWinCondition() {
         return;
     }
 
-    if (state.kind === 'sharks') {
-        const minnows = state.players.filter(p => !p.isIt);
-        if (minnows.length === 0) {
-            const sh = state.players.find(p => p.isOriginalIt) || state.players.find(p => p.isIt);
-            endGame(sh ? sh.idx : -1);
-            return;
-        }
-        if (state.timeLeft <= 0) endGame(minnows[0].idx);
-        return;
-    }
-
     if (state.kind === 'hill') {
         if (state.timeLeft <= 0) {
             let best = null;
@@ -2139,35 +2082,26 @@ function aiCommand(p, dt) {
         if (d < nearestCleanD) { nearestCleanD = d; nearestClean = q; }
     }
 
-    // Sharks & Minnows: minnows sit in the safe water until the whistle, then
-    // break for the far end. Sharks patrol the middle waiting for them.
-    if (state.kind === 'sharks') {
-        const zs = safeZones();
-        if (!p.isIt) {
-            const target = state.crossing ? zs[state.crossDir] : (whichZone(p) >= 0 ? null : zs[0]);
-            if (target) {
-                const tx = target.x + target.w / 2;
-                let ty = p.y;
-                // slide away from the nearest shark on the way across
-                if (nearestIt && nearestItD < 260) ty = p.y + (p.y - nearestIt.y) * 0.6;
-                ty = Math.max(state.arena.y + 50, Math.min(state.arena.y + state.arena.h - 50, ty));
-                const dx = tx - p.x, dy = ty - p.y, m = Math.hypot(dx, dy) || 1;
-                out.ix = dx / m; out.iy = dy / m;
-                p.wantBoost = canBoost(p) && state.crossing && nearestIt && nearestItD < 300;
-                return out;
-            }
-            if (!state.crossing) {
-                // safe — drift towards the middle of the water and wait
-                const z = zs[whichZone(p)] || zs[0];
-                const dx = (z.x + z.w / 2) - p.x, m2 = Math.abs(dx) || 1;
-                out.ix = (dx / m2) * 0.4; out.iy = 0;
-                return out;
-            }
-        } else if (!state.crossing) {
-            // between whistles nobody can be caught, so take up station in the middle
-            const cx = state.arena.x + state.arena.w / 2;
-            const dx = cx - p.x, m3 = Math.hypot(dx, 0) || 1;
-            if (Math.abs(dx) > 120) { out.ix = dx / m3; out.iy = 0; return out; }
+    // Double Tag: a tagger on their own is useless, so head for whoever your
+    // nearest team-mate is already working on.
+    if (state.kind === 'double' && p.isIt && nearestClean) {
+        let mate = null, md = Infinity;
+        for (const q of state.players) {
+            if (q === p || !q.isIt || !q.alive) continue;
+            const d = Math.hypot(q.x - p.x, q.y - p.y);
+            if (d < md) { md = d; mate = q; }
+        }
+        if (mate && mate.ai && mate.ai.doubleTarget && mate.ai.doubleTarget.alive && !mate.ai.doubleTarget.isIt && md < 420) {
+            p.ai.doubleTarget = mate.ai.doubleTarget;      // gang up on theirs
+        } else {
+            p.ai.doubleTarget = nearestClean;
+        }
+        const t = p.ai.doubleTarget;
+        if (t && t.alive && !t.isIt) {
+            const dx = t.x - p.x, dy = t.y - p.y, m = Math.hypot(dx, dy) || 1;
+            out.ix = (dx / m) * cfg.reactSpeed;
+            out.iy = (dy / m) * cfg.reactSpeed;
+            p.wantBoost = false;
             return out;
         }
     }
@@ -2463,38 +2397,6 @@ function drawGridLines() {
 
 // The safe water at either end, and the hill.
 function drawZones() {
-    if (state.kind === 'sharks') {
-        const zs = safeZones();
-        const open = state.crossing;
-        zs.forEach((z, i) => {
-            const target = open && i === state.crossDir;
-            ctx.fillStyle = open ? 'rgba(255,112,67,0.10)' : 'rgba(124,255,163,0.14)';
-            if (target) ctx.fillStyle = 'rgba(124,255,163,0.16)';
-            ctx.fillRect(z.x, z.y, z.w, z.h);
-            ctx.strokeStyle = open ? (target ? '#7cffa3' : 'rgba(255,138,101,0.55)') : '#7cffa3';
-            ctx.lineWidth = 5;
-            ctx.beginPath();
-            ctx.moveTo(i === 0 ? z.x + z.w : z.x, z.y);
-            ctx.lineTo(i === 0 ? z.x + z.w : z.x, z.y + z.h);
-            ctx.stroke();
-            // ripples
-            ctx.strokeStyle = open ? 'rgba(255,138,101,0.22)' : 'rgba(124,255,163,0.3)';
-            ctx.lineWidth = 2;
-            for (let y = z.y + 40; y < z.y + z.h; y += 54) {
-                ctx.beginPath();
-                for (let x = z.x + 10; x < z.x + z.w - 10; x += 12) {
-                    const yy = y + Math.sin((x + state.time * 40) / 30) * 4;
-                    x === z.x + 10 ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy);
-                }
-                ctx.stroke();
-            }
-            ctx.font = 'bold 15px Segoe UI';
-            ctx.textAlign = 'center';
-            ctx.fillStyle = open ? (target ? '#7cffa3' : 'rgba(255,170,140,0.8)') : '#7cffa3';
-            ctx.fillText(open ? (target ? 'GET HERE' : 'NOT SAFE') : 'SAFE', z.x + z.w / 2, z.y + 30);
-        });
-    }
-
     if (state.kind === 'hill' && state.hill) {
         const h = state.hill;
         const warn = h.t < 3 && Math.floor(state.time * 6) % 2 === 0;
@@ -3204,15 +3106,13 @@ function drawHUD() {
                 ? `holding the key… ${(KEY_HOLD - state.keyBtn.hold).toFixed(1)}s`
                 : 'find the green key button', W / 2, 96);
         }
-    } else if (state.kind === 'sharks') {
-        const minnows = state.players.filter(p => !p.isIt).length;
-        ctx.fillStyle = state.crossing ? '#ff5252' : '#7cffa3';
-        ctx.fillText(state.crossing
-            ? `CROSS! ${Math.max(0, state.whistle).toFixed(1)}s`
-            : `safe water — ${Math.max(0, state.whistle).toFixed(1)}s`, W / 2, 50);
+    } else if (state.kind === 'double') {
+        const clean = state.players.filter(p => !p.isIt).length;
+        ctx.fillStyle = clean <= 1 ? '#ff5252' : '#ffe082';
+        ctx.fillText(`${clean} still clean`, W / 2, 50);
         ctx.font = 'bold 18px Segoe UI';
         ctx.fillStyle = '#cce0c1';
-        ctx.fillText(`${minnows} minnows left`, W / 2, 96);
+        ctx.fillText('it takes two of them at once', W / 2, 96);
     } else if (state.kind === 'hill') {
         const me4 = state.players[0];
         let lead = null;
@@ -3507,7 +3407,6 @@ function loop(ts) {
             updateBlob(dt);
             updateFuse(dt);
             processJailbreak(dt);
-            updateWhistle(dt);
             updateHill(dt);
             updatePowerups(dt);
             checkWinCondition();

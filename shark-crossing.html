@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shark Crossing - Simon's Game Gallery</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+        font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background:#04121f; color:#eaf6ff; overflow:hidden;
+        -webkit-user-select:none; user-select:none;
+    }
+    canvas { display:block; }
+
+    .back-btn {
+        position:fixed; top:14px; left:14px; z-index:30;
+        text-decoration:none; color:#0b3a55;
+        background:rgba(255,255,255,0.85); border:1px solid rgba(11,58,85,0.3);
+        padding:8px 16px; border-radius:8px; font-size:14px;
+    }
+    .back-btn:hover { background:#fff; }
+
+    .footer-link {
+        position:fixed; bottom:8px; left:0; right:0; text-align:center;
+        font-size:12px; color:rgba(255,255,255,0.4); z-index:20; pointer-events:none;
+    }
+    .footer-link a { color:rgba(255,255,255,0.7); pointer-events:auto; }
+
+    .overlay {
+        position:fixed; inset:0; z-index:40; display:flex;
+        align-items:center; justify-content:center; padding:16px; overflow-y:auto;
+        background:rgba(3,12,22,0.82);
+    }
+    .overlay.hidden { display:none; }
+    .panel {
+        background:linear-gradient(150deg,#10486b,#092a42);
+        border:2px solid #56d0ff; border-radius:18px;
+        padding:22px 28px; max-width:640px; width:94%;
+        text-align:center; max-height:calc(100vh - 32px); overflow-y:auto;
+        box-shadow:0 18px 60px rgba(0,0,0,0.6), 0 0 46px rgba(86,208,255,0.18);
+    }
+    h1 { font-size:clamp(28px,6vw,44px); letter-spacing:2px; margin-bottom:6px; text-shadow:0 0 18px rgba(86,208,255,0.5); }
+    h2 { font-size:16px; font-weight:normal; color:#a9dcf5; margin-bottom:12px; }
+    .rules { text-align:left; font-size:13.5px; line-height:1.6; color:#cfeaf8;
+             background:rgba(0,0,0,0.24); border-radius:10px; padding:12px 14px; margin:10px 0; }
+    .rules b { color:#ffd76a; }
+    .keys { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:10px 0; font-size:13px; }
+    .keys div { background:rgba(0,0,0,0.24); border-radius:8px; padding:8px 10px; text-align:left; }
+    kbd { background:#0a2233; border:1px solid #3b7ea3; border-bottom-width:2px;
+          border-radius:5px; padding:1px 6px; font-size:12px; color:#bfe6fb; }
+    .label { font-size:12px; color:#a9dcf5; margin:10px 0 4px; letter-spacing:1px; }
+    .row { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+    .btn {
+        background:linear-gradient(135deg,#2bb3ff,#0a6fa8); color:#fff;
+        border:2px solid #9fe3ff; border-radius:10px; cursor:pointer;
+        padding:11px 24px; font-size:16px; font-weight:bold; box-shadow:0 4px 0 #05375a;
+    }
+    .btn:hover { filter:brightness(1.12); }
+    .btn:active { transform:translateY(2px); box-shadow:0 2px 0 #05375a; }
+    .btn.small { padding:6px 13px; font-size:13px; min-width:62px;
+                 background:linear-gradient(135deg,#2c5f7d,#16384d); border-color:#69a9c7; box-shadow:0 3px 0 #0a2233; }
+    .btn.small.sel { background:linear-gradient(135deg,#2bb3ff,#0a6fa8); border-color:#cdefff; }
+    .final { font-size:17px; color:#ffd76a; margin:8px 0; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<div class="overlay" id="titleOv">
+  <div class="panel">
+    <h1>🐟 SHARK CROSSING 🦈</h1>
+    <h2 id="tagline">Get across the water. Again. And again.</h2>
+    <div class="rules">
+      You are the <b>fish</b>. Swim from your reef to the far reef and you have made a crossing —
+      then you turn round and do it again, and the water gets worse every time.<br><br>
+      <b>Sharks</b> patrol the open water, more of them each crossing. Touch one and it is over.<br>
+      You carry <b>16 blocks</b>. Drop one in a shark's path and it turns away — sharks will not
+      swim through a block.<br>
+      From crossing three the sea floor throws up <b>rock</b>, and that is when you are handed a
+      <b>pickaxe</b>: hold it against rock, or against your own block, to break it down. Blocks you
+      mine back go straight into your pocket.
+    </div>
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — swim</div>
+      <div><kbd>Space</kbd> — drop a block in front of you</div>
+      <div>Hold <kbd>Shift</kbd> — swing the pickaxe</div>
+      <div><kbd>Esc</kbd> — pause</div>
+    </div>
+    <div class="label">DIFFICULTY</div>
+    <div class="row" id="diff">
+      <button class="btn small" data-d="calm">CALM</button>
+      <button class="btn small sel" data-d="choppy">CHOPPY</button>
+      <button class="btn small" data-d="feeding">FEEDING FRENZY</button>
+    </div>
+    <div class="row" style="margin-top:16px;">
+      <button class="btn" id="start">DIVE IN</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overOv">
+  <div class="panel">
+    <h1 id="overTitle">EATEN</h1>
+    <div class="final" id="finalText"></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="again">SWIM AGAIN</button>
+      <button class="btn small" id="menu">MENU</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener('resize', resize); resize();
+
+/* ==================================================================
+   CONSTANTS
+   ================================================================== */
+const FISH_R = 15;
+const FISH_SPEED = 250;
+const SHORE = 92;                 // depth of the reef at each end
+const BLOCK = 46;                 // side of a placed block
+const START_BLOCKS = 16;
+const MINE_TIME = 0.9;            // seconds of pickaxe to break one
+const MINE_REACH = 58;
+const ROCK_FROM = 3;              // the crossing rock starts appearing on
+const PICKAXE_FROM = 3;           // ...which is when you're handed the pickaxe
+
+const DIFF = {
+    calm:    { name:'Calm',           sharkBase:2, sharkPer:0.6, speed:0.82, rockPer:1.4 },
+    choppy:  { name:'Choppy',         sharkBase:3, sharkPer:0.9, speed:1.0,  rockPer:2.0 },
+    feeding: { name:'Feeding Frenzy', sharkBase:4, sharkPer:1.3, speed:1.22, rockPer:2.8 },
+};
+let diff = 'choppy';
+
+/* ==================================================================
+   SOUND
+   ================================================================== */
+let audio = null;
+function actx() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); return audio; }
+function tone(freq, dur = 0.1, type = 'sine', vol = 0.05) {
+    try {
+        const a = actx(), o = a.createOscillator(), g = a.createGain();
+        o.type = type; o.frequency.setValueAtTime(freq, a.currentTime);
+        g.gain.setValueAtTime(vol, a.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+        o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+    } catch (e) {}
+}
+function splash() { tone(320, 0.12, 'triangle', 0.05); tone(180, 0.18, 'sine', 0.04); }
+function chomp() { tone(140, 0.3, 'sawtooth', 0.08); tone(70, 0.4, 'square', 0.05); }
+function ding() { tone(880, 0.1, 'sine', 0.05); tone(1180, 0.14, 'sine', 0.04); }
+function thud() { tone(220, 0.09, 'square', 0.05); }
+
+/* ==================================================================
+   STATE
+   ================================================================== */
+let state = null;
+const keys = {};
+addEventListener('keydown', e => {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    if (e.code === 'Escape' && state && !state.dead) state.paused = !state.paused;
+    if (e.code === 'Space' && state && !state.paused) placeBlock();
+    keys[e.code] = true;
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+function waterTop() { return SHORE; }
+function waterBottom() { return H - SHORE; }
+
+function newGame() {
+    state = {
+        cfg: DIFF[diff],
+        crossings: 0,
+        goingUp: true,                 // which reef you're heading for
+        fish: { x: W / 2, y: H - SHORE / 2, vx: 0, vy: 0, face: -Math.PI / 2, wig: 0 },
+        blocks: [],                    // ones you've dropped
+        rocks: [],                     // ones the sea floor threw up
+        sharks: [],
+        bubbles: [],
+        spare: START_BLOCKS,
+        mining: null,
+        mineT: 0,
+        dead: false,
+        paused: false,
+        time: 0,
+        flash: 0,
+        message: '', messageT: 0,
+    };
+    buildLevel();
+}
+
+function say(text, secs) { state.message = text; state.messageT = secs || 1.6; }
+
+function buildLevel() {
+    const n = state.crossings;
+    const cfg = state.cfg;
+    state.sharks = [];
+    state.rocks = [];
+
+    const count = Math.round(cfg.sharkBase + n * cfg.sharkPer);
+    const top = waterTop(), bot = waterBottom();
+    for (let i = 0; i < count; i++) {
+        const lane = top + 60 + (i + 0.5) * ((bot - top - 120) / Math.max(1, count));
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        state.sharks.push({
+            x: dir > 0 ? -80 - Math.random() * 400 : W + 80 + Math.random() * 400,
+            y: lane + (Math.random() - 0.5) * 40,
+            dir,
+            speed: (95 + Math.random() * 70 + n * 7) * cfg.speed,
+            wig: Math.random() * 6,
+            turn: 0,
+        });
+    }
+
+    // Rock only starts showing up once you're a few crossings in.
+    if (n + 1 >= ROCK_FROM) {
+        const rocks = Math.round((n + 1 - ROCK_FROM + 1) * cfg.rockPer);
+        for (let i = 0; i < rocks; i++) {
+            for (let tries = 0; tries < 60; tries++) {
+                const x = 60 + Math.random() * (W - 120 - BLOCK);
+                const y = top + 50 + Math.random() * (bot - top - 100 - BLOCK);
+                if (Math.abs(x - state.fish.x) < 110 && Math.abs(y - state.fish.y) < 110) continue;
+                if (state.rocks.some(r => Math.abs(r.x - x) < BLOCK * 1.6 && Math.abs(r.y - y) < BLOCK * 1.6)) continue;
+                state.rocks.push({ x, y, seed: Math.random() * 99 });
+                break;
+            }
+        }
+    }
+
+    if (n + 1 === PICKAXE_FROM) say('ROCK AHEAD — TAKE THE PICKAXE ⛏', 2.6);
+    else if (n === 0) say('SWIM FOR THE FAR REEF', 2.0);
+    else say(`CROSSING ${n + 1}`, 1.4);
+}
+
+/* ==================================================================
+   BLOCKS AND MINING
+   ================================================================== */
+function solidsAt(x, y, pad) {
+    const p = pad || 0;
+    const all = [];
+    for (const b of state.blocks) all.push(b);
+    for (const r of state.rocks) all.push(r);
+    return all.filter(o =>
+        x > o.x - p && x < o.x + BLOCK + p && y > o.y - p && y < o.y + BLOCK + p);
+}
+
+function placeBlock() {
+    if (!state || state.dead || state.spare <= 0) return;
+    const f = state.fish;
+    // drop it just ahead of you, snapped to a tidy grid
+    const gx = Math.round((f.x + Math.cos(f.face) * BLOCK - BLOCK / 2) / BLOCK) * BLOCK;
+    const gy = Math.round((f.y + Math.sin(f.face) * BLOCK - BLOCK / 2) / BLOCK) * BLOCK;
+    if (gy < waterTop() || gy + BLOCK > waterBottom()) return;
+    if (gx < 0 || gx + BLOCK > W) return;
+    // not on top of something already there, and not on top of yourself
+    if (state.blocks.some(b => b.x === gx && b.y === gy)) return;
+    if (state.rocks.some(r => Math.abs(r.x - gx) < BLOCK && Math.abs(r.y - gy) < BLOCK)) return;
+    if (f.x > gx - FISH_R && f.x < gx + BLOCK + FISH_R && f.y > gy - FISH_R && f.y < gy + BLOCK + FISH_R) return;
+    state.blocks.push({ x: gx, y: gy, mine: 0 });
+    state.spare--;
+    thud();
+}
+
+function updateMining(dt) {
+    const f = state.fish;
+    const swinging = keys['ShiftLeft'] || keys['ShiftRight'];
+    if (!swinging || state.crossings + 1 < PICKAXE_FROM) { state.mining = null; state.mineT = 0; return; }
+
+    // whatever is closest in front of you
+    let best = null, bd = MINE_REACH;
+    for (const o of state.blocks.concat(state.rocks)) {
+        const cx = o.x + BLOCK / 2, cy = o.y + BLOCK / 2;
+        const d = Math.hypot(cx - f.x, cy - f.y);
+        if (d < bd) { bd = d; best = o; }
+    }
+    if (!best) { state.mining = null; state.mineT = 0; return; }
+    if (state.mining !== best) { state.mining = best; state.mineT = 0; }
+    state.mineT += dt;
+    if (Math.random() < dt * 26) {
+        state.bubbles.push({
+            x: best.x + BLOCK / 2 + (Math.random() - 0.5) * BLOCK,
+            y: best.y + BLOCK / 2 + (Math.random() - 0.5) * BLOCK,
+            r: 1.5 + Math.random() * 2.5, vy: -30 - Math.random() * 40, life: 0.7,
+        });
+    }
+    if (state.mineT >= MINE_TIME) {
+        const wasMine = state.blocks.indexOf(best);
+        if (wasMine >= 0) { state.blocks.splice(wasMine, 1); state.spare++; }
+        else state.rocks.splice(state.rocks.indexOf(best), 1);
+        state.mining = null; state.mineT = 0;
+        ding();
+        for (let i = 0; i < 14; i++) {
+            state.bubbles.push({
+                x: best.x + BLOCK / 2, y: best.y + BLOCK / 2,
+                r: 2 + Math.random() * 3,
+                vx: (Math.random() - 0.5) * 120, vy: -40 - Math.random() * 80, life: 0.6,
+            });
+        }
+    }
+}
+
+/* ==================================================================
+   UPDATE
+   ================================================================== */
+function update(dt) {
+    state.time += dt;
+    state.flash = Math.max(0, state.flash - dt * 2);
+    if (state.messageT > 0) state.messageT -= dt;
+
+    const f = state.fish;
+
+    // swim
+    let ix = 0, iy = 0;
+    if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
+    if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
+    if (keys['KeyW'] || keys['ArrowUp']) iy -= 1;
+    if (keys['KeyS'] || keys['ArrowDown']) iy += 1;
+    const m = Math.hypot(ix, iy);
+    if (m > 0) {
+        ix /= m; iy /= m;
+        f.face = Math.atan2(iy, ix);
+        f.wig += dt * 14;
+    }
+    const swinging = (keys['ShiftLeft'] || keys['ShiftRight']) && state.crossings + 1 >= PICKAXE_FROM;
+    const sp = FISH_SPEED * (swinging ? 0.45 : 1);      // mining slows you right down
+    f.vx = ix * sp; f.vy = iy * sp;
+
+    // move, then push out of anything solid
+    f.x += f.vx * dt;
+    f.y += f.vy * dt;
+    for (const o of state.blocks.concat(state.rocks)) {
+        const cx = Math.max(o.x, Math.min(f.x, o.x + BLOCK));
+        const cy = Math.max(o.y, Math.min(f.y, o.y + BLOCK));
+        const dx = f.x - cx, dy = f.y - cy;
+        const d = Math.hypot(dx, dy);
+        if (d < FISH_R && d > 0.001) {
+            f.x = cx + (dx / d) * FISH_R;
+            f.y = cy + (dy / d) * FISH_R;
+        } else if (d <= 0.001) {
+            f.y = f.y < o.y + BLOCK / 2 ? o.y - FISH_R : o.y + BLOCK + FISH_R;
+        }
+    }
+    f.x = Math.max(FISH_R, Math.min(W - FISH_R, f.x));
+    f.y = Math.max(FISH_R, Math.min(H - FISH_R, f.y));
+
+    if (Math.random() < dt * 8 && m > 0) {
+        state.bubbles.push({ x: f.x - Math.cos(f.face) * 12, y: f.y - Math.sin(f.face) * 12,
+                             r: 1.5 + Math.random() * 2, vy: -28 - Math.random() * 26, life: 0.8 });
+    }
+
+    updateMining(dt);
+
+    // sharks
+    for (const s of state.sharks) {
+        s.wig += dt * 6;
+        if (s.turn > 0) { s.turn -= dt; }
+        s.x += s.dir * s.speed * dt;
+        s.y += Math.sin(s.wig) * 14 * dt;
+
+        // blocks and rock turn them back
+        const nose = s.x + s.dir * 26;
+        if (solidsAt(nose, s.y, 6).length) {
+            s.dir *= -1;
+            s.turn = 0.5;
+            s.x += s.dir * 8;
+            splash();
+        }
+        if (s.x < -140) { s.x = -140; s.dir = 1; }
+        if (s.x > W + 140) { s.x = W + 140; s.dir = -1; }
+        s.y = Math.max(waterTop() + 26, Math.min(waterBottom() - 26, s.y));
+
+        // and a bite ends it
+        if (Math.hypot(s.x - f.x, s.y - f.y) < FISH_R + 22) die();
+    }
+
+    // bubbles
+    for (const b of state.bubbles) {
+        b.y += (b.vy || -30) * dt;
+        b.x += (b.vx || 0) * dt;
+        b.life -= dt;
+    }
+    state.bubbles = state.bubbles.filter(b => b.life > 0);
+
+    // made it?
+    const reached = state.goingUp ? f.y < waterTop() - 4 : f.y > waterBottom() + 4;
+    if (reached) {
+        state.crossings++;
+        state.goingUp = !state.goingUp;
+        state.blocks = [];                 // fresh water, fresh start
+        state.spare = Math.max(state.spare, 6) + 4;
+        state.flash = 1;
+        ding(); ding();
+        buildLevel();
+    }
+}
+
+function die() {
+    if (state.dead) return;
+    state.dead = true;
+    chomp();
+    for (let i = 0; i < 40; i++) {
+        state.bubbles.push({
+            x: state.fish.x, y: state.fish.y, r: 2 + Math.random() * 4,
+            vx: (Math.random() - 0.5) * 220, vy: -60 - Math.random() * 140, life: 0.9,
+        });
+    }
+    setTimeout(showOver, 900);
+}
+
+function showOver() {
+    document.getElementById('overOv').classList.remove('hidden');
+    document.getElementById('overTitle').textContent = state.crossings > 0 ? 'EATEN' : 'EATEN ALREADY?';
+    const c = state.crossings;
+    document.getElementById('finalText').innerHTML =
+        `<b>${c}</b> crossing${c === 1 ? '' : 's'} on ${DIFF[diff].name}.` +
+        (c >= 6 ? '<br>That is proper swimming.' : c >= 3 ? '<br>The rock nearly saved you.' : '<br>The far reef is further than it looks.');
+}
+
+/* ==================================================================
+   RENDER
+   ================================================================== */
+function drawWater() {
+    const top = waterTop(), bot = waterBottom();
+    const g = ctx.createLinearGradient(0, top, 0, bot);
+    g.addColorStop(0, '#1c6f9e');
+    g.addColorStop(0.5, '#0e4d76');
+    g.addColorStop(1, '#082f4b');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, top, W, bot - top);
+
+    // moving caustics
+    ctx.save();
+    ctx.globalAlpha = 0.16;
+    ctx.strokeStyle = '#bfe9ff';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 22; i++) {
+        const y = top + ((i * 53 + state.time * 16) % (bot - top));
+        ctx.beginPath();
+        for (let x = 0; x <= W; x += 26) {
+            const yy = y + Math.sin((x + state.time * 60 + i * 40) / 90) * 7;
+            x === 0 ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy);
+        }
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    // the two reefs
+    [0, bot].forEach((yy, i) => {
+        const h = i === 0 ? top : SHORE;
+        const sg = ctx.createLinearGradient(0, yy, 0, yy + h);
+        sg.addColorStop(0, i === 0 ? '#e8d6a8' : '#d9c391');
+        sg.addColorStop(1, i === 0 ? '#d9c391' : '#e8d6a8');
+        ctx.fillStyle = sg;
+        ctx.fillRect(0, yy, W, h);
+        // coral speckle
+        for (let k = 0; k < W / 12; k++) {
+            const x = (k * 37 + i * 17) % W;
+            const y2 = yy + 12 + ((k * 53) % (h - 24));
+            ctx.fillStyle = ['#ff9a76','#ffd166','#8fd6a0','#f5f0e0'][k % 4];
+            ctx.globalAlpha = 0.5;
+            ctx.beginPath(); ctx.arc(x, y2, 2 + (k % 3), 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+        // waterline
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        const edge = i === 0 ? yy + h : yy;
+        for (let x = 0; x <= W; x += 16) {
+            const yl = edge + Math.sin((x + state.time * 70) / 60) * 3;
+            x === 0 ? ctx.moveTo(x, yl) : ctx.lineTo(x, yl);
+        }
+        ctx.stroke();
+    });
+
+    // which way you're going
+    const goal = state.goingUp ? top : bot;
+    ctx.fillStyle = 'rgba(255,215,106,0.85)';
+    ctx.font = 'bold 15px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText(state.goingUp ? '▲ THIS REEF ▲' : '▼ THIS REEF ▼',
+                 W / 2, state.goingUp ? goal - 30 : goal + 42);
+}
+
+function drawBlock(o, isRock) {
+    const x = o.x, y = o.y;
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.fillRect(x + 4, y + 5, BLOCK, BLOCK);
+    if (isRock) {
+        const g = ctx.createLinearGradient(x, y, x + BLOCK, y + BLOCK);
+        g.addColorStop(0, '#8b9099'); g.addColorStop(1, '#4d545c');
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y, BLOCK, BLOCK);
+        ctx.fillStyle = 'rgba(255,255,255,0.13)';
+        for (let i = 0; i < 4; i++) {
+            const px = x + ((o.seed * (i + 3)) % (BLOCK - 12)) + 4;
+            const py = y + ((o.seed * (i + 7)) % (BLOCK - 12)) + 4;
+            ctx.fillRect(px, py, 6, 5);
+        }
+        ctx.strokeStyle = '#2f353b';
+    } else {
+        const g = ctx.createLinearGradient(x, y, x + BLOCK, y + BLOCK);
+        g.addColorStop(0, '#ffd98a'); g.addColorStop(1, '#c98b2f');
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y, BLOCK, BLOCK);
+        ctx.fillStyle = 'rgba(255,255,255,0.28)';
+        ctx.fillRect(x + 5, y + 5, BLOCK - 10, 6);
+        ctx.strokeStyle = '#7d5416';
+    }
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(x, y, BLOCK, BLOCK);
+
+    // mining progress
+    if (state.mining === o) {
+        const p = Math.min(1, state.mineT / MINE_TIME);
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(x + 4, y + BLOCK - 12, BLOCK - 8, 7);
+        ctx.fillStyle = '#7cffa3';
+        ctx.fillRect(x + 4, y + BLOCK - 12, (BLOCK - 8) * p, 7);
+        ctx.font = '18px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText('⛏', x + BLOCK / 2, y - 6);
+    }
+}
+
+function drawShark(s) {
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.scale(s.dir, 1);
+    ctx.rotate(Math.sin(s.wig) * 0.06);
+    ctx.font = '46px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // the emoji faces left, so flip it back the way it is swimming
+    ctx.scale(-1, 1);
+    ctx.fillText('🦈', 0, 0);
+    ctx.restore();
+    ctx.textBaseline = 'alphabetic';
+    if (s.turn > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${s.turn})`;
+        ctx.font = 'bold 13px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText('!', s.x + s.dir * 26, s.y - 22);
+    }
+}
+
+function drawFish() {
+    const f = state.fish;
+    if (state.dead) return;
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.rotate(Math.sin(f.wig) * 0.10);
+    if (Math.cos(f.face) < 0) ctx.scale(-1, 1);
+    ctx.font = '30px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🐟', 0, 0);
+    ctx.restore();
+    ctx.textBaseline = 'alphabetic';
+
+    // pickaxe in hand once you have one
+    if (state.crossings + 1 >= PICKAXE_FROM) {
+        ctx.save();
+        ctx.translate(f.x + Math.cos(f.face) * 16, f.y + Math.sin(f.face) * 16);
+        ctx.rotate(state.mining ? Math.sin(state.time * 24) * 0.7 : 0.5);
+        ctx.font = '17px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText('⛏', 0, 0);
+        ctx.restore();
+    }
+}
+
+function drawHUD() {
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 22px Segoe UI';
+    ctx.fillStyle = '#eaf6ff';
+    ctx.fillText(`Crossings: ${state.crossings}`, 18, H - 22);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = state.spare > 0 ? '#ffd98a' : '#ff8a80';
+    ctx.fillText(`🧱 ${state.spare}`, W - 18, H - 22);
+    if (state.crossings + 1 >= PICKAXE_FROM) {
+        ctx.fillStyle = '#bfe6fb';
+        ctx.font = 'bold 15px Segoe UI';
+        ctx.fillText('⛏ hold shift to mine', W - 18, H - 46);
+    }
+
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 15px Segoe UI';
+    ctx.fillStyle = '#a9dcf5';
+    ctx.fillText(`${DIFF[diff].name} · ${state.sharks.length} sharks in the water`, W / 2, H - 22);
+
+    if (state.messageT > 0) {
+        ctx.globalAlpha = Math.min(1, state.messageT);
+        ctx.font = 'bold 30px Segoe UI';
+        ctx.fillStyle = '#ffd76a';
+        ctx.fillText(state.message, W / 2, waterTop() + 70);
+        ctx.globalAlpha = 1;
+    }
+    if (state.paused) {
+        ctx.fillStyle = 'rgba(3,12,22,0.6)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.font = 'bold 46px Segoe UI';
+        ctx.fillStyle = '#eaf6ff';
+        ctx.fillText('PAUSED', W / 2, H / 2);
+    }
+}
+
+function render() {
+    drawWater();
+    for (const r of state.rocks) drawBlock(r, true);
+    for (const b of state.blocks) drawBlock(b, false);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    for (const b of state.bubbles) {
+        ctx.globalAlpha = Math.max(0, b.life);
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    for (const s of state.sharks) drawShark(s);
+    drawFish();
+
+    if (state.flash > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${state.flash * 0.25})`;
+        ctx.fillRect(0, 0, W, H);
+    }
+    drawHUD();
+}
+
+/* ==================================================================
+   LOOP
+   ================================================================== */
+let last = 0;
+function loop(now) {
+    const dt = last ? Math.min((now - last) / 1000, 0.033) : 0.016;
+    last = now;
+    if (state) {
+        if (!state.paused && !state.dead) update(dt);
+        else if (state.dead) {
+            for (const b of state.bubbles) { b.y += (b.vy || -30) * dt; b.x += (b.vx || 0) * dt; b.life -= dt; }
+            state.bubbles = state.bubbles.filter(b => b.life > 0);
+        }
+        render();
+    } else {
+        ctx.fillStyle = '#04121f';
+        ctx.fillRect(0, 0, W, H);
+    }
+    requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ==================================================================
+   MENU
+   ================================================================== */
+document.querySelectorAll('#diff button').forEach(b => {
+    b.onclick = () => {
+        document.querySelectorAll('#diff button').forEach(x => x.classList.remove('sel'));
+        b.classList.add('sel');
+        diff = b.dataset.d;
+    };
+});
+document.getElementById('start').onclick = () => {
+    actx();
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('overOv').classList.add('hidden');
+    newGame();
+};
+document.getElementById('again').onclick = () => {
+    document.getElementById('overOv').classList.add('hidden');
+    newGame();
+};
+document.getElementById('menu').onclick = () => {
+    document.getElementById('overOv').classList.add('hidden');
+    document.getElementById('titleOv').classList.remove('hidden');
+    state = null;
+};
+})();
+</script>
+</body>
+</html>
