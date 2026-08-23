@@ -321,11 +321,13 @@ function placeBlock() {
 function updateMining(dt) {
     const f = state.fish;
     const swinging = keys['ShiftLeft'] || keys['ShiftRight'];
-    if (!swinging || state.crossings + 1 < PICKAXE_FROM) { state.mining = null; state.mineT = 0; return; }
+    if (!swinging) { state.mining = null; state.mineT = 0; return; }
+    const havePick = state.crossings + 1 >= PICKAXE_FROM;
 
-    // whatever is closest in front of you
+    // Whatever is closest in front of you. Your own blocks always come back,
+    // even before the pickaxe turns up — otherwise you can wall yourself in.
     let best = null, bd = MINE_REACH;
-    for (const o of state.blocks.concat(state.rocks)) {
+    for (const o of state.blocks.concat(havePick ? state.rocks : [])) {
         const cx = o.x + BLOCK / 2, cy = o.y + BLOCK / 2;
         const d = Math.hypot(cx - f.x, cy - f.y);
         if (d < bd) { bd = d; best = o; }
@@ -379,7 +381,7 @@ function update(dt) {
         f.face = Math.atan2(iy, ix);
         f.wig += dt * 14;
     }
-    const swinging = (keys['ShiftLeft'] || keys['ShiftRight']) && state.crossings + 1 >= PICKAXE_FROM;
+    const swinging = (keys['ShiftLeft'] || keys['ShiftRight']) && state.mining;
     const sp = FISH_SPEED * (swinging ? 0.45 : 1);      // mining slows you right down
     f.vx = ix * sp; f.vy = iy * sp;
 
@@ -399,7 +401,7 @@ function update(dt) {
         }
     }
     f.x = Math.max(FISH_R, Math.min(W - FISH_R, f.x));
-    f.y = Math.max(FISH_R, Math.min(H - FISH_R, f.y));
+    f.y = Math.max(FISH_R, Math.min(state.worldH - FISH_R, f.y));
 
     if (Math.random() < dt * 8 && m > 0) {
         state.bubbles.push({ x: f.x - Math.cos(f.face) * 12, y: f.y - Math.sin(f.face) * 12,
@@ -717,11 +719,10 @@ function drawHUD() {
     ctx.textAlign = 'right';
     ctx.fillStyle = state.spare > 0 ? '#ffd98a' : '#ff8a80';
     ctx.fillText(`🧱 ${state.spare}`, W - 18, H - 22);
-    if (state.crossings + 1 >= PICKAXE_FROM) {
-        ctx.fillStyle = '#bfe6fb';
-        ctx.font = 'bold 15px Segoe UI';
-        ctx.fillText('⛏ hold shift to mine', W - 18, H - 46);
-    }
+    ctx.fillStyle = '#bfe6fb';
+    ctx.font = 'bold 15px Segoe UI';
+    ctx.fillText(state.crossings + 1 >= PICKAXE_FROM
+        ? '⛏ hold shift to mine' : '⛏ hold shift to take a block back', W - 18, H - 46);
 
     ctx.textAlign = 'center';
     ctx.font = 'bold 15px Segoe UI';
