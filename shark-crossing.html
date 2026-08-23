@@ -107,11 +107,11 @@
       mine back go straight into your pocket.<br><br>
       <b>Three other minnows</b> swim it with you. Sharks take whoever is nearest — so they are
       cover as much as company.<br>
-      Hide in the <b>kelp</b> and a shark will swim right past you, though you can barely see out of
-      it either. <b>Pearls</b> lie about the water and sit in <b>chests</b> off to the sides: each one
+      Get into the <b>kelp</b> and no shark can touch you — they lose you completely and go looking
+      elsewhere. You can barely see out of it, which is the price. <b>Pearls</b> lie about the water and sit in <b>chests</b> off to the sides: each one
       you carry slows you down, and each one you land is worth double. Bank them by reaching a reef.<br>
-      Every <b>fifth crossing</b> something much bigger turns up — and it goes straight through
-      blocks instead of round them.<br><br>
+      Every <b>fifth crossing</b> something much bigger turns up. It goes straight through blocks
+      instead of round them, and <b>the kelp will not save you from it</b>.<br><br>
       Whatever you make out there converts to <b style="color:#ffd76a;">crusty coins</b> — three a
       crossing, one a pearl — and <b>The Crusty Coin</b> will sell you a bigger satchel, a sharper
       pickaxe, slipperier scales, a pearl net, kelp sense, or a second wind. What you buy stays
@@ -190,8 +190,7 @@ const PICKAXE_FROM = 3;           // ...which is when you're handed the pickaxe
 const MINNOWS = 3;
 const MINNOW_SPEED = 0.86;
 
-// Kelp: sharks lose you in it, but you can't see out of it either.
-const KELP_HIDE = 96;            // how close a shark must be to find you in kelp
+// Kelp: a shark cannot touch you in it, but you can't see out of it either.
 
 // Pearls slow you down and multiply what the crossing is worth.
 const PEARL_SLOW = 0.045;        // per pearl
@@ -244,8 +243,8 @@ const SHOP = [
       desc:'Six percent more swim speed each level. Sharks stay at 250.' },
     { key:'net',     name:'Pearl net', max:2, cost:[30, 72],
       desc:'Pearls weigh you down far less, so you can carry a hoard.' },
-    { key:'sense',   name:'Kelp sense', max:2, cost:[25, 58],
-      desc:'Sharks lose you in the kelp from further out.' },
+    { key:'sense',   name:'Thicker kelp', max:2, cost:[25, 58],
+      desc:'The kelp grows a fifth bigger each level, so there is more of it to hide in.' },
     { key:'wind',    name:'Second wind', max:1, cost:[130],
       desc:'Survive one bite a run. It grows back at the next reef.' },
 ];
@@ -269,7 +268,7 @@ function startBlocks()  { return START_BLOCKS + lvl('satchel') * 4; }
 function mineTime()     { return MINE_TIME * Math.pow(0.75, lvl('pick')); }
 function speedBonus()   { return 1 + lvl('scales') * 0.06; }
 function pearlSlow()    { return PEARL_SLOW * (lvl('net') === 0 ? 1 : lvl('net') === 1 ? 0.55 : 0.3); }
-function kelpHide()     { return KELP_HIDE + lvl('sense') * 34; }
+function kelpSize()     { return 1 + lvl('sense') * 0.2; }
 function extraLives()   { return lvl('wind'); }
 
 function buildShop() {
@@ -416,7 +415,7 @@ function buildLevel() {
             const x = 90 + Math.random() * (W - 180);
             const y = top + 90 + Math.random() * (bot - top - 180);
             if (state.kelp.some(k => Math.hypot(k.x - x, k.y - y) < k.r + 130)) continue;
-            state.kelp.push({ x, y, r: 78 + Math.random() * 54, seed: Math.random() * 99 });
+            state.kelp.push({ x, y, r: (78 + Math.random() * 54) * kelpSize(), seed: Math.random() * 99 });
             break;
         }
     }
@@ -473,9 +472,9 @@ function inKelp(e) {
     }
     return null;
 }
+// In the kelp a shark simply cannot reach you. Not "probably won't" — can't.
 function hiddenFrom(e, shark) {
-    if (!inKelp(e)) return false;
-    return Math.hypot(shark.x - e.x, shark.y - e.y) > kelpHide();
+    return !!inKelp(e);
 }
 // Your speed, once the pearls in your pockets are accounted for.
 function fishSpeed() {
@@ -747,6 +746,7 @@ function update(dt) {
                 state.rocks.splice(i, 1); b.smash = 0.4; thud();
             }
         }
+        // Kelp doesn't stop this one. It doesn't stop for anything.
         if (Math.hypot(b.x - f.x, b.y - f.y) < FISH_R + 34) die();
     }
 
@@ -1113,7 +1113,8 @@ function drawHUD() {
     const swimming = state.minnows.filter(m => m.alive && !m.across).length;
     ctx.fillText(`${DIFF[diff].name} · 🦈 ${state.sharks.length + (state.boss ? 1 : 0)} hunting` +
                  ` · 🐠 ${swimming} still with you` +
-                 (inKelp(state.fish) ? ' · HIDDEN IN THE KELP' : ''), W / 2, H - 22);
+                 (inKelp(state.fish) ? (state.boss ? ' · SAFE FROM THE SHARKS — NOT FROM THAT'
+                                                    : ' · SAFE IN THE KELP') : ''), W / 2, H - 22);
 
     // how much water is left to cross
     const top = waterTop(), bot = waterBottom();
