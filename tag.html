@@ -297,10 +297,11 @@ const COIN_MAX = 22;
 const GHOST_SLOW = 0.55;
 const GHOST_REACH = 46;
 
-// Split Tag: the wall, and the doorway in it.
-const WALL_EVERY = 20;
+// Split Tag: twenty seconds of open field, then a solid wall — anywhere, and
+// with no way through — for ten.
+const WALL_DOWN = 20;
+const WALL_UP = 10;
 const WALL_THICK = 26;
-const WALL_GAP = 150;
 
 // Line Tag: spacing of the painted grid, and how close counts as "on a line".
 const LINE_GAP = 165;
@@ -499,7 +500,7 @@ const TAG_KINDS = {
     sardines: {
         name: 'Sardines',
         tagline: 'Hide-and-seek, backwards.',
-        blurb: 'One player hides. Anyone who finds them <b>hides with them</b>, in the same spot, and goes quiet.<br>The pile grows and gets harder to miss. <b>First to find them wins; last one still searching loses.</b>',
+        blurb: 'One player hides in a bush, and <b>gives nothing away</b> — no name over their head, no flame, and the radar is off. You have to actually look.<br>Anyone who finds them <b>hides with them</b> and goes quiet too, so the pile slowly gets harder to miss. <b>First to find them wins.</b>',
         go: 'SARDINES — GO AND FIND THEM!',
     },
     coins: {
@@ -517,7 +518,7 @@ const TAG_KINDS = {
     split: {
         name: 'Split Tag',
         tagline: 'The field keeps being cut in half.',
-        blurb: 'Every twenty seconds a <b>wall drops across the arena</b> in a new place, with a single gap in it, and you are stuck on whichever side you were standing.<br>Heaven or hell, depending on where It was. Tagged players join the hunt. <b>Last one clean wins.</b>',
+        blurb: 'Twenty seconds of open field, and then a <b>wall goes up</b> — anywhere across the arena, solid the whole way, <b>with no way through</b> — and stands there for ten.<br>Whichever side you are on is where you stay. Heaven or hell, depending on where It was standing. <b>Last one clean wins.</b>',
         go: 'SPLIT TAG — MIND THE WALL!',
     },
     line: {
@@ -692,9 +693,17 @@ function makeState(mode, difficulty, bots) {
     // together at the other. It is the hider who is flagged It here.
     if (currentKind === 'sardines') {
         const hider = players[itIdx];
-        const bush = bushes.length ? bushes[Math.floor(Math.random() * bushes.length)] : null;
-        hider.x = bush ? bush.x : arena.x + arena.w * 0.5;
-        hider.y = bush ? bush.y : arena.y + arena.h * 0.15;
+        // pick a bush with company — a lone bush in the open is no hiding place
+        let best = null;
+        for (const b of bushes) {
+            if (b.y > arena.y + arena.h * 0.62) continue;          // not on top of the searchers
+            const near = bushes.filter(o => o !== b && Math.hypot(o.x - b.x, o.y - b.y) < 260).length;
+            const score = near * 100 - Math.abs(b.x - (arena.x + arena.w / 2)) * 0.05 + Math.random() * 90;
+            if (!best || score > best.score) best = { b, score };
+        }
+        const bush = best ? best.b : (bushes.length ? bushes[0] : null);
+        hider.x = bush ? bush.x + (Math.random() - 0.5) * 10 : arena.x + arena.w * 0.5;
+        hider.y = bush ? bush.y + (Math.random() - 0.5) * 10 : arena.y + arena.h * 0.15;
         hider.hidden2 = true;
         players.forEach(pl => {
             if (pl === hider) return;
@@ -760,7 +769,7 @@ function makeState(mode, difficulty, bots) {
         coinList: [],
         coinT: 1,
         wall: null,
-        wallT: WALL_EVERY,
+        wallT: WALL_DOWN,
         jail: currentKind === 'jail' ? {
             x: arena.x + arena.w / 2 - JAIL_W / 2,
             y: arena.y + arena.h * 0.5 - JAIL_H / 2,
@@ -902,7 +911,7 @@ function startGame(mode) {
         const it = state.players.find(p => p.isIt);
         state.ball = { x: it.x, y: it.y, vx: 0, vy: 0, held: it.idx, spin: 0, travelled: 0 };
     }
-    if (state.kind === 'split') dropWall(true);
+    if (state.kind === 'split') { state.wall = null; state.wallT = WALL_DOWN; }
     overlay.classList.add('hidden');
     startScreen.style.display = 'none';
     gameOverScreen.style.display = 'none';
@@ -1698,6 +1707,16 @@ function updateBall(dt) {
     if (state.kind !== 'ball' || !state.ball) return;
     const b = state.ball;
     b.spin += dt * 16;
+    // Only It ever carries it. If anything hands it to somebody else they
+    // drop it on the spot — you cannot take the ball off the tagger.
+    if (b.held !== null) {
+        const carrier = state.players[b.held];
+        if (!carrier || !carrier.isIt || !carrier.alive) {
+            if (carrier) { b.x = carrier.x; b.y = carrier.y; }
+            b.held = null;
+            b.vx = b.vy = 0;
+        }
+    }
     if (b.held !== null) {
         const h = state.players[b.held];
         b.x = h.x + h.facingX * (PLAYER_R + 4);
@@ -1715,7 +1734,10 @@ function updateBall(dt) {
             const thrower = state.players.find(z => z.isIt);
             if (thrower) passItOn(thrower, q);
             b.vx = b.vy = 0;
-            b.held = q.idx;
+            // A shield stops the tag, so it stops the handover too — the ball
+            // drops at their feet instead of being handed to a runner.
+            b.held = q.isIt ? q.idx : null;
+            if (!q.isIt) { b.x = q.x; b.y = q.y; }
             state.particles.push({
                 x: q.x, y: q.y - 34, vx: 0, vy: -30, life: 1.2, maxLife: 1.2,
                 size: 0, color: '#ffd54f', isText: true, text: 'CAUGHT IT!',
@@ -1821,39 +1843,50 @@ function updateGhosts(dt) {
 }
 
 // Split Tag — a wall across the field, with one way through.
-function dropWall(first) {
+function dropWall() {
     const a = state.arena;
     const vertical = Math.random() < 0.5;
+    // anywhere across the field, not just the middle
     const pos = vertical
-        ? a.x + a.w * (0.25 + Math.random() * 0.5)
-        : a.y + a.h * (0.25 + Math.random() * 0.5);
-    const gap = vertical
-        ? a.y + a.h * (0.15 + Math.random() * 0.7)
-        : a.x + a.w * (0.15 + Math.random() * 0.7);
-    state.wall = { vertical, pos, gap };
-    state.wallT = WALL_EVERY;
-    if (!first) { announce('THE WALL MOVES', 1.4); buzzerSound(); }
+        ? a.x + a.w * (0.12 + Math.random() * 0.76)
+        : a.y + a.h * (0.12 + Math.random() * 0.76);
+    state.wall = { vertical, pos };
+    state.wallT = WALL_UP;
+    announce('THE WALL IS UP', 1.5);
+    buzzerSound();
+    // nobody gets left standing inside it — shove them out the nearer side
+    for (const p of state.players) {
+        if (!p.alive) continue;
+        const d = (vertical ? p.x : p.y) - pos;
+        if (Math.abs(d) < WALL_THICK / 2 + PLAYER_R) {
+            const push = pos + Math.sign(d || (Math.random() < 0.5 ? -1 : 1)) * (WALL_THICK / 2 + PLAYER_R + 2);
+            if (vertical) p.x = push; else p.y = push;
+        }
+    }
 }
 
 function updateWall(dt) {
-    if (state.kind !== 'split' || !state.wall) return;
+    if (state.kind !== 'split') return;
     state.wallT -= dt;
-    if (state.wallT <= 0) dropWall(false);
+    if (state.wallT <= 0) {
+        if (state.wall) {
+            state.wall = null;
+            state.wallT = WALL_DOWN;
+            announce('THE WALL IS DOWN', 1.4);
+            tone(560, 0.12, 'triangle', 0.05);
+        } else {
+            dropWall();
+        }
+    }
     const w = state.wall;
+    if (!w) return;
+    // Solid the whole way across. There is no gap — that's the point.
     for (const p of state.players) {
         if (!p.alive) continue;
-        if (w.vertical) {
-            if (Math.abs(p.y - w.gap) < WALL_GAP / 2) continue;      // through the doorway
-            const d = p.x - w.pos;
-            if (Math.abs(d) < WALL_THICK / 2 + PLAYER_R) {
-                p.x = w.pos + Math.sign(d || 1) * (WALL_THICK / 2 + PLAYER_R);
-            }
-        } else {
-            if (Math.abs(p.x - w.gap) < WALL_GAP / 2) continue;
-            const d = p.y - w.pos;
-            if (Math.abs(d) < WALL_THICK / 2 + PLAYER_R) {
-                p.y = w.pos + Math.sign(d || 1) * (WALL_THICK / 2 + PLAYER_R);
-            }
+        const d = (w.vertical ? p.x : p.y) - w.pos;
+        if (Math.abs(d) < WALL_THICK / 2 + PLAYER_R) {
+            const at = w.pos + Math.sign(d || 1) * (WALL_THICK / 2 + PLAYER_R);
+            if (w.vertical) { p.x = at; p.vx = 0; } else { p.y = at; p.vy = 0; }
         }
     }
 }
@@ -2113,7 +2146,8 @@ function applyPowerup(p, pu) {
             powerupSound();
             return;
         }
-        if (state.kind === 'classic' || state.kind === 'potato' || state.kind === 'line') {
+        if (state.kind === 'classic' || state.kind === 'potato' ||
+            state.kind === 'line' || state.kind === 'ball') {
             // Can't just delete It — hand it to somebody else.
             if (p.isIt) { passItOn(p, nearestOther(p)); }
             powerupSound();
@@ -2810,27 +2844,42 @@ function drawArena() {
 
 // Split Tag's wall, with its doorway.
 function drawWall() {
-    if (state.kind !== 'split' || !state.wall) return;
-    const a = state.arena, w = state.wall;
-    const warn = state.wallT < 3 && Math.floor(state.time * 6) % 2 === 0;
-    ctx.fillStyle = warn ? '#ffd54f' : '#8a7a5c';
-    ctx.strokeStyle = '#4a3f2c';
-    ctx.lineWidth = 3;
-    const seg = (x, y, ww, hh) => { ctx.fillRect(x, y, ww, hh); ctx.strokeRect(x, y, ww, hh); };
+    if (state.kind !== 'split') return;
+    const a = state.arena;
+
+    // While it's down, show where it's about to land in the last few seconds.
+    if (!state.wall) return;
+
+    const w = state.wall;
+    const going = state.wallT < 3 && Math.floor(state.time * 6) % 2 === 0;
+    const x = w.vertical ? w.pos - WALL_THICK / 2 : a.x;
+    const y = w.vertical ? a.y : w.pos - WALL_THICK / 2;
+    const ww = w.vertical ? WALL_THICK : a.w;
+    const hh = w.vertical ? a.h : WALL_THICK;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(x + 5, y + 6, ww, hh);
+    const g = w.vertical
+        ? ctx.createLinearGradient(x, 0, x + ww, 0)
+        : ctx.createLinearGradient(0, y, 0, y + hh);
+    g.addColorStop(0, going ? '#ffe082' : '#9c8a66');
+    g.addColorStop(0.5, going ? '#ffd54f' : '#7d6c4c');
+    g.addColorStop(1, going ? '#ffe082' : '#5f5138');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, ww, hh);
+    ctx.strokeStyle = '#3d3323'; ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, ww, hh);
+
+    // brickwork, so it reads as a wall rather than a bar
+    ctx.strokeStyle = 'rgba(60,50,32,0.55)'; ctx.lineWidth = 1.6;
     if (w.vertical) {
-        const top = a.y, bot = a.y + a.h;
-        seg(w.pos - WALL_THICK / 2, top, WALL_THICK, (w.gap - WALL_GAP / 2) - top);
-        seg(w.pos - WALL_THICK / 2, w.gap + WALL_GAP / 2, WALL_THICK, bot - (w.gap + WALL_GAP / 2));
-        ctx.fillStyle = 'rgba(124,255,163,0.75)';
-        ctx.font = 'bold 13px Segoe UI'; ctx.textAlign = 'center';
-        ctx.fillText('GAP', w.pos, w.gap + 5);
+        for (let yy = y; yy < y + hh; yy += 26) {
+            ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + ww, yy); ctx.stroke();
+        }
     } else {
-        const left = a.x, right = a.x + a.w;
-        seg(left, w.pos - WALL_THICK / 2, (w.gap - WALL_GAP / 2) - left, WALL_THICK);
-        seg(w.gap + WALL_GAP / 2, w.pos - WALL_THICK / 2, right - (w.gap + WALL_GAP / 2), WALL_THICK);
-        ctx.fillStyle = 'rgba(124,255,163,0.75)';
-        ctx.font = 'bold 13px Segoe UI'; ctx.textAlign = 'center';
-        ctx.fillText('GAP', w.gap, w.pos + 5);
+        for (let xx = x; xx < x + ww; xx += 26) {
+            ctx.beginPath(); ctx.moveTo(xx, y); ctx.lineTo(xx, y + hh); ctx.stroke();
+        }
     }
 }
 
@@ -3286,6 +3335,20 @@ function drawPlayer(p) {
         return;
     }
 
+    // Sardines: anyone in the pile is tucked into a bush and gives nothing
+    // away — no name over their head, no aura, no flame. You have to look.
+    if (state.kind === 'sardines' && p.hidden2) {
+        const b = state.bushes.reduce((best, q) => {
+            const d = Math.hypot(q.x - p.x, q.y - p.y);
+            return (!best || d < best.d) ? { q, d } : best;
+        }, null);
+        // just a sliver showing through the leaves
+        ctx.globalAlpha = b && b.d < 70 ? 0.5 : 0.85;
+        drawPlayerBody(x, y + 4, p, false);
+        ctx.globalAlpha = 1;
+        return;
+    }
+
     // It aura — orange/red glow
     if (p.isIt) {
         const auraR = PLAYER_R + 14 + Math.sin(state.time * 8) * 3;
@@ -3638,8 +3701,11 @@ function drawHUD() {
         const clean = state.players.filter(p => !p.isIt).length;
         ctx.fillStyle = clean <= 1 ? '#ff5252' : '#ffe082';
         ctx.fillText(`${clean} still clean`, W / 2, 50);
-        ctx.font = 'bold 18px Segoe UI'; ctx.fillStyle = state.wallT < 4 ? '#ff8a65' : '#cce0c1';
-        ctx.fillText(`wall moves in ${Math.ceil(state.wallT)}s`, W / 2, 96);
+        ctx.font = 'bold 18px Segoe UI';
+        ctx.fillStyle = state.wallT < 4 ? '#ff8a65' : (state.wall ? '#ffd54f' : '#cce0c1');
+        ctx.fillText(state.wall
+            ? `WALLED IN — ${Math.ceil(state.wallT)}s until it drops`
+            : `open field — wall goes up in ${Math.ceil(state.wallT)}s`, W / 2, 96);
     } else if (state.kind === 'rabbit') {
         const r = state.players.find(p => !p.isIt);
         const me2 = state.players[0];
@@ -3964,7 +4030,11 @@ function loop(ts) {
         for (const b of state.bushes) layered.push({ y: b.y, draw: () => drawBushSingle(b) });
         for (const r of state.rocks) layered.push({ y: r.y + r.ry, draw: () => drawRock(r) });
         for (const l of state.logs)  layered.push({ y: l.y + l.h / 2, draw: () => drawLog(l) });
-        for (const p of state.players) layered.push({ y: p.y + PLAYER_R, draw: () => drawPlayer(p) });
+        for (const p of state.players) {
+            // in Sardines the pile sits *under* its bush rather than in front
+            const yy = (state.kind === 'sardines' && p.hidden2) ? p.y - PLAYER_R * 2 : p.y + PLAYER_R;
+            layered.push({ y: yy, draw: () => drawPlayer(p) });
+        }
         layered.sort((a, b) => a.y - b.y);
         layered.forEach(it => it.draw());
         drawParticles();
@@ -3973,7 +4043,7 @@ function loop(ts) {
         // Screen-space overlays (HUD, leaves, minimap, winner)
         drawLeaves();
         drawHUD();
-        drawMinimap();
+        if (state.kind !== 'sardines') drawMinimap();
         drawTankGauge();
         drawWinnerOverlay();
     }
