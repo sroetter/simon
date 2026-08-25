@@ -151,6 +151,7 @@ h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; 
                 <span style="color:#ce93d8;"><b>🛡 Shield</b></span> (block one tag),
                 <span style="color:#ff9e70;"><b>S Swapper</b></span> (trade places with the nearest player on the other side),
                 <span style="color:#7cffa3;"><b>C Cleanse</b></span> (cures you in Infection; frees a random frozen player in Freeze Tag).
+                Whoever <b>started</b> the round as It can never cleanse their way out of it.
             </p>
             <p style="font-size:12px;color:#cce0c1;margin:6px 0;">
                 <b style="color:#ffd54f;">Speed tank:</b> hold shift to burn it. Only runners carry one —
@@ -172,6 +173,12 @@ h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; 
             <button class="btn diff kind" data-kind="jail">🔒 Jail Tag</button>
             <button class="btn diff kind" data-kind="rabbit">🐇 Rabbit</button>
             <button class="btn diff kind" data-kind="line">📏 Line Tag</button>
+            <button class="btn diff kind" data-kind="statue">🗿 Statue</button>
+            <button class="btn diff kind" data-kind="ball">🥎 Ball Tag</button>
+            <button class="btn diff kind" data-kind="sardines">🐟 Sardines</button>
+            <button class="btn diff kind" data-kind="coins">🪙 Coin Tag</button>
+            <button class="btn diff kind" data-kind="ghost">👻 Ghost Tag</button>
+            <button class="btn diff kind" data-kind="split">🧱 Split Tag</button>
             <button class="btn diff kind" data-kind="double">👥 Double Tag</button>
         </div>
         <div id="backBlurb" style="font-size:12px;color:#cce0c1;margin:4px 0 2px;"></div>
@@ -268,7 +275,32 @@ const IT_RAMP_PER_SEC = 0.01;
 // own pack so the carrier gets the full climb; Freeze has one tagger all
 // round, so theirs builds at half speed; Classic hands It around and never
 // ramps at all.
-const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, jail: 0.5, rabbit: 0, line: 0, double: 1 };
+const KIND_RAMP = { infection: 1, freeze: 0.5, classic: 0, blob: 1, potato: 0, jail: 0.5,
+                    rabbit: 0, line: 0, double: 1,
+                    statue: 0, ball: 0, sardines: 0, coins: 0, ghost: 0.4, split: 1 };
+
+// Statue Tag: how wide a look counts as looking, and how far it carries.
+const WATCH_ARC = 1.0;
+const WATCH_RANGE = 620;
+const STATUE_SPEED = 1.18;       // they make up for it when nobody's watching
+
+// Ball Tag.
+const BALL_SPEED = 620;
+const BALL_RANGE = 620;
+const BALL_R = 11;
+
+// Coin Tag.
+const COIN_EVERY = 1.6;          // a new coin this often
+const COIN_MAX = 22;
+
+// Ghost Tag: what a ghost does to whoever is It.
+const GHOST_SLOW = 0.55;
+const GHOST_REACH = 46;
+
+// Split Tag: the wall, and the doorway in it.
+const WALL_EVERY = 20;
+const WALL_THICK = 26;
+const WALL_GAP = 150;
 
 // Line Tag: spacing of the painted grid, and how close counts as "on a line".
 const LINE_GAP = 165;
@@ -452,6 +484,42 @@ const TAG_KINDS = {
         blurb: 'A single touch does <b>nothing at all</b> — it takes <b style="color:#ff7043;">two taggers at once</b> to catch you, so they have to work as a pair and pin you between them.<br>Caught players join the hunt, which makes pairing up easier and easier. <b>Last one clean wins.</b>',
         go: 'DOUBLE TAG — THEY NEED TWO!',
     },
+    statue: {
+        name: 'Statue Tag',
+        tagline: "They only move when you're not looking.",
+        blurb: 'Whoever is It <b>cannot move while anyone is facing them</b> — turn towards them and they freeze mid-stride. Turn away and they are closer than they were.<br>Everyone they touch freezes into a statue too, and joins the hunt. <b>Last one clean wins.</b>',
+        go: "STATUE TAG — DON'T LOOK AWAY!",
+    },
+    ball: {
+        name: 'Ball Tag',
+        tagline: 'It throws. You keep your distance.',
+        blurb: 'It carries a ball and <b>throws it</b> with <b>E</b> — hit somebody and It is theirs, along with the ball. With the ball in hand a <b>touch</b> tags too.<br>A miss means the ball is lying on the grass, and until It fetches it back <b>It cannot tag anybody at all</b>. <b>Least time as It wins.</b>',
+        go: 'BALL TAG — MIND THE THROW!',
+    },
+    sardines: {
+        name: 'Sardines',
+        tagline: 'Hide-and-seek, backwards.',
+        blurb: 'One player hides. Anyone who finds them <b>hides with them</b>, in the same spot, and goes quiet.<br>The pile grows and gets harder to miss. <b>First to find them wins; last one still searching loses.</b>',
+        go: 'SARDINES — GO AND FIND THEM!',
+    },
+    coins: {
+        name: 'Coin Tag',
+        tagline: 'Nobody is out. You just get robbed.',
+        blurb: 'Coins keep dropping around the field. Pick them up — but <b>It cannot carry any</b>, and being tagged makes you <b>drop the lot</b> and takes It on at the same time.<br>Nobody is ever out. <b>Most coins at the bell wins.</b>',
+        go: 'COIN TAG — GRAB THEM!',
+    },
+    ghost: {
+        name: 'Ghost Tag',
+        tagline: 'Being caught is not the end of your round.',
+        blurb: 'One tagger all round. Get caught and you become a <b>ghost</b> — you cannot tag anybody, but drifting through the tagger <b>slows them right down</b>.<br>So the caught still have a job. <b>It wins by ghosting everyone; you win if anyone is still solid at the bell.</b>',
+        go: 'GHOST TAG — HAUNT THEM!',
+    },
+    split: {
+        name: 'Split Tag',
+        tagline: 'The field keeps being cut in half.',
+        blurb: 'Every twenty seconds a <b>wall drops across the arena</b> in a new place, with a single gap in it, and you are stuck on whichever side you were standing.<br>Heaven or hell, depending on where It was. Tagged players join the hunt. <b>Last one clean wins.</b>',
+        go: 'SPLIT TAG — MIND THE WALL!',
+    },
     line: {
         name: 'Line Tag',
         tagline: 'Stay on the painted lines. Nobody may leave them.',
@@ -618,6 +686,27 @@ function makeState(mode, difficulty, bots) {
     const itIdx = Math.floor(Math.random() * total);
     players[itIdx].isIt = true;
     players[itIdx].isOriginalIt = true;
+    players[itIdx].startedIt = true;      // never transferred, never cleansed
+
+    // Sardines: the hider is tucked away at the far end, everyone else starts
+    // together at the other. It is the hider who is flagged It here.
+    if (currentKind === 'sardines') {
+        const hider = players[itIdx];
+        const bush = bushes.length ? bushes[Math.floor(Math.random() * bushes.length)] : null;
+        hider.x = bush ? bush.x : arena.x + arena.w * 0.5;
+        hider.y = bush ? bush.y : arena.y + arena.h * 0.15;
+        hider.hidden2 = true;
+        players.forEach(pl => {
+            if (pl === hider) return;
+            pl.x = arena.x + arena.w * 0.5 + (Math.random() - 0.5) * 260;
+            pl.y = arena.y + arena.h * 0.9 + (Math.random() - 0.5) * 120;
+        });
+    }
+
+    // Ball Tag: It starts with the ball in hand.
+    if (currentKind === 'ball') {
+        // held is set once state exists, below
+    }
 
     // Line Tag: everyone starts standing on a crossing.
     if (currentKind === 'line') {
@@ -667,6 +756,11 @@ function makeState(mode, difficulty, bots) {
         roundTimer: ROUND_DURATION_BASE,
         roundDuration: ROUND_DURATION_BASE,
         blob: currentKind === 'blob' ? [itIdx] : [],
+        ball: null,
+        coinList: [],
+        coinT: 1,
+        wall: null,
+        wallT: WALL_EVERY,
         jail: currentKind === 'jail' ? {
             x: arena.x + arena.w / 2 - JAIL_W / 2,
             y: arena.y + arena.h * 0.5 - JAIL_H / 2,
@@ -763,6 +857,12 @@ function makePlayer(idx, x, y, isBot, palIdx) {
         thaw: 0,            // how far along that thawing is
         timeAsIt: 0,        // classic tag: what you are scored on
         jailed: false,      // jail tag: locked up until somebody springs you
+        startedIt: false,   // began the round as It — no cleansing out of that
+        watched: false,     // statue tag: somebody has eyes on you
+        hidden2: false,     // sardines: part of the pile
+        coins: 0,           // coin tag
+        ghost: false,       // ghost tag
+        foundAt: 0,         // sardines: when you found the pile
         timeAsRabbit: 0,    // rabbit: the only thing that scores
     };
 }
@@ -798,6 +898,11 @@ function consumeJust(code) {
 function startGame(mode) {
     initAudio();
     state = makeState(mode, currentDifficulty, botCount);
+    if (state.kind === 'ball') {
+        const it = state.players.find(p => p.isIt);
+        state.ball = { x: it.x, y: it.y, vx: 0, vy: 0, held: it.idx, spin: 0, travelled: 0 };
+    }
+    if (state.kind === 'split') dropWall(true);
     overlay.classList.add('hidden');
     startScreen.style.display = 'none';
     gameOverScreen.style.display = 'none';
@@ -851,6 +956,18 @@ function showGameOver() {
             line += ' Everybody else went off.';
         } else if (state.kind === 'double') {
             line += w.isIt ? ' Every runner pinned between two.' : ' Never caught between two.';
+        } else if (state.kind === 'statue') {
+            line += w.isIt ? ' Nobody looked in time.' : ' Never took their eyes off them.';
+        } else if (state.kind === 'ball') {
+            line += ` Only ${w.timeAsIt.toFixed(1)}s holding the ball.`;
+        } else if (state.kind === 'sardines') {
+            line += w.isIt ? ' Hid so well nobody ever found them.' : ' First to find the pile.';
+        } else if (state.kind === 'coins') {
+            line += ` ${w.coins} coins collected.`;
+        } else if (state.kind === 'ghost') {
+            line += w.isIt ? ' Ghosted the lot of them.' : ' Still solid at the bell.';
+        } else if (state.kind === 'split') {
+            line += w.isIt ? ' Caught everyone, wall or no wall.' : ' Always on the right side of it.';
         } else if (state.kind === 'jail') {
             line += w.isIt ? ' Everyone locked up.' : ' Still free at the bell.';
         } else if (state.kind === 'rabbit') {
@@ -1099,6 +1216,14 @@ function updatePlayer(p, dt) {
     // Rabbit is the only one who scores in that kind
     if (state.kind === 'rabbit' && !p.isIt) p.timeAsRabbit += dt;
 
+    // Statue Tag: eyes on you and you can't take a step
+    // Sardines: once you're in the pile you stay in it
+    if ((state.kind === 'statue' && p.isIt && p.watched) ||
+        (state.kind === 'sardines' && p.hidden2)) {
+        p.moving = false; p.vx = 0; p.vy = 0;
+        return;
+    }
+
     // Can't move: freeze powerup, frozen solid, or locked in the jail
     if (p.freezeTimer > 0 || p.iced || p.jailed) {
         p.moving = false;
@@ -1130,6 +1255,12 @@ function updatePlayer(p, dt) {
         if (codes[k.down]  || (dual && codes['ArrowDown']))  iy += 1;
         if (codes[k.left]  || (dual && codes['ArrowLeft']))  ix -= 1;
         if (codes[k.right] || (dual && codes['ArrowRight'])) ix += 1;
+        // Ball Tag: E throws it (O for the second player)
+        if (state.kind === 'ball') {
+            const throwKey = (p.idx === 0) ? consumeJust('KeyE') : consumeJust('KeyO');
+            if (throwKey) throwBall(p);
+        }
+
         // Speed tank — held, not tapped
         const boostKey = (p.idx === 0)
             ? (codes['ShiftLeft'] || codes['Space'] || (dual && (codes['ShiftRight'] || codes['Enter'])))
@@ -1153,7 +1284,11 @@ function updatePlayer(p, dt) {
     if (p.isIt) {
         // Classic passes It around constantly and never ramps, so the tagger
         // runs level with everyone else rather than at the usual handicap.
-        speed *= (state.kind === 'classic') ? 1 : IT_SPEED_BOOST;
+        speed *= state.kind === 'ball' ? 1.06
+               : (state.kind === 'classic' || state.kind === 'coins') ? 1
+               : IT_SPEED_BOOST;
+        if (state.kind === 'statue') speed *= STATUE_SPEED;      // fast, when unwatched
+        if (state.kind === 'ghost' && p.haunted) speed *= GHOST_SLOW;
         // Only the original tagger ramps up — +1% of their tagger speed
         // per second of round time. Newly-infected players don't ramp.
         if (p.isOriginalIt) {
@@ -1161,6 +1296,7 @@ function updatePlayer(p, dt) {
             speed *= (1 + state.time * IT_RAMP_PER_SEC * r);
         }
     }
+    if (p.ghost) speed *= 1.12;
     if (p.speedTimer > 0) speed *= SPEED_BOOST_MULT;
     // Bot runners give ground on the easier settings — a human tagger can't
     // out-run a runner otherwise, however badly the runner jukes.
@@ -1269,7 +1405,7 @@ function updatePlayer(p, dt) {
     if (p.isIt && !p.iced && state.kind !== 'double') {
         const touched = [];
         for (const q of state.players) {
-            if (q === p || !q.alive || q.isIt || q.tagbackTimer > 0 || q.iced || q.jailed) continue;
+            if (q === p || !q.alive || q.isIt || q.tagbackTimer > 0 || q.iced || q.jailed || q.ghost) continue;
             const dx = q.x - p.x, dy = q.y - p.y;
             if (dx * dx + dy * dy < TAG_RANGE * TAG_RANGE) touched.push(q);
         }
@@ -1281,6 +1417,34 @@ function updatePlayer(p, dt) {
                 const pick = touched[Math.floor(Math.random() * touched.length)];
                 if (touched.length > 1) announce('CAUGHT TWO — COIN TOSS!', 1.1);
                 passItOn(p, pick);
+            } else if (state.kind === 'ghost') {
+                touched.forEach(q => {
+                    if (q.shieldActive) { breakShield(q); return; }
+                    q.ghost = true;
+                    q.tagbackTimer = TAGBACK_IMMUNITY;
+                    state.tagFlashTimer = 0.4;
+                    tagSound();
+                    state.particles.push({
+                        x: q.x, y: q.y - 34, vx: 0, vy: -30, life: 1.3, maxLife: 1.3,
+                        size: 0, color: '#dff6ff', isText: true, text: 'GHOSTED!',
+                    });
+                    const left = state.players.filter(z => !z.isIt && !z.ghost).length;
+                    if (left > 0) announce(`${left} STILL SOLID`, 1.1);
+                });
+            } else if (state.kind === 'coins') {
+                const pick = touched[Math.floor(Math.random() * touched.length)];
+                dropCoins(pick);
+                passItOn(p, pick);
+            } else if (state.kind === 'ball') {
+                // With the ball in your hands a touch tags, same as any other
+                // kind. Without it you have nothing to tag with — go and fetch.
+                if (state.ball && state.ball.held === p.idx) {
+                    passItOn(p, touched[Math.floor(Math.random() * touched.length)]);
+                }
+            } else if (state.kind === 'statue' || state.kind === 'split') {
+                touched.forEach(q => infectPlayer(p, q));
+            } else if (state.kind === 'sardines') {
+                // finding them is handled by the pile, not by tagging
             } else if (state.kind === 'jail') {
                 touched.forEach(q => sendToJail(p, q));
             } else if (state.kind === 'rabbit' || state.kind === 'line') {
@@ -1333,6 +1497,11 @@ function freezePlayer(byP, victim) {
 function passItOn(byP, victim) {
     if (!victim || victim === byP) return;
     if (!byP.isIt) return;      // already passed it on this frame — only one It ever
+    // in Ball Tag whoever takes It takes the ball with them
+    if (state.kind === 'ball' && state.ball && !victim.shieldActive) {
+        state.ball.held = victim.idx;
+        state.ball.vx = state.ball.vy = 0;
+    }
     if (victim.shieldActive) { breakShield(victim); return; }
     byP.isIt = false;
     byP.tagbackTimer = NO_TAGBACK_TIME;     // five seconds of no tag-backs
@@ -1490,6 +1659,203 @@ function knockOut(byP, victim) {
     }
     const left = state.players.filter(q => !q.isIt && q.alive).length;
     if (left > 0) announce(`${left} LEFT`, 1.0);
+}
+
+// Statue Tag — a tagger is frozen while anyone has eyes on them.
+function updateStatues(dt) {
+    if (state.kind !== 'statue') return;
+    for (const p of state.players) {
+        if (!p.isIt) { p.watched = false; continue; }
+        let seen = false;
+        for (const q of state.players) {
+            if (q.isIt || !q.alive || q.iced) continue;
+            const dx = p.x - q.x, dy = p.y - q.y;
+            const d = Math.hypot(dx, dy);
+            if (d > WATCH_RANGE) continue;
+            const fl = Math.hypot(q.facingX, q.facingY) || 1;
+            const dot = (dx * q.facingX + dy * q.facingY) / (d * fl);
+            if (dot > Math.cos(WATCH_ARC)) { seen = true; break; }
+        }
+        p.watched = seen;
+    }
+}
+
+// Ball Tag — It throws, and then has to go and get it back.
+function throwBall(p) {
+    if (state.kind !== 'ball' || !state.ball) return;
+    if (state.ball.held !== p.idx) return;
+    const b = state.ball;
+    b.held = null;
+    b.travelled = 0;
+    b.vx = p.facingX * BALL_SPEED;
+    b.vy = p.facingY * BALL_SPEED;
+    b.x = p.x + p.facingX * PLAYER_R;
+    b.y = p.y + p.facingY * PLAYER_R;
+    tone(520, 0.08, 'triangle', 0.05, -180);
+}
+
+function updateBall(dt) {
+    if (state.kind !== 'ball' || !state.ball) return;
+    const b = state.ball;
+    b.spin += dt * 16;
+    if (b.held !== null) {
+        const h = state.players[b.held];
+        b.x = h.x + h.facingX * (PLAYER_R + 4);
+        b.y = h.y + h.facingY * (PLAYER_R + 4);
+        return;
+    }
+    if (b.vx || b.vy) {
+        const step = Math.hypot(b.vx, b.vy) * dt;
+        b.x += b.vx * dt; b.y += b.vy * dt;
+        b.travelled += step;
+        // first runner it reaches takes It, and the ball with it
+        for (const q of state.players) {
+            if (q.isIt || !q.alive || q.tagbackTimer > 0) continue;
+            if (Math.hypot(q.x - b.x, q.y - b.y) > PLAYER_R + BALL_R) continue;
+            const thrower = state.players.find(z => z.isIt);
+            if (thrower) passItOn(thrower, q);
+            b.vx = b.vy = 0;
+            b.held = q.idx;
+            state.particles.push({
+                x: q.x, y: q.y - 34, vx: 0, vy: -30, life: 1.2, maxLife: 1.2,
+                size: 0, color: '#ffd54f', isText: true, text: 'CAUGHT IT!',
+            });
+            return;
+        }
+        clampToArena(b, BALL_R);
+        if (b.travelled > BALL_RANGE) { b.vx = b.vy = 0; }
+        return;
+    }
+    // lying on the grass — only It can pick it up
+    for (const q of state.players) {
+        if (!q.isIt || !q.alive) continue;
+        if (Math.hypot(q.x - b.x, q.y - b.y) > PLAYER_R + BALL_R + 4) continue;
+        b.held = q.idx;
+        tone(700, 0.07, 'sine', 0.045);
+    }
+}
+
+// Sardines — find the pile and go quiet with them.
+function updateSardines(dt) {
+    if (state.kind !== 'sardines') return;
+    const pile = state.players.filter(p => p.hidden2);
+    for (const q of state.players) {
+        if (q.hidden2 || !q.alive) continue;
+        for (const h of pile) {
+            if (Math.hypot(q.x - h.x, q.y - h.y) > PLAYER_R * 2 + 10) continue;
+            q.hidden2 = true;
+            q.foundAt = state.time;
+            q.x = h.x + (Math.random() - 0.5) * 40;
+            q.y = h.y + (Math.random() - 0.5) * 40;
+            const left = state.players.filter(z => !z.hidden2).length;
+            state.particles.push({
+                x: q.x, y: q.y - 34, vx: 0, vy: -30, life: 1.3, maxLife: 1.3,
+                size: 0, color: '#7cffa3', isText: true, text: 'FOUND THEM!',
+            });
+            announce(left > 0 ? `${left} STILL LOOKING` : 'EVERYBODY IN', 1.2);
+            tone(660, 0.09, 'sine', 0.05);
+            break;
+        }
+    }
+}
+
+// Coin Tag — coins keep dropping, and It can't hold any.
+function updateCoins(dt) {
+    if (state.kind !== 'coins') return;
+    state.coinT -= dt;
+    if (state.coinT <= 0 && state.coinList.length < COIN_MAX) {
+        state.coinT = COIN_EVERY;
+        for (let t = 0; t < 30; t++) {
+            const x = state.arena.x + 60 + Math.random() * (state.arena.w - 120);
+            const y = state.arena.y + 60 + Math.random() * (state.arena.h - 120);
+            if (state.rocks.some(r => Math.hypot(r.x - x, r.y - y) < r.rx + 30)) continue;
+            state.coinList.push({ x, y, bob: Math.random() * 6 });
+            break;
+        }
+    }
+    for (let i = state.coinList.length - 1; i >= 0; i--) {
+        const c = state.coinList[i];
+        for (const p of state.players) {
+            if (p.isIt || !p.alive) continue;            // It can't carry any
+            if (Math.hypot(p.x - c.x, p.y - c.y) > PLAYER_R + 13) continue;
+            p.coins++;
+            state.coinList.splice(i, 1);
+            if (!p.isBot) tone(880, 0.06, 'sine', 0.04);
+            break;
+        }
+    }
+}
+
+function dropCoins(p) {
+    for (let i = 0; i < p.coins; i++) {
+        const a = Math.random() * Math.PI * 2, r = 30 + Math.random() * 70;
+        state.coinList.push({ x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, bob: Math.random() * 6 });
+    }
+    if (p.coins > 0) {
+        state.particles.push({
+            x: p.x, y: p.y - 34, vx: 0, vy: -30, life: 1.3, maxLife: 1.3,
+            size: 0, color: '#ffd54f', isText: true, text: `DROPPED ${p.coins}!`,
+        });
+    }
+    p.coins = 0;
+}
+
+// Ghost Tag — the caught can't tag, but they can drag It down.
+function updateGhosts(dt) {
+    if (state.kind !== 'ghost') return;
+    for (const p of state.players) {
+        if (!p.isIt) continue;
+        let haunted = false;
+        for (const g of state.players) {
+            if (!g.ghost) continue;
+            if (Math.hypot(g.x - p.x, g.y - p.y) < GHOST_REACH) { haunted = true; break; }
+        }
+        p.haunted = haunted;
+        if (haunted && Math.random() < dt * 10) {
+            state.particles.push({
+                x: p.x + (Math.random() - 0.5) * 30, y: p.y - 10,
+                vx: 0, vy: -40, life: 0.5, maxLife: 0.5, size: 2, color: '#dff6ff',
+            });
+        }
+    }
+}
+
+// Split Tag — a wall across the field, with one way through.
+function dropWall(first) {
+    const a = state.arena;
+    const vertical = Math.random() < 0.5;
+    const pos = vertical
+        ? a.x + a.w * (0.25 + Math.random() * 0.5)
+        : a.y + a.h * (0.25 + Math.random() * 0.5);
+    const gap = vertical
+        ? a.y + a.h * (0.15 + Math.random() * 0.7)
+        : a.x + a.w * (0.15 + Math.random() * 0.7);
+    state.wall = { vertical, pos, gap };
+    state.wallT = WALL_EVERY;
+    if (!first) { announce('THE WALL MOVES', 1.4); buzzerSound(); }
+}
+
+function updateWall(dt) {
+    if (state.kind !== 'split' || !state.wall) return;
+    state.wallT -= dt;
+    if (state.wallT <= 0) dropWall(false);
+    const w = state.wall;
+    for (const p of state.players) {
+        if (!p.alive) continue;
+        if (w.vertical) {
+            if (Math.abs(p.y - w.gap) < WALL_GAP / 2) continue;      // through the doorway
+            const d = p.x - w.pos;
+            if (Math.abs(d) < WALL_THICK / 2 + PLAYER_R) {
+                p.x = w.pos + Math.sign(d || 1) * (WALL_THICK / 2 + PLAYER_R);
+            }
+        } else {
+            if (Math.abs(p.x - w.gap) < WALL_GAP / 2) continue;
+            const d = p.y - w.pos;
+            if (Math.abs(d) < WALL_THICK / 2 + PLAYER_R) {
+                p.y = w.pos + Math.sign(d || 1) * (WALL_THICK / 2 + PLAYER_R);
+            }
+        }
+    }
 }
 
 // Jail Tag — marched off to the pen, and stuck there until somebody comes.
@@ -1659,6 +2025,19 @@ function applyPowerup(p, pu) {
     } else if (pu.kind === 'shield') {
         p.shieldActive = true;
     } else if (pu.kind === 'cleanse') {
+        // Whoever started the round as It carries it. No powerup gets them
+        // out of that, in any kind of tag — they just get their tank back.
+        if (p.startedIt && p.isIt) {
+            p.tank = TANK_MAX;
+            state.particles.push({
+                x: p.x, y: p.y - 34, vx: 0, vy: -30, life: 1.4, maxLife: 1.4,
+                size: 0, color: '#ff8a65', isText: true, text: "IT WON'T WASH OFF",
+            });
+            announce("THE ORIGINAL TAGGER CAN'T BE CLEANSED", 1.6);
+            tone(200, 0.18, 'square', 0.05, -70);
+            powerupSound();
+            return;
+        }
         if (state.kind === 'freeze') {
             // Frees one frozen player at random, wherever they are on the map.
             const frozen = state.players.filter(q => q.iced && q !== p);
@@ -1906,6 +2285,61 @@ function checkWinCondition() {
         return;
     }
 
+    if (state.kind === 'statue' || state.kind === 'split') {
+        const clean = state.players.filter(p => !p.isIt);
+        if (clean.length <= 1) { endGame(clean[0] ? clean[0].idx : -1); return; }
+        if (state.timeLeft <= 0) endGame(clean[0].idx);
+        return;
+    }
+
+    if (state.kind === 'ghost') {
+        const solid = state.players.filter(p => !p.isIt && !p.ghost);
+        if (solid.length === 0) {
+            const it = state.players.find(p => p.isIt);
+            endGame(it ? it.idx : -1);
+            return;
+        }
+        if (state.timeLeft <= 0) endGame(solid[0].idx);
+        return;
+    }
+
+    if (state.kind === 'sardines') {
+        const looking = state.players.filter(p => !p.hidden2);
+        if (looking.length <= 1) {
+            // first one to find them takes it
+            let best = null;
+            for (const p of state.players) {
+                if (!p.hidden2 || p.isIt) continue;
+                if (!best || p.foundAt < best.foundAt) best = p;
+            }
+            endGame(best ? best.idx : (state.players.find(p => p.isIt) || {}).idx);
+            return;
+        }
+        if (state.timeLeft <= 0) {
+            const it = state.players.find(p => p.isIt);
+            endGame(it ? it.idx : -1);          // never found — the hider wins
+        }
+        return;
+    }
+
+    if (state.kind === 'coins') {
+        if (state.timeLeft <= 0) {
+            let best = null;
+            for (const p of state.players) if (!best || p.coins > best.coins) best = p;
+            endGame(best ? best.idx : -1);
+        }
+        return;
+    }
+
+    if (state.kind === 'ball') {
+        if (state.timeLeft <= 0) {
+            let best = null;
+            for (const p of state.players) if (!best || p.timeAsIt < best.timeAsIt) best = p;
+            endGame(best ? best.idx : -1);
+        }
+        return;
+    }
+
     if (state.kind === 'rabbit') {
         // Only the rabbit scores. Longest run wins it at the bell.
         if (state.timeLeft <= 0) {
@@ -2052,6 +2486,79 @@ function aiCommand(p, dt) {
             p.wantBoost = false;
             return out;
         }
+    }
+
+    // Sardines: searchers work the cover; the hider sits tight.
+    if (state.kind === 'sardines') {
+        if (p.hidden2) return out;
+        const spots = state.bushes.concat(state.rocks);
+        if (!p.ai.hunt || p.ai.huntT <= 0) {
+            p.ai.hunt = spots.length ? spots[Math.floor(Math.random() * spots.length)]
+                                     : { x: state.arena.x + state.arena.w / 2, y: state.arena.y + state.arena.h / 2 };
+            p.ai.huntT = 4 + Math.random() * 3;
+        }
+        p.ai.huntT -= dt;
+        const dx = p.ai.hunt.x - p.x, dy = p.ai.hunt.y - p.y, m = Math.hypot(dx, dy) || 1;
+        if (m < 60) p.ai.huntT = 0;
+        out.ix = dx / m; out.iy = dy / m;
+        return out;
+    }
+
+    // Ball Tag: It lines the throw up rather than running you down.
+    if (state.kind === 'ball' && p.isIt && state.ball) {
+        const b = state.ball;
+        if (b.held !== p.idx) {
+            // go and get it back
+            const dx = b.x - p.x, dy = b.y - p.y, m = Math.hypot(dx, dy) || 1;
+            out.ix = dx / m; out.iy = dy / m;
+            return out;
+        }
+        if (nearestClean) {
+            const d = nearestCleanD;
+            const dx = nearestClean.x - p.x, dy = nearestClean.y - p.y, m = Math.hypot(dx, dy) || 1;
+            out.ix = dx / m; out.iy = dy / m;
+            // Close enough to reach out? Then don't waste the ball — a touch
+            // tags while you're holding it, and a point-blank throw just
+            // hands the ball to whoever you were aiming at.
+            if (d < TAG_RANGE * 2.2) return out;
+            // Too far and the throw falls short, so close the gap first.
+            if (d > BALL_RANGE * 0.85) return out;
+            // Lead the target — a ball thrown at where somebody is standing
+            // arrives where they were.
+            const flight = d / BALL_SPEED;
+            const ax = nearestClean.x + (nearestClean.vx || 0) * flight * cfg.predict * 1.4 - p.x;
+            const ay = nearestClean.y + (nearestClean.vy || 0) * flight * cfg.predict * 1.4 - p.y;
+            const am = Math.hypot(ax, ay) || 1;
+            p.facingX = ax / am; p.facingY = ay / am;
+            throwBall(p);
+            return out;
+        }
+    }
+
+    // Coin Tag: if you're not It, the coins are the whole game.
+    if (state.kind === 'coins' && !p.isIt) {
+        let best = null, bd = Infinity;
+        for (const c of state.coinList) {
+            const d = Math.hypot(c.x - p.x, c.y - p.y);
+            const danger = nearestIt ? Math.hypot(c.x - nearestIt.x, c.y - nearestIt.y) : 999;
+            if (danger < 150) continue;
+            if (d < bd) { bd = d; best = c; }
+        }
+        if (best && (!nearestIt || nearestItD > cfg.panicDist * 0.8)) {
+            const dx = best.x - p.x, dy = best.y - p.y, m = Math.hypot(dx, dy) || 1;
+            out.ix = dx / m; out.iy = dy / m;
+            return out;
+        }
+    }
+
+    // Ghost Tag: a ghost's only job is to get in the tagger's way.
+    if (state.kind === 'ghost' && p.ghost) {
+        const it = state.players.find(q => q.isIt);
+        if (it) {
+            const dx = it.x - p.x, dy = it.y - p.y, m = Math.hypot(dx, dy) || 1;
+            out.ix = dx / m; out.iy = dy / m;
+        }
+        return out;
     }
 
     // Jail Tag: free runners make for the key button and hold it; the tagger
@@ -2298,6 +2805,65 @@ function drawArena() {
     for (let y = a.y; y <= a.y + a.h + 1; y += postEvery) {
         ctx.fillRect(a.x - 6, y - 3, 12, 6);
         ctx.fillRect(a.x + a.w - 6, y - 3, 12, 6);
+    }
+}
+
+// Split Tag's wall, with its doorway.
+function drawWall() {
+    if (state.kind !== 'split' || !state.wall) return;
+    const a = state.arena, w = state.wall;
+    const warn = state.wallT < 3 && Math.floor(state.time * 6) % 2 === 0;
+    ctx.fillStyle = warn ? '#ffd54f' : '#8a7a5c';
+    ctx.strokeStyle = '#4a3f2c';
+    ctx.lineWidth = 3;
+    const seg = (x, y, ww, hh) => { ctx.fillRect(x, y, ww, hh); ctx.strokeRect(x, y, ww, hh); };
+    if (w.vertical) {
+        const top = a.y, bot = a.y + a.h;
+        seg(w.pos - WALL_THICK / 2, top, WALL_THICK, (w.gap - WALL_GAP / 2) - top);
+        seg(w.pos - WALL_THICK / 2, w.gap + WALL_GAP / 2, WALL_THICK, bot - (w.gap + WALL_GAP / 2));
+        ctx.fillStyle = 'rgba(124,255,163,0.75)';
+        ctx.font = 'bold 13px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('GAP', w.pos, w.gap + 5);
+    } else {
+        const left = a.x, right = a.x + a.w;
+        seg(left, w.pos - WALL_THICK / 2, (w.gap - WALL_GAP / 2) - left, WALL_THICK);
+        seg(w.gap + WALL_GAP / 2, w.pos - WALL_THICK / 2, right - (w.gap + WALL_GAP / 2), WALL_THICK);
+        ctx.fillStyle = 'rgba(124,255,163,0.75)';
+        ctx.font = 'bold 13px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('GAP', w.gap, w.pos + 5);
+    }
+}
+
+// Coins, and the ball.
+function drawCoinsAndBall() {
+    for (const c of state.coinList) {
+        const b = Math.sin(state.time * 3 + c.bob) * 3;
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath(); ctx.ellipse(c.x, c.y + 9, 9, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+        const g = ctx.createRadialGradient(c.x - 3, c.y - 3 + b, 1, c.x, c.y + b, 11);
+        g.addColorStop(0, '#fff6c4'); g.addColorStop(1, '#e0a318');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(c.x, c.y + b, 8, 10, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#8a6410'; ctx.lineWidth = 1.6; ctx.stroke();
+    }
+    if (state.kind === 'ball' && state.ball) {
+        const b = state.ball;
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath(); ctx.ellipse(b.x, b.y + 10, BALL_R, BALL_R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.save();
+        ctx.translate(b.x, b.y); ctx.rotate(b.spin);
+        const g = ctx.createRadialGradient(-3, -3, 1, 0, 0, BALL_R);
+        g.addColorStop(0, '#fff'); g.addColorStop(1, '#e34b3a');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, 0, BALL_R, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#7d2418'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-BALL_R, 0); ctx.lineTo(BALL_R, 0); ctx.stroke();
+        ctx.restore();
+        if (b.held === null && !b.vx && !b.vy) {
+            ctx.fillStyle = 'rgba(255,213,79,0.85)';
+            ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+            ctx.fillText('BALL', b.x, b.y - 18);
+        }
     }
 }
 
@@ -2703,6 +3269,7 @@ function drawPowerups() {
 
 function drawPlayer(p) {
     const x = p.x, y = p.y;
+    if (p.ghost) ctx.globalAlpha = 0.5;
 
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
@@ -2935,6 +3502,22 @@ function drawPlayerBody(x, y, p, eliminated) {
     ctx.textAlign = 'center';
     ctx.fillText('P' + (p.idx + 1), x, y - PLAYER_R * 2.05);
 
+    if (state.kind === 'statue' && p.isIt && p.watched) {
+        ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = 3; ctx.globalAlpha = 0.85;
+        ctx.beginPath(); ctx.arc(x, y, PLAYER_R * 1.35, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#e8e8e8'; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('FROZEN', x, y - PLAYER_R * 2.4);
+    }
+    if (p.ghost) {
+        ctx.fillStyle = '#dff6ff'; ctx.font = '17px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('👻', x, y - PLAYER_R * 2.1);
+    }
+    if (state.kind === 'coins' && p.coins > 0) {
+        ctx.fillStyle = '#ffd54f'; ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('🪙' + p.coins, x, y - PLAYER_R * 2.4);
+    }
+
     // "It" crown / fire — or the rabbit, in the kind where being it is the prize
     if (state.kind === 'rabbit' && !p.isIt && !eliminated) {
         const hop = p.moving ? Math.abs(Math.sin(p.animTime * 12)) * 3 : 0;
@@ -3019,6 +3602,44 @@ function drawHUD() {
         ctx.font = 'bold 18px Segoe UI';
         ctx.fillStyle = '#cce0c1';
         ctx.fillText('it takes two of them at once', W / 2, 96);
+    } else if (state.kind === 'statue') {
+        const clean = state.players.filter(p => !p.isIt).length;
+        const frozen = state.players.filter(p => p.isIt && p.watched).length;
+        ctx.fillStyle = clean <= 1 ? '#ff5252' : '#ffe082';
+        ctx.fillText(`${clean} still clean · ${frozen} frozen by your stare`, W / 2, 50);
+    } else if (state.kind === 'ball') {
+        const it = state.players.find(p => p.isIt);
+        const holder = state.ball && state.ball.held !== null ? state.players[state.ball.held] : null;
+        ctx.fillStyle = (it && it.idx === 0) ? '#ff5252' : '#ffe082';
+        ctx.fillText(holder ? `${holder.isBot ? 'BOT ' + (holder.idx + 1) : 'P' + (holder.idx + 1)} has the ball`
+                            : 'THE BALL IS LOOSE', W / 2, 50);
+        ctx.font = 'bold 18px Segoe UI'; ctx.fillStyle = '#cce0c1';
+        ctx.fillText(`your time as It: ${state.players[0].timeAsIt.toFixed(1)}s` +
+                     (state.players[0].isIt ? '  ·  E to throw' : ''), W / 2, 96);
+    } else if (state.kind === 'sardines') {
+        const looking = state.players.filter(p => !p.hidden2).length;
+        const pile = state.players.length - looking;
+        ctx.fillStyle = looking <= 1 ? '#ff5252' : '#ffe082';
+        ctx.fillText(`${looking} still looking · ${pile} in the pile`, W / 2, 50);
+    } else if (state.kind === 'coins') {
+        const me5 = state.players[0];
+        let lead = null;
+        for (const p of state.players) if (!lead || p.coins > lead.coins) lead = p;
+        ctx.fillStyle = lead === me5 ? '#7cffa3' : '#ffe082';
+        ctx.fillText(`🪙 ${lead.isBot ? 'BOT ' + (lead.idx + 1) : 'P' + (lead.idx + 1)} leads on ${lead.coins}`, W / 2, 50);
+        ctx.font = 'bold 18px Segoe UI'; ctx.fillStyle = me5.isIt ? '#ff8a65' : '#cce0c1';
+        ctx.fillText(me5.isIt ? "you're It — you can't pick any up" : `you have ${me5.coins}`, W / 2, 96);
+    } else if (state.kind === 'ghost') {
+        const solid = state.players.filter(p => !p.isIt && !p.ghost).length;
+        const ghosts = state.players.filter(p => p.ghost).length;
+        ctx.fillStyle = solid <= 1 ? '#ff5252' : '#ffe082';
+        ctx.fillText(`${solid} still solid · ${ghosts} haunting`, W / 2, 50);
+    } else if (state.kind === 'split') {
+        const clean = state.players.filter(p => !p.isIt).length;
+        ctx.fillStyle = clean <= 1 ? '#ff5252' : '#ffe082';
+        ctx.fillText(`${clean} still clean`, W / 2, 50);
+        ctx.font = 'bold 18px Segoe UI'; ctx.fillStyle = state.wallT < 4 ? '#ff8a65' : '#cce0c1';
+        ctx.fillText(`wall moves in ${Math.ceil(state.wallT)}s`, W / 2, 96);
     } else if (state.kind === 'rabbit') {
         const r = state.players.find(p => !p.isIt);
         const me2 = state.players[0];
@@ -3303,6 +3924,12 @@ function loop(ts) {
             updateBlob(dt);
             updateFuse(dt);
             processJailbreak(dt);
+            updateStatues(dt);
+            updateBall(dt);
+            updateSardines(dt);
+            updateCoins(dt);
+            updateGhosts(dt);
+            updateWall(dt);
             updatePowerups(dt);
             checkWinCondition();
             updateCamera(dt);
@@ -3324,6 +3951,8 @@ function loop(ts) {
         ctx.translate(W / 2 - state.camX, H / 2 - state.camY);
         drawArena();
         drawGridLines();
+        drawWall();
+        drawCoinsAndBall();
         drawJail();
         drawKeyButton();
         drawDecorations();
