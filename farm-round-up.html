@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cargo Run - Simon's Game Gallery</title>
+<title>Farm Round-Up - Simon's Game Gallery</title>
 <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
@@ -71,29 +71,40 @@
 
 <div class="overlay" id="titleOv">
   <div class="panel">
-    <h1>📦 CARGO RUN</h1>
-    <h2>Everyone wants the same crates. Only one of you gets paid.</h2>
+    <h1>🚜 FARM ROUND-UP</h1>
+    <h2>The animals are out. So is every other farmhand.</h2>
     <div class="rules">
-      <b>Crates</b> drop all over the yard and they are <b>not worth the same</b> — a plain crate is
-      1, a blue chest 3, a purple safe 5, and gold bullion is worth <b>10</b>. The number is written
-      on the lid.<br><br>
-      Carry up to <b>four at once</b> — each one slows you down — and load them onto one of the
-      <b>three platforms</b> in the middle.<br><br>
-      Here is the catch: <b>loading a platform does not pay you</b>. A platform only pays out when it
-      reaches its <b>quota</b> — 12, 20 and 30 — and until then everything sitting on it can be
-      <b>stolen straight back off it</b> by anybody who drives over it. Once the quota is met the
-      platform <b>locks</b>, everyone who contributed is paid what they put in, and it is safe for good.<br><br>
-      <b>Ram</b> with <kbd>Space</kbd> and they drop their whole load on the floor. Miss and you are
-      on a cooldown, wide open. <b>Boost pads</b> fling you across the yard.<br><br>
-      Lock all three platforms and the shift ends early.
+      The livestock is loose in the field, and they are <b>not worth the same</b> — a 🐔 chicken is
+      <b>1</b>, a 🐑 sheep <b>3</b>, a 🐷 pig <b>5</b>, and a 🐄 cow is worth <b>10</b>. The bigger
+      the animal, the slower it runs.<br><br>
+      Walk up to one and it <b>bolts</b> — get close enough and it falls in behind you. You can drive
+      <b>four at once</b>, and the more you have the slower you go.<br><br>
+      Everyone has <b>their own part of the farm</b> with <b>three stalls</b> in it — yours are 12,
+      20 and 30. You can only load your own, and <b>on your own land nobody can barge you</b>. Walk
+      onto somebody else's land and you are fair game, but so are their stalls.<br><br>
+      Here is the catch: <b>getting animals into a stall does not pay you</b>. A stall pays only when
+      it is <b>full</b>, and until then the gate is open and <b>anyone who walks in can drive your
+      animals straight back out</b>. Fill it and the gate <b>shuts</b> for good.<br><br>
+      <b>Barge</b> a rival with <kbd>Space</kbd> and <b>one animal breaks loose</b> — the last one
+      they picked up — not the whole herd. <b>Lasso</b> with
+      <kbd>E</kbd> to reel in an animal from across the field instead of chasing it. Drop the
+      <b>feed bucket</b> with <kbd>Q</kbd> and every animal nearby walks to it — including the ones
+      somebody else was driving.<br><br>
+      The <b>sheepdog</b> 🐕 turns up now and then: grab it and you can drive a fifth animal for
+      twenty seconds. The <b>fox</b> 🦊 turns up too, and takes any animal nobody is standing near —
+      those are gone for good.<br><br>
+      The <b>market</b> moves every 75 seconds: one animal doubles in value and another halves, so
+      the cow is not always the right target. With <b>orders</b> on there is a standing request —
+      fill it and those animals pay double.<br><br>
+      Fill all your stalls and you are done for the day.
     </div>
     <div class="keys">
-      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — drive</div>
-      <div><kbd>Space</kbd> — ram</div>
-      <div>Drive onto a platform to load or raid</div>
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — run</div>
+      <div><kbd>Space</kbd> — barge · <kbd>E</kbd> — lasso</div>
+      <div><kbd>Q</kbd> — drop the feed bucket</div>
       <div><kbd>Esc</kbd> — pause</div>
     </div>
-    <div class="label">RIVAL HAULERS</div>
+    <div class="label">RIVAL FARMHANDS</div>
     <div class="row" id="bots">
       <button class="btn small" data-n="1">1</button>
       <button class="btn small sel" data-n="2">2</button>
@@ -101,6 +112,11 @@
     </div>
     <div class="label">YOUR COLOUR</div>
     <div class="row" id="teamPick"></div>
+    <div class="label">ORDERS</div>
+    <div class="row" id="orders">
+      <button class="btn small sel" data-o="on">ON</button>
+      <button class="btn small" data-o="off">OFF</button>
+    </div>
     <div class="label">ROUND LENGTH</div>
     <div class="row" id="dur">
       <button class="btn small" data-s="60">1 MIN</button>
@@ -114,18 +130,18 @@
       <button class="btn small" data-k="hard">HARD</button>
     </div>
     <div class="row" style="margin-top:14px;">
-      <button class="btn" id="start">START HAULING</button>
+      <button class="btn" id="start">ROUND THEM UP</button>
     </div>
   </div>
 </div>
 
 <div class="overlay hidden" id="overOv">
   <div class="panel">
-    <h1 id="overTitle">END OF SHIFT</h1>
+    <h1 id="overTitle">END OF THE DAY</h1>
     <div class="final" id="finalText"></div>
     <div id="standings" style="margin:10px 0;"></div>
     <div class="row" style="margin-top:12px;">
-      <button class="btn" id="again">RUN AGAIN</button>
+      <button class="btn" id="again">ANOTHER DAY</button>
       <button class="btn small" id="menu">MENU</button>
     </div>
   </div>
@@ -136,6 +152,8 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 let W = 0, H = 0;
+let WORLD_W = 0, WORLD_H = 0;    // the whole farm — one screen-sized part per farmhand
+const cam = { x: 0, y: 0 };
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
@@ -146,23 +164,48 @@ const R = 18;                    // hauler radius
 const SPEED = 250;
 const CARRY_MAX = 4;
 const CARRY_SLOW = 0.11;         // per crate on your back
-const CRATE_R = 15;
+const CRATE_R = 21;
 const CRATE_MAX = 16;
 const CRATE_EVERY = 1.3;
 
 // Crates are worth different amounts, and the good ones are rarer.
 const CRATE_KINDS = [
-    { v:1, chance:0.46, name:'crate',  body:'#d99a4e', edge:'#6b4415', top:'#f0b96f' },
-    { v:3, chance:0.30, name:'chest',  body:'#7fc7e8', edge:'#255d78', top:'#b7e6fb' },
-    { v:5, chance:0.17, name:'safe',   body:'#b9a2ff', edge:'#4a3789', top:'#dccfff' },
-    { v:10, chance:0.07, name:'bullion', body:'#ffd24a', edge:'#8a6407', top:'#fff0b0' },
+    { v:1,  chance:0.44, name:'chicken', emoji:'🐔', body:'#f0e4cf', edge:'#8a6a3a', top:'#fffaf0', speed:64 },
+    { v:3,  chance:0.30, name:'sheep',   emoji:'🐑', body:'#e8ecef', edge:'#6d7680', top:'#ffffff', speed:52 },
+    { v:5,  chance:0.18, name:'pig',     emoji:'🐷', body:'#f6bccb', edge:'#96566a', top:'#ffd8e2', speed:46 },
+    { v:10, chance:0.08, name:'cow',     emoji:'🐄', body:'#f2efe8', edge:'#4a423a', top:'#ffffff', speed:38 },
 ];
+const ANIMAL_FLEE = 132;         // how close before they bolt
+const ANIMAL_CALM = 2.0;         // seconds of not being chased before they settle
+
+// Sheepdog — drive one extra animal while you have it.
+const DOG_TIME = 20;
+const DOG_RESPAWN = 24;
+
+// Feed bucket — animals walk towards it instead of away from you.
+const BUCKET_TIME = 9;
+const BUCKET_PULL = 300;
+const BUCKET_COOL = 12;
+
+// Lasso — reach out and take one rather than running it down.
+const LASSO_RANGE = 190;
+const LASSO_COOL = 3.2;
+const LASSO_PULL = 0.5;          // seconds it takes to reel them in
+
+// The fox takes anything left lying about.
+const FOX_SPEED = 118;
+const FOX_FROM = 25;             // seconds before it turns up
+const FOX_FEED = 9;              // it slinks off to eat before trying again
+const FOX_ALONE = 260;           // an animal is only fair game if nobody is this close
+
+// The market moves every 75 seconds.
+const MARKET_EVERY = 75;
 
 // Platforms hold what you load onto them, but nothing is banked until a
 // platform reaches its quota — before that it can all be stolen back.
-const PLAT_R = 74;
-const PLAT_QUOTA = [12, 20, 30];   // by platform index — later ones pay more
-const PLAT_COUNT = 3;
+const PLAT_R = 66;
+const PLAT_QUOTA = [12, 20, 30];   // your three stalls, later ones worth more
+const PLAT_COUNT = 3;              // three stalls each, in your own part of the farm
 
 const DEPOT_R = 62;
 
@@ -193,6 +236,7 @@ const SKILL = {
 const NAMES = ['Vex','Rook','Juno','Pike','Cass','Nim','Bo','Sol','Wren','Tao','Fen','Ivo'];
 
 let nBots = 2, myTeam = 0, matchSecs = 120, skill = 'normal';
+let ordersOn = true;
 
 /* ==================================================================
    SOUND
@@ -226,6 +270,8 @@ addEventListener('keydown', e => {
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
     if (e.code === 'Escape' && state && !state.over) state.paused = !state.paused;
     if (e.code === 'Space' && state && !state.paused) ram(state.players[0]);
+    if (e.code === 'KeyE' && state && !state.paused) throwLasso(state.players[0]);
+    if (e.code === 'KeyQ' && state && !state.paused) dropBucket(state.players[0]);
     keys[e.code] = true;
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -239,6 +285,7 @@ function makeHauler(idx, isBot, name) {
         carry: [], banked: 0,
         rammed: 0, dropped: 0, raided: 0,
         ramT: 0, coolT: 0, stun: 0, raidT: 0, onPlat: null,
+        dog: 0, lassoT: 0, bucketT: 0, lasso: null, orders: 0,
         step: 0, moving: false,
         padT: 0,
     };
@@ -255,60 +302,74 @@ function newGame() {
     for (let i = 0; i < nBots; i++) players.push(makeHauler(i + 1, true, names[i % names.length]));
 
     const total = players.length;
+
+    // The farm is one screen-sized part per farmhand, side by side. You are
+    // safe from being barged inside your own part — but anyone can walk in.
+    const terrW = W;
+    WORLD_W = terrW * total;
+    WORLD_H = H;
+
     const depots = [];
-    const rad = Math.min(W, H) * 0.36;
     for (let i = 0; i < total; i++) {
-        const a = (i / total) * Math.PI * 2 - Math.PI / 2;
-        depots.push({ x: W / 2 + Math.cos(a) * rad, y: H / 2 + Math.sin(a) * rad, team: i });
+        depots.push({ x: terrW * (i + 0.5), y: H * 0.16, team: i });
     }
 
-    // Platforms sit around the middle, shared by everyone.
+    // Everyone gets three stalls, standing in their own part of the farm.
     const plats = [];
-    for (let i = 0; i < PLAT_COUNT; i++) {
-        const a = (i / PLAT_COUNT) * Math.PI * 2 - Math.PI / 2 + 0.4;
-        const rr = Math.min(W, H) * 0.17;
-        plats.push({
-            i,
-            x: W / 2 + Math.cos(a) * rr,
-            y: H / 2 + Math.sin(a) * rr,
-            quota: PLAT_QUOTA[i],
-            held: [],            // { team, value } stacked on it, still stealable
-            locked: false,
-            flash: 0,
-        });
+    for (let t = 0; t < total; t++) {
+        for (let i = 0; i < PLAT_COUNT; i++) {
+            plats.push({
+                i, owner: t,
+                x: terrW * t + terrW * (0.24 + i * 0.26),
+                y: H * 0.62,
+                quota: PLAT_QUOTA[i],
+                held: [], locked: false, flash: 0,
+            });
+        }
     }
 
     state = {
-        players, depots, plats,
+        players, depots, plats, terrW, total,
         crates: [], crateT: 0.5,
         pads: [],
+        dog: null, dogT: 10,
+        buckets: [],
+        fox: null, foxT: FOX_FROM,
+        market: {},              // kind name -> multiplier
+        marketT: MARKET_EVERY,
+        order: null,
         time: matchSecs, elapsed: 0,
         pops: [], shake: 0,
         paused: false, over: false,
         message: '', messageT: 0,
     };
+    CRATE_KINDS.forEach(k => { state.market[k.name] = 1; });
+    if (ordersOn) rollOrder();
 
-    // boost pads, kept off the depots
-    for (let i = 0; i < 4; i++) {
-        for (let t = 0; t < 50; t++) {
-            const x = 120 + Math.random() * (W - 240);
-            const y = 120 + Math.random() * (H - 240);
-            if (depots.some(d => Math.hypot(d.x - x, d.y - y) < DEPOT_R + 120)) continue;
-            if (state.pads.some(q => Math.hypot(q.x - x, q.y - y) < 220)) continue;
-            state.pads.push({ x, y, a: Math.random() * Math.PI * 2, spin: 0 });
-            break;
+    // a couple of hay bales in each part of the farm
+    for (let t = 0; t < total; t++) {
+        for (let i = 0; i < 2; i++) {
+            for (let g = 0; g < 50; g++) {
+                const x = terrW * t + 110 + Math.random() * (terrW - 220);
+                const y = 120 + Math.random() * (H - 240);
+                if (plats.some(q => Math.hypot(q.x - x, q.y - y) < PLAT_R + 90)) continue;
+                if (state.pads.some(q => Math.hypot(q.x - x, q.y - y) < 200)) continue;
+                state.pads.push({ x, y, a: Math.random() * Math.PI * 2, spin: 0 });
+                break;
+            }
         }
     }
 
     players.forEach((p, i) => {
         const d = depots[i];
         p.team = i;
-        p.x = d.x; p.y = d.y;
-        p.face = Math.atan2(H / 2 - p.y, W / 2 - p.x);
+        p.x = d.x; p.y = d.y + 60;
+        p.face = Math.PI / 2;
     });
+    cam.x = Math.max(0, Math.min(WORLD_W - W, players[0].x - W / 2));
 
     for (let i = 0; i < 6; i++) spawnCrate();
-    say('HAUL THEM HOME', 1.6);
+    say('ROUND THEM UP', 1.6);
 }
 
 function say(t, s) { state.message = t; state.messageT = s || 1.5; }
@@ -319,22 +380,289 @@ function rollKind() {
     return CRATE_KINDS[0];
 }
 function makeCrate(x, y, kind) {
-    return { x, y, kind: kind || rollKind(), spin: Math.random() * 3, bob: Math.random() * 6 };
+    return {
+        x, y, kind: kind || rollKind(),
+        spin: 0, bob: Math.random() * 6,
+        vx: 0, vy: 0, face: Math.random() < 0.5 ? 1 : -1,
+        wanderT: Math.random() * 2, wx: 0, wy: 0, spook: 0, step: Math.random() * 6,
+    };
+}
+
+// The lasso: reach out and reel one in rather than running it down.
+function throwLasso(p) {
+    if (!p || state.over || p.lassoT > 0 || p.stun > 0) return;
+    if (p.carry.length >= carryCap(p)) return;
+    let best = null, bs = -Infinity;
+    for (const c of state.crates) {
+        const dx = c.x - p.x, dy = c.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d > LASSO_RANGE) continue;
+        let da = Math.atan2(dy, dx) - p.face;
+        while (da > Math.PI) da -= Math.PI * 2;
+        while (da < -Math.PI) da += Math.PI * 2;
+        if (Math.abs(da) > 0.9) continue;
+        const sc = worthOf(c.kind) * 12 - d;
+        if (sc > bs) { bs = sc; best = c; }
+    }
+    p.lassoT = LASSO_COOL;
+    if (!best) {
+        state.pops.push({ x: p.x, y: p.y - 30, text: 'missed', color: '#cfe0d0', life: 0.8 });
+        whoosh();
+        return;
+    }
+    p.lasso = { c: best, t: LASSO_PULL };
+    whoosh();
+}
+
+function updateLassos(dt) {
+    for (const p of state.players) {
+        if (!p.lasso) continue;
+        const c = p.lasso.c;
+        const still = state.crates.indexOf(c);
+        if (still < 0) { p.lasso = null; continue; }
+        p.lasso.t -= dt;
+        // reel them in
+        c.x += (p.x - c.x) * Math.min(1, 7 * dt);
+        c.y += (p.y - c.y) * Math.min(1, 7 * dt);
+        c.spook = ANIMAL_CALM;
+        if (p.lasso.t <= 0 || Math.hypot(c.x - p.x, c.y - p.y) < R + CRATE_R) {
+            if (p.carry.length < carryCap(p)) {
+                state.crates.splice(still, 1);
+                p.carry.push(c.kind);
+                if (!p.isBot) grab();
+            }
+            p.lasso = null;
+        }
+    }
+}
+
+// The sheepdog, and the feed bucket.
+function updateFarmKit(dt) {
+    // dog
+    state.dogT -= dt;
+    if (!state.dog && state.dogT <= 0) {
+        for (let t = 0; t < 40; t++) {
+            const x = 90 + Math.random() * (WORLD_W - 180), y = 90 + Math.random() * (H - 180);
+            if (state.plats.some(q => Math.hypot(q.x - x, q.y - y) < PLAT_R + 40)) continue;
+            state.dog = { x, y, bob: 0 };
+            say('THE SHEEPDOG IS OUT 🐕', 1.6);
+            break;
+        }
+    }
+    for (const p of state.players) {
+        p.dog = Math.max(0, p.dog - dt);
+        p.lassoT = Math.max(0, p.lassoT - dt);
+        p.bucketT = Math.max(0, p.bucketT - dt);
+        if (state.dog && Math.hypot(p.x - state.dog.x, p.y - state.dog.y) < R + 20) {
+            state.dog = null;
+            state.dogT = DOG_RESPAWN;
+            p.dog = DOG_TIME;
+            state.pops.push({ x: p.x, y: p.y - 40, text: 'SHEEPDOG!', color: '#ffd24a', life: 1.5 });
+            if (!p.isBot) { grab(); tone(980, 0.1, 'sine', 0.05); }
+        }
+    }
+
+    // buckets
+    for (let i = state.buckets.length - 1; i >= 0; i--) {
+        const b = state.buckets[i];
+        b.t -= dt;
+        if (b.t <= 0) state.buckets.splice(i, 1);
+    }
+}
+
+function dropBucket(p) {
+    if (!p || state.over || p.bucketT > 0 || p.stun > 0) return;
+    p.bucketT = BUCKET_COOL;
+    state.buckets.push({ x: p.x, y: p.y, t: BUCKET_TIME, team: p.team });
+    state.pops.push({ x: p.x, y: p.y - 30, text: 'FEED DOWN', color: '#ffd24a', life: 1.1 });
+    tone(560, 0.1, 'triangle', 0.05);
+}
+
+// The fox. It takes whatever nobody is standing near, and it keeps it.
+function updateFox(dt) {
+    state.foxT -= dt;
+    if (!state.fox && state.foxT <= 0) {
+        const edge = Math.floor(Math.random() * 4);
+        state.fox = {
+            x: edge === 0 ? -30 : edge === 1 ? WORLD_W + 30 : Math.random() * WORLD_W,
+            y: edge === 2 ? -30 : edge === 3 ? H + 30 : Math.random() * H,
+            face: 1, took: 0, wob: 0,
+        };
+        say('A FOX IS IN THE FIELD 🦊', 2.2);
+        crack();
+    }
+    const f = state.fox;
+    if (!f) return;
+    f.wob += dt * 8;
+    f.full = Math.max(0, (f.full || 0) - dt);
+    if (f.full > 0) {                                  // off eating; harmless for now
+        f.x += Math.cos(state.elapsed * 0.5) * FOX_SPEED * 0.5 * dt;
+        f.y += Math.sin(state.elapsed * 0.4) * FOX_SPEED * 0.5 * dt;
+        f.x = Math.max(-40, Math.min(WORLD_W + 40, f.x));
+        f.y = Math.max(-40, Math.min(H + 40, f.y));
+        return;
+    }
+
+    // the loneliest animal in the field
+    let prey = null, bs = -Infinity;
+    for (const c of state.crates) {
+        let near = Infinity;
+        for (const p of state.players) near = Math.min(near, Math.hypot(p.x - c.x, p.y - c.y));
+        if (near < FOX_ALONE) continue;                 // somebody's watching that one
+        const sc = near - Math.hypot(c.x - f.x, c.y - f.y) * 0.6;
+        if (sc > bs) { bs = sc; prey = c; }
+    }
+    if (!prey) {
+        // nothing going spare — patrol
+        f.x += Math.cos(state.elapsed * 0.6) * FOX_SPEED * dt;
+        f.y += Math.sin(state.elapsed * 0.45) * FOX_SPEED * dt;
+    } else {
+        const dx = prey.x - f.x, dy = prey.y - f.y, m = Math.hypot(dx, dy) || 1;
+        f.x += (dx / m) * FOX_SPEED * dt;
+        f.y += (dy / m) * FOX_SPEED * dt;
+        f.face = dx > 0 ? 1 : -1;
+        if (m < CRATE_R + 16) {
+            state.crates.splice(state.crates.indexOf(prey), 1);
+            f.took++;
+            f.full = FOX_FEED;
+            state.pops.push({
+                x: prey.x, y: prey.y - 26, text: `FOX TOOK THE ${prey.kind.name.toUpperCase()}!`,
+                color: '#ff8a4a', life: 1.6,
+            });
+            crack();
+        }
+    }
+    // a farmhand close enough sees it off for a moment
+    for (const p of state.players) {
+        if (Math.hypot(p.x - f.x, p.y - f.y) > 74) continue;
+        const dx = f.x - p.x, dy = f.y - p.y, m = Math.hypot(dx, dy) || 1;
+        f.x += (dx / m) * 220 * dt;
+        f.y += (dy / m) * 220 * dt;
+    }
+    f.x = Math.max(-40, Math.min(WORLD_W + 40, f.x));
+    f.y = Math.max(-40, Math.min(H + 40, f.y));
+}
+
+// Livestock does not sit still and wait to be picked up.
+function updateAnimals(dt) {
+    for (const c of state.crates) {
+        c.spook = Math.max(0, c.spook - dt);
+
+        // bolt from the nearest farmhand
+        let near = null, nd = Infinity;
+        for (const p of state.players) {
+            const d = Math.hypot(p.x - c.x, p.y - c.y);
+            if (d < nd) { nd = d; near = p; }
+        }
+        // feed beats fear: a bucket pulls them in
+        let bucket = null, bd = Infinity;
+        for (const b of state.buckets) {
+            const d = Math.hypot(b.x - c.x, b.y - c.y);
+            if (d < BUCKET_PULL && d < bd) { bd = d; bucket = b; }
+        }
+
+        let ix = 0, iy = 0, sp = 0;
+        if (bucket && bd > 18) {
+            ix = (bucket.x - c.x) / (bd || 1);
+            iy = (bucket.y - c.y) / (bd || 1);
+            sp = c.kind.speed * 0.9;
+            c.spook = 0;
+        } else if (bucket) {
+            sp = 0;                                    // stood at the bucket, eating
+        } else if (near && nd < ANIMAL_FLEE) {
+            ix = (c.x - near.x) / (nd || 1);
+            iy = (c.y - near.y) / (nd || 1);
+            sp = c.kind.speed * 1.5;
+            c.spook = ANIMAL_CALM;
+        } else if (c.spook > 0) {
+            sp = 0;                                    // stand there panting
+        } else {
+            c.wanderT -= dt;
+            if (c.wanderT <= 0) {
+                c.wanderT = 1.6 + Math.random() * 3;
+                const a = Math.random() * Math.PI * 2;
+                c.wx = Math.cos(a); c.wy = Math.sin(a);
+                if (Math.random() < 0.4) { c.wx = 0; c.wy = 0; }   // often just graze
+            }
+            ix = c.wx; iy = c.wy;
+            sp = c.kind.speed * 0.42;
+        }
+
+        // never wander into a pen — you have to drive them in
+        for (const q of state.plats) {
+            const d = Math.hypot(c.x - q.x, c.y - q.y);
+            if (d < PLAT_R + 30) { ix += (c.x - q.x) / (d || 1) * 1.4; iy += (c.y - q.y) / (d || 1) * 1.4; }
+        }
+
+        const m = Math.hypot(ix, iy);
+        if (m > 0 && sp > 0) {
+            c.x += (ix / m) * sp * dt;
+            c.y += (iy / m) * sp * dt;
+            c.step += dt * 9;
+            if (Math.abs(ix) > 0.05) c.face = ix > 0 ? 1 : -1;
+        }
+        c.x = Math.max(CRATE_R, Math.min(WORLD_W - CRATE_R, c.x));
+        c.y = Math.max(CRATE_R, Math.min(H - CRATE_R, c.y));
+    }
 }
 
 function spawnCrate() {
     if (state.crates.length >= CRATE_MAX) return;
     for (let t = 0; t < 50; t++) {
-        const x = 70 + Math.random() * (W - 140);
+        const x = 70 + Math.random() * (WORLD_W - 140);
         const y = 70 + Math.random() * (H - 140);
-        if (state.depots.some(d => Math.hypot(d.x - x, d.y - y) < DEPOT_R + 40)) continue;
         if (state.plats.some(q => Math.hypot(q.x - x, q.y - y) < PLAT_R + 30)) continue;
         state.crates.push(makeCrate(x, y));
         return;
     }
 }
 
-function carriedValue(p) { return p.carry.reduce((a, k) => a + k.v, 0); }
+// What an animal is worth right now, once the market has had its say.
+function worthOf(kind) { return Math.round(kind.v * (state.market[kind.name] || 1)); }
+function carriedValue(p) { return p.carry.reduce((a, k) => a + worthOf(k), 0); }
+
+// Which part of the farm is this, and are you safe standing there?
+function territoryAt(x) {
+    return Math.max(0, Math.min(state.total - 1, Math.floor(x / state.terrW)));
+}
+function onOwnLand(p) { return territoryAt(p.x) === p.team; }
+
+// How many you can drive at once — the dog is worth one extra pair of hands.
+function carryCap(p) { return CARRY_MAX + (p.dog > 0 ? 1 : 0); }
+
+function rollOrder() {
+    const k = CRATE_KINDS[Math.floor(Math.random() * CRATE_KINDS.length)];
+    const n = k.v >= 10 ? 2 : k.v >= 5 ? 3 : 4;
+    state.order = { kind: k, need: n, filled: 0, bonus: 2 };
+    say(`ORDER: ${n} × ${k.name} ${k.emoji} — PAYS DOUBLE`, 2.4);
+}
+
+function moveMarket() {
+    const up = CRATE_KINDS[Math.floor(Math.random() * CRATE_KINDS.length)];
+    let down = CRATE_KINDS[Math.floor(Math.random() * CRATE_KINDS.length)];
+    for (let g = 0; g < 8 && down === up; g++) down = CRATE_KINDS[Math.floor(Math.random() * CRATE_KINDS.length)];
+    CRATE_KINDS.forEach(k => { state.market[k.name] = 1; });
+    state.market[up.name] = 2;
+    state.market[down.name] = 0.5;
+    say(`MARKET: ${up.emoji} ${up.name.toUpperCase()} DOUBLES, ${down.emoji} ${down.name.toUpperCase()} HALVES`, 2.6);
+    horn();
+}
+
+// A barge shakes one animal loose — the last one you picked up.
+function dropOne(p) {
+    if (!p.carry.length) return;
+    const kind = p.carry.pop();
+    const a = Math.random() * Math.PI * 2, r = 46 + Math.random() * 40;
+    state.crates.push(makeCrate(
+        Math.max(30, Math.min(WORLD_W - 30, p.x + Math.cos(a) * r)),
+        Math.max(30, Math.min(H - 30, p.y + Math.sin(a) * r)),
+        kind));
+    p.dropped++;
+    state.pops.push({
+        x: p.x, y: p.y - 34, life: 1.2,
+        text: `${kind.emoji} GOT LOOSE!`, color: TEAMS[p.team].color,
+    });
+}
 
 function dropLoad(p) {
     if (!p.carry.length) return;
@@ -350,7 +678,7 @@ function dropLoad(p) {
     p.carry = [];
     state.pops.push({
         x: p.x, y: p.y - 30, life: 1.2,
-        text: `DROPPED ${worth}!`,
+        text: `SCATTERED ${worth}!`,
         color: TEAMS[p.team].color,
     });
 }
@@ -358,15 +686,15 @@ function dropLoad(p) {
 // Everything sitting on a platform that hasn't met its quota is up for grabs.
 function raidPlatform(plat, thief) {
     if (plat.locked || !plat.held.length) return false;
-    const room = CARRY_MAX - thief.carry.length;
+    const room = carryCap(thief) - thief.carry.length;
     if (room <= 0) return false;
     const taken = plat.held.splice(-Math.min(room, plat.held.length));
     let worth = 0;
-    for (const h of taken) { thief.carry.push(h.kind); worth += h.kind.v; }
+    for (const h of taken) { thief.carry.push(h.kind); worth += worthOf(h.kind); }
     plat.flash = 0.8;
     state.pops.push({
         x: plat.x, y: plat.y - PLAT_R * 0.5, life: 1.3,
-        text: `RAIDED ${worth}!`, color: TEAMS[thief.team].color,
+        text: `RUSTLED ${worth}!`, color: TEAMS[thief.team].color,
     });
     smash();
     return true;
@@ -383,6 +711,8 @@ function ram(p) {
     let hit = false;
     for (const q of state.players) {
         if (q === p) continue;
+        // nobody can be barged while standing on their own land
+        if (onOwnLand(q)) continue;
         const dx = q.x - p.x, dy = q.y - p.y;
         const d = Math.hypot(dx, dy);
         if (d > RAM_REACH + R) continue;
@@ -398,7 +728,7 @@ function ram(p) {
         p.rammed++;
         state.shake = 15;
         smash();
-        dropLoad(q);
+        dropOne(q);            // just the one off the top, not the whole herd
         hit = true;
     }
     if (!hit) state.pops.push({ x: p.x, y: p.y - 30, text: 'missed', color: '#8ea3b5', life: 0.8 });
@@ -414,6 +744,15 @@ function update(dt) {
 
     state.crateT -= dt;
     if (state.crateT <= 0) { state.crateT = CRATE_EVERY; spawnCrate(); }
+
+    // the market moves on its own clock
+    state.marketT -= dt;
+    if (state.marketT <= 0) { state.marketT = MARKET_EVERY; moveMarket(); }
+
+    updateFarmKit(dt);
+    updateAnimals(dt);
+    updateLassos(dt);
+    updateFox(dt);
 
     for (const p of state.players) {
         p.ramT = Math.max(0, p.ramT - dt);
@@ -448,7 +787,7 @@ function update(dt) {
         if (Math.abs(p.ky) < 6) p.ky = 0;
 
         if (p.x < R) { p.x = R; p.kx = Math.abs(p.kx) * 0.4; }
-        if (p.x > W - R) { p.x = W - R; p.kx = -Math.abs(p.kx) * 0.4; }
+        if (p.x > WORLD_W - R) { p.x = WORLD_W - R; p.kx = -Math.abs(p.kx) * 0.4; }
         if (p.y < R) { p.y = R; p.ky = Math.abs(p.ky) * 0.4; }
         if (p.y > H - R) { p.y = H - R; p.ky = -Math.abs(p.ky) * 0.4; }
 
@@ -465,7 +804,7 @@ function update(dt) {
         }
 
         // pick crates up
-        if (p.carry.length < CARRY_MAX) {
+        if (p.carry.length < carryCap(p)) {
             for (let i = state.crates.length - 1; i >= 0; i--) {
                 const c = state.crates[i];
                 if (Math.hypot(c.x - p.x, c.y - p.y) > R + CRATE_R) continue;
@@ -483,37 +822,57 @@ function update(dt) {
             standingOn = plat;
             if (plat.locked) continue;
 
-            if (p.carry.length) {
-                const worth = carriedValue(p);
+            const mine = plat.owner === p.team;
+            if (p.carry.length && mine) {
+                let worth = carriedValue(p);
+                // an outstanding order pays double on the animals it asked for
+                if (state.order) {
+                    for (const kind of p.carry) {
+                        if (kind !== state.order.kind) continue;
+                        if (state.order.filled >= state.order.need) break;
+                        state.order.filled++;
+                        p.orders++;
+                        const bonus = worthOf(kind);
+                        p.banked += bonus;
+                        worth += bonus;
+                        state.pops.push({
+                            x: p.x + (Math.random() - 0.5) * 40, y: p.y - 48,
+                            text: `ORDER +${bonus}`, color: '#ffd24a', life: 1.5,
+                        });
+                    }
+                    if (state.order.filled >= state.order.need) {
+                        say(`ORDER FILLED — ${state.order.kind.emoji}`, 1.8);
+                        bank();
+                        rollOrder();
+                    }
+                }
                 for (const kind of p.carry) plat.held.push({ team: p.team, kind });
                 p.carry = [];
                 plat.flash = 0.6;
                 state.pops.push({
-                    x: p.x, y: p.y - 32, text: `LOADED ${worth}`,
+                    x: p.x, y: p.y - 32, text: `PENNED ${worth}`,
                     color: TEAMS[p.team].color, life: 1.2,
                 });
                 if (!p.isBot) grab();
 
                 // has it reached its quota? then it's safe, and it pays out
-                const on = plat.held.reduce((a, h) => a + h.kind.v, 0);
+                const on = plat.held.reduce((a, h) => a + worthOf(h.kind), 0);
                 if (on >= plat.quota) {
                     plat.locked = true;
                     plat.flash = 1.4;
                     const share = {};
-                    for (const h of plat.held) share[h.team] = (share[h.team] || 0) + h.kind.v;
-                    for (const q of state.players) {
-                        const got = share[q.team] || 0;
-                        if (!got) continue;
-                        q.banked += got;
-                        state.pops.push({
-                            x: plat.x + (Math.random() - 0.5) * 50, y: plat.y - PLAT_R * 0.4,
-                            text: `+${got}`, color: TEAMS[q.team].color, life: 1.6,
-                        });
-                    }
-                    say(`PLATFORM ${plat.i + 1} IS SAFE — ${on} BANKED`, 1.8);
+                    for (const h of plat.held) share[h.team] = (share[h.team] || 0) + worthOf(h.kind);
+
+                    // your stall, your money
+                    p.banked += on;
+                    state.pops.push({
+                        x: plat.x, y: plat.y - PLAT_R * 0.5,
+                        text: `+${on}`, color: TEAMS[p.team].color, life: 1.8,
+                    });
+                    if (!p.isBot) say(`YOUR STALL ${plat.i + 1} IS FULL — GATE SHUT ON ${on}`, 1.8);
                     bank();
                 }
-            } else if (p.onPlat !== plat && p.raidT <= 0 && raidPlatform(plat, p)) {
+            } else if (!mine && p.onPlat !== plat && p.raidT <= 0 && raidPlatform(plat, p)) {
                 // one grab per visit — drive off and come back for more
                 p.raided++;
                 p.raidT = 1.2;
@@ -538,10 +897,15 @@ function update(dt) {
     for (const pad of state.pads) pad.spin = Math.max(0, pad.spin - dt * 2);
     for (const q of state.plats) q.flash = Math.max(0, q.flash - dt);
 
-    // all three locked? the shift is over early
+    // all your stalls shut? that's the day
     if (state.plats.every(q => q.locked)) { state.over = true; showOver(); return; }
     for (const p of state.pops) { p.life -= dt; p.y -= dt * 26; }
     state.pops = state.pops.filter(p => p.life > 0);
+
+    // the camera walks with you
+    const me = state.players[0];
+    const want = Math.max(0, Math.min(WORLD_W - W, me.x - W / 2));
+    cam.x += (want - cam.x) * Math.min(1, 7 * dt);
 
     state.time -= dt;
     if (state.time <= 0) { state.time = 0; state.over = true; showOver(); }
@@ -554,6 +918,41 @@ function botThink(p, dt) {
     const cfg = SKILL[skill];
     const out = { ix: 0, iy: 0 };
     const home = state.depots[p.team];
+
+    // the dog is worth going for
+    if (state.dog && p.carry.length < carryCap(p)) {
+        const dd = Math.hypot(state.dog.x - p.x, state.dog.y - p.y);
+        if (dd < 300 * cfg.greed * 0.4) {
+            const m0 = dd || 1;
+            return { ix: (state.dog.x - p.x) / m0 * cfg.react, iy: (state.dog.y - p.y) / m0 * cfg.react };
+        }
+    }
+
+    // a bucket dropped by a rival's pen drags their animals back out
+    if (p.bucketT <= 0 && Math.random() < cfg.ram * dt * 3) {
+        let target = null, td = Infinity;
+        for (const c of state.crates) {
+            const d = Math.hypot(c.x - p.x, c.y - p.y);
+            if (d > 190 || d < 40) continue;
+            if (d < td) { td = d; target = c; }
+        }
+        // worth it when there's a cluster to pull in, or you're empty-handed
+        if (target && (p.carry.length === 0 || state.crates.filter(c =>
+                Math.hypot(c.x - p.x, c.y - p.y) < 220).length >= 3)) {
+            dropBucket(p);
+        }
+    }
+
+    // an animal just out of reach is a lasso away
+    if (p.lassoT <= 0 && p.carry.length < carryCap(p) && Math.random() < cfg.ram) {
+        let want = null, wd = Infinity;
+        for (const c of state.crates) {
+            const d = Math.hypot(c.x - p.x, c.y - p.y);
+            if (d > LASSO_RANGE || d < 60) continue;
+            if (d < wd) { wd = d; want = c; }
+        }
+        if (want) { p.face = Math.atan2(want.y - p.y, want.x - p.x); throwLasso(p); }
+    }
 
     // somebody loaded and close is worth a shunt
     let victim = null, vd = Infinity;
@@ -576,8 +975,8 @@ function botThink(p, dt) {
     // that this load could help along.
     let plat = null, ps = -Infinity;
     for (const q of state.plats) {
-        if (q.locked) continue;
-        const on = q.held.reduce((a, h) => a + h.kind.v, 0);
+        if (q.locked || q.owner !== p.team) continue;
+        const on = q.held.reduce((a, h) => a + worthOf(h.kind), 0);
         const need = q.quota - on;
         const d = Math.hypot(q.x - p.x, q.y - p.y);
         const finishes = worth >= need ? 320 : 0;      // this load would lock it
@@ -589,15 +988,13 @@ function botThink(p, dt) {
     let raid = null, rd = Infinity;
     if (load < CARRY_MAX) {
         for (const q of state.plats) {
-            if (q.locked || !q.held.length) continue;
-            const mine = q.held.filter(h => h.team === p.team).length;
-            if (mine === q.held.length) continue;       // it's all yours anyway
+            if (q.locked || !q.held.length || q.owner === p.team) continue;
             const d = Math.hypot(q.x - p.x, q.y - p.y);
             if (d < rd) { rd = d; raid = q; }
         }
     }
 
-    if (full || (plat && worth >= plat.quota - plat.held.reduce((a, h) => a + h.kind.v, 0))) {
+    if (full || (plat && worth >= plat.quota - plat.held.reduce((a, h) => a + worthOf(h.kind), 0))) {
         tx = plat ? plat.x : home.x; ty = plat ? plat.y : home.y;
     } else if (raid && raid !== p.onPlat && p.raidT <= 0 && rd < 360 * cfg.greed * 0.4) {
         tx = raid.x; ty = raid.y;
@@ -610,7 +1007,9 @@ function botThink(p, dt) {
         let best = null, bs = -Infinity;
         for (const c of state.crates) {
             const d = Math.hypot(c.x - p.x, c.y - p.y);
-            const sc = c.kind.v * 34 * cfg.greed * 0.4 - d;
+            let sc = worthOf(c.kind) * 34 * cfg.greed * 0.4 - d;
+            // an outstanding order is worth going out of your way for
+            if (state.order && c.kind === state.order.kind && state.order.filled < state.order.need) sc += 190;
             if (sc > bs) { bs = sc; best = c; }
         }
         if (best) { tx = best.x; ty = best.y; }
@@ -634,53 +1033,198 @@ function hexA(hex, a) {
 }
 
 function drawFloor() {
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#2b3442');
-    g.addColorStop(1, '#1b222c');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = 'rgba(255,255,255,0.045)';
-    ctx.lineWidth = 2;
-    for (let x = 0; x < W; x += 84) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-    for (let y = 0; y < H; y += 84) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-    // hazard stripes round the edge
-    ctx.save();
-    ctx.globalAlpha = 0.16;
-    for (let i = -H; i < W + H; i += 34) {
-        ctx.strokeStyle = i % 68 === 0 ? '#ffa63d' : '#1b222c';
-        ctx.lineWidth = 16;
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i - H, H); ctx.stroke();
+    const terrW = state.terrW;
+    // each part of the farm gets a faint wash of its owner's colour
+    for (let t = 0; t < state.total; t++) {
+        const x0 = terrW * t;
+        // grass
+        const g = ctx.createLinearGradient(0, 0, 0, H);
+        g.addColorStop(0, '#6ea342');
+        g.addColorStop(1, '#4b7a2c');
+        ctx.fillStyle = g;
+        ctx.fillRect(x0, 0, terrW, H);
+        ctx.fillStyle = hexA(TEAMS[t].color, 0.07);
+        ctx.fillRect(x0, 0, terrW, H);
+
+        ctx.save();
+        ctx.globalAlpha = 0.10;
+        ctx.fillStyle = '#ffffff';
+        for (let y = 0; y < H; y += 96) ctx.fillRect(x0, y, terrW, 48);
+        ctx.restore();
+
+        ctx.strokeStyle = 'rgba(30,66,20,0.5)';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 300; i++) {
+            const gx = x0 + (i * 149) % terrW, gy = (i * 233) % H;
+            ctx.beginPath();
+            ctx.moveTo(gx, gy + 5);
+            ctx.lineTo(gx + ((i % 3) - 1) * 3, gy - 4);
+            ctx.stroke();
+        }
+        for (let i = 0; i < 40; i++) {
+            const fx = x0 + (i * 331 + 40) % terrW, fy = (i * 271 + 25) % H;
+            ctx.fillStyle = ['#fff6a8','#ffd6e8','#ffffff','#ffcf6b'][i % 4];
+            ctx.beginPath(); ctx.arc(fx, fy, 3, 0, Math.PI * 2); ctx.fill();
+        }
+
     }
-    ctx.restore();
+
+    // the boundary between one farmhand's land and the next
+    const post = (x, y) => {
+        ctx.fillStyle = '#8a6a3f';
+        ctx.fillRect(x - 4, y - 16, 8, 26);
+        ctx.fillStyle = '#6d5230';
+        ctx.fillRect(x - 4, y - 16, 3, 26);
+    };
+    for (let t = 1; t < state.total; t++) {
+        const bx = terrW * t;
+        ctx.strokeStyle = 'rgba(169,131,79,0.85)'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(bx, 0); ctx.lineTo(bx, H); ctx.stroke();
+        ctx.strokeStyle = 'rgba(138,106,63,0.7)'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(bx - 9, 0); ctx.lineTo(bx - 9, H); ctx.stroke();
+        for (let y = 30; y < H; y += 80) post(bx, y);
+    }
+
+    // and the fence round the whole farm
+    ctx.strokeStyle = '#a9834f'; ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, 14); ctx.lineTo(WORLD_W, 14);
+    ctx.moveTo(0, H - 14); ctx.lineTo(WORLD_W, H - 14);
+    ctx.moveTo(14, 0); ctx.lineTo(14, H);
+    ctx.moveTo(WORLD_W - 14, 0); ctx.lineTo(WORLD_W - 14, H);
+    ctx.stroke();
+    for (let x = 0; x < WORLD_W; x += 74) { post(x, 22); post(x, H - 6); }
+
+    // whose land is this
+    for (let t = 0; t < state.total; t++) {
+        const own = state.players.find(q => q.team === t);
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 15px Segoe UI';
+        ctx.fillStyle = hexA(TEAMS[t].color, 0.55);
+        ctx.fillText(own && !own.isBot ? "YOUR LAND — SAFE HERE"
+                     : `${own ? own.name.toUpperCase() : TEAMS[t].name}'S LAND`,
+                     terrW * (t + 0.5), 46);
+    }
+}
+
+function drawFarmKit() {
+    // feed buckets
+    for (const b of state.buckets) {
+        const fade = Math.min(1, b.t / 2);
+        ctx.globalAlpha = fade;
+        const g = ctx.createRadialGradient(b.x, b.y, 6, b.x, b.y, BUCKET_PULL * 0.45);
+        g.addColorStop(0, 'rgba(255,210,74,0.22)');
+        g.addColorStop(1, 'rgba(255,210,74,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(b.x, b.y, BUCKET_PULL * 0.45, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,210,74,0.55)'; ctx.lineWidth = 2;
+        ctx.setLineDash([8, 7]); ctx.lineDashOffset = -state.elapsed * 18;
+        ctx.beginPath(); ctx.arc(b.x, b.y, BUCKET_PULL * 0.45, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = '24px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('🪣', b.x, b.y);
+        ctx.textBaseline = 'alphabetic';
+        ctx.globalAlpha = 1;
+    }
+
+    // the sheepdog, waiting to be collected
+    if (state.dog) {
+        const bob = Math.sin(state.elapsed * 4) * 3;
+        const g = ctx.createRadialGradient(state.dog.x, state.dog.y, 5, state.dog.x, state.dog.y, 46);
+        g.addColorStop(0, 'rgba(255,210,74,0.4)');
+        g.addColorStop(1, 'rgba(255,210,74,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(state.dog.x, state.dog.y, 46, 0, Math.PI * 2); ctx.fill();
+        ctx.font = '30px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('🐕', state.dog.x, state.dog.y + bob);
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = '#ffd24a'; ctx.font = 'bold 11px Segoe UI';
+        ctx.fillText('SHEEPDOG', state.dog.x, state.dog.y - 28);
+    }
+
+    // the fox
+    if (state.fox) {
+        const f = state.fox;
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath(); ctx.ellipse(f.x, f.y + 14, 16, 5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.save();
+        ctx.translate(f.x, f.y + Math.sin(f.wob) * 2);
+        if (f.face < 0) ctx.scale(-1, 1);
+        ctx.font = '30px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('🦊', 0, 0);
+        ctx.restore();
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = '#ff8a4a'; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText(f.took ? `FOX — TOOK ${f.took}` : 'FOX', f.x, f.y - 24);
+    }
+
+    // lasso ropes in flight
+    for (const p of state.players) {
+        if (!p.lasso) continue;
+        const c = p.lasso.c;
+        ctx.strokeStyle = '#e8d9a8'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(c.x, c.y); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(c.x, c.y, 17, 11, 0, 0, Math.PI * 2); ctx.stroke();
+    }
 }
 
 function drawPlats() {
     for (const q of state.plats) {
-        const on = q.held.reduce((a, h) => a + h.kind.v, 0);
+        const on = q.held.reduce((a, h) => a + worthOf(h.kind), 0);
         const pct = Math.min(1, on / q.quota);
-        const col = q.locked ? '#b6e34a' : on > 0 ? '#ffd24a' : '#8ea3b5';
+        const col = q.locked ? '#b6e34a' : on > 0 ? '#ffd24a' : '#d8c9a8';
         const flash = q.flash > 0 ? q.flash : 0;
 
-        // the deck
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
-        ctx.beginPath(); ctx.ellipse(q.x, q.y + 10, PLAT_R, PLAT_R * 0.62, 0, 0, Math.PI * 2); ctx.fill();
-        const g = ctx.createRadialGradient(q.x - 14, q.y - 14, 6, q.x, q.y, PLAT_R);
-        g.addColorStop(0, q.locked ? '#43603a' : '#3b4756');
-        g.addColorStop(1, q.locked ? '#22331d' : '#232c37');
-        ctx.fillStyle = g;
+        // trodden dirt inside the pen
+        ctx.fillStyle = q.locked ? 'rgba(120,160,80,0.55)' : 'rgba(120,96,62,0.65)';
         ctx.beginPath(); ctx.ellipse(q.x, q.y, PLAT_R, PLAT_R * 0.62, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = flash ? '#fff' : col;
-        ctx.lineWidth = q.locked ? 5 : 3.5;
-        ctx.beginPath(); ctx.ellipse(q.x, q.y, PLAT_R, PLAT_R * 0.62, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = 'rgba(90,70,44,0.5)';
+        for (let i = 0; i < 14; i++) {
+            const a = i * 1.7 + q.i;
+            ctx.beginPath();
+            ctx.ellipse(q.x + Math.cos(a) * PLAT_R * 0.6, q.y + Math.sin(a) * PLAT_R * 0.38, 7, 4, a, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
-        // what's stacked on it, coloured by who put it there
-        q.held.slice(-14).forEach((h, i) => {
-            const a = (i / 7) * Math.PI * 2;
-            const rr = PLAT_R * 0.44 * (i < 7 ? 0.55 : 1);
-            const cx = q.x + Math.cos(a) * rr, cy = q.y + Math.sin(a) * rr * 0.62 - (i < 7 ? 8 : 0);
-            drawCrate(cx, cy, 0.44, a * 0.2, h.kind);
-            ctx.fillStyle = hexA(TEAMS[h.team].color, 0.9);
-            ctx.fillRect(cx - 5, cy + 7, 10, 2.5);
+        // the pen fence, with a gate at the front
+        ctx.strokeStyle = flash ? '#fff' : (q.locked ? '#b6e34a' : '#c39a5f');
+        ctx.lineWidth = q.locked ? 6 : 5;
+        ctx.beginPath();
+        ctx.ellipse(q.x, q.y, PLAT_R, PLAT_R * 0.62, 0, 0.45, Math.PI * 2 - 0.45);
+        ctx.stroke();
+        ctx.strokeStyle = flash ? '#fff' : '#8a6a3f';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(q.x, q.y - 7, PLAT_R * 0.97, PLAT_R * 0.6, 0, 0.45, Math.PI * 2 - 0.45);
+        ctx.stroke();
+        // posts
+        for (let i = 0; i < 12; i++) {
+            const a = 0.45 + (i / 11) * (Math.PI * 2 - 0.9);
+            const px = q.x + Math.cos(a) * PLAT_R, py = q.y + Math.sin(a) * PLAT_R * 0.62;
+            ctx.fillStyle = q.locked ? '#7fa845' : '#8a6a3f';
+            ctx.fillRect(px - 3, py - 13, 6, 20);
+        }
+        // the gate, shut once the pen is full
+        const gx = q.x + Math.cos(0) * PLAT_R, gy = q.y;
+        ctx.strokeStyle = q.locked ? '#b6e34a' : '#a9834f';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        if (q.locked) { ctx.moveTo(gx - 4, gy - 22); ctx.lineTo(gx - 4, gy + 22); }
+        else { ctx.moveTo(gx + 2, gy - 20); ctx.lineTo(gx + 20, gy - 6); }
+        ctx.stroke();
+
+        // the animals penned in it, milling about
+        q.held.slice(-16).forEach((h, i) => {
+            const a = (i / 8) * Math.PI * 2 + q.i;
+            const rr = PLAT_R * 0.5 * (i < 8 ? 0.5 : 0.88);
+            const wob = Math.sin(state.elapsed * 2 + i) * 3;
+            const cx = q.x + Math.cos(a) * rr + wob, cy = q.y + Math.sin(a) * rr * 0.6;
+            ctx.font = '19px Segoe UI';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(h.kind.emoji, cx, cy);
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillStyle = hexA(TEAMS[h.team].color, 0.95);
+            ctx.fillRect(cx - 6, cy + 10, 12, 2.5);
         });
 
         // quota bar
@@ -692,14 +1236,19 @@ function drawPlats() {
         ctx.fillStyle = q.locked ? '#b6e34a' : '#ffd24a';
         ctx.fillRect(bx, by, bw * pct, 8);
         ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
-        ctx.fillStyle = q.locked ? '#b6e34a' : '#e6eef6';
-        ctx.fillText(q.locked ? `PLATFORM ${q.i + 1} — SAFE` : `${on} / ${q.quota}`, q.x, by + 22);
+        const ownr = state.players.find(z => z.team === q.owner);
+        ctx.fillStyle = q.locked ? '#eaffd0' : '#fff8e6';
+        ctx.fillText(q.locked ? `SHUT` : `${on} / ${q.quota}`, q.x, by + 22);
+        ctx.fillStyle = hexA(TEAMS[q.owner].color, 0.95);
+        ctx.font = 'bold 11px Segoe UI';
+        ctx.fillText(ownr && !ownr.isBot ? `YOUR STALL ${q.i + 1}` : `${ownr ? ownr.name : TEAMS[q.owner].name} ${q.i + 1}`,
+                     q.x, q.y - PLAT_R * 0.62 - 24);
         if (!q.locked && on > 0) {
-            ctx.fillStyle = '#ff9a5b'; ctx.font = 'bold 11px Segoe UI';
-            ctx.fillText('STEALABLE', q.x, q.y - PLAT_R * 0.62 - 8);
+            ctx.fillStyle = '#ffd24a'; ctx.font = 'bold 11px Segoe UI';
+            ctx.fillText('GATE OPEN — THEY CAN BE TAKEN', q.x, q.y - PLAT_R * 0.62 - 10);
         }
-        ctx.font = '20px Segoe UI';
-        ctx.fillText(q.locked ? '🔒' : '📥', q.x, q.y + 6);
+        ctx.font = '18px Segoe UI';
+        ctx.fillText(q.locked ? '🔒' : '🚧', q.x, q.y - PLAT_R * 0.2);
     }
 }
 
@@ -720,9 +1269,9 @@ function drawDepots() {
         ctx.setLineDash([]);
         ctx.fillStyle = t.color;
         ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
-        ctx.fillText(mine ? 'YOUR DEPOT' : t.name, d.x, d.y - DEPOT_R + 18);
-        ctx.font = '22px Segoe UI';
-        ctx.fillText('🏠', d.x, d.y + 8);
+        ctx.fillText(mine ? 'YOUR FARM' : t.name, d.x, d.y - DEPOT_R + 18);
+        ctx.font = '24px Segoe UI';
+        ctx.fillText('🏡', d.x, d.y + 8);
     }
 }
 
@@ -750,8 +1299,39 @@ function drawPads() {
     }
 }
 
-function drawCrate(x, y, s, spin, kind) {
+function drawCrate(x, y, s, spin, kind, animal) {
     const k = kind || CRATE_KINDS[0];
+    // Out in the field they're livestock; on your back they're a bundle.
+    if (animal) {
+        const hop = animal.step ? Math.abs(Math.sin(animal.step)) * 3 : 0;
+        // a pale disc behind them so they never vanish into the grass
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.beginPath(); ctx.arc(x, y - hop, 23 * s, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(40,30,14,0.5)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, y - hop, 23 * s, 0, Math.PI * 2); ctx.stroke();
+        ctx.save();
+        ctx.translate(x, y - hop);
+        if (animal.face < 0) ctx.scale(-1, 1);
+        ctx.font = Math.round(38 * s) + 'px Segoe UI';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(k.emoji, 0, 0);
+        ctx.restore();
+        ctx.textBaseline = 'alphabetic';
+        // worth, and a puff when they're bolting
+        // its worth, on a tag under it
+        const now = worthOf(k);
+        ctx.fillStyle = now > k.v ? '#2f6b16' : now < k.v ? '#8f2a1a' : '#3a2f18';
+        ctx.beginPath(); ctx.roundRect(x - 13 * s, y + 15 * s, 26 * s, 15 * s, 4); ctx.fill();
+        ctx.fillStyle = '#fff8e0';
+        ctx.font = 'bold ' + Math.round(12 * s) + 'px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText(String(now), x, y + 26 * s);
+        if (animal.spook > ANIMAL_CALM * 0.55) {
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            ctx.beginPath(); ctx.arc(x - 16 * animal.face, y - 8, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(x - 22 * animal.face, y - 2, 2.5, 0, Math.PI * 2); ctx.fill();
+        }
+        return;
+    }
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(spin || 0);
@@ -801,30 +1381,89 @@ function drawHauler(p) {
     ctx.fillStyle = 'rgba(0,0,0,0.34)';
     ctx.beginPath(); ctx.ellipse(p.x, p.y + R * 0.72, R * 0.98, R * 0.34, 0, 0, Math.PI * 2); ctx.fill();
 
-    // the trolley
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(p.face);
-    ctx.fillStyle = p.stun > 0 ? '#8f8f8f' : t.color;
+    // a farmhand: boots, dungarees, shirt, straw hat
+    const sw = p.moving ? Math.sin(p.step) * 5 : 0;
+    const dim = p.stun > 0;
+
+    ctx.strokeStyle = dim ? '#5a5a5a' : '#4a3a26'; ctx.lineWidth = 4.5; ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.roundRect(-R * 0.95, -R * 0.72, R * 1.9, R * 1.44, 6);
+    ctx.moveTo(x - 5, y + R * 0.3); ctx.lineTo(x - 5 + sw, y + R * 0.95);
+    ctx.moveTo(x + 5, y + R * 0.3); ctx.lineTo(x + 5 - sw, y + R * 0.95);
+    ctx.stroke();
+
+    // shirt in their colour
+    ctx.fillStyle = dim ? '#9a9a9a' : t.color;
+    ctx.beginPath();
+    ctx.moveTo(x - R * 0.66, y + R * 0.36);
+    ctx.lineTo(x - R * 0.5, y - R * 0.4);
+    ctx.lineTo(x + R * 0.5, y - R * 0.4);
+    ctx.lineTo(x + R * 0.66, y + R * 0.36);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.32)'; ctx.lineWidth = 1.6; ctx.stroke();
+
+    // dungarees over the top
+    ctx.fillStyle = dim ? '#6d6d6d' : '#3f6ea8';
+    ctx.fillRect(x - R * 0.55, y - R * 0.02, R * 1.1, R * 0.42);
+    ctx.fillRect(x - R * 0.3, y - R * 0.34, R * 0.16, R * 0.36);
+    ctx.fillRect(x + R * 0.14, y - R * 0.34, R * 0.16, R * 0.36);
+
+    // arms, one thrown out mid-barge
+    const reach = p.ramT > 0 ? (1 - p.ramT / RAM_TIME) * 12 : 0;
+    ctx.strokeStyle = '#f0c9a4'; ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x - R * 0.5, y - R * 0.24);
+    ctx.lineTo(x - R * 0.5 + Math.cos(p.face) * (10 + reach), y - R * 0.24 + Math.sin(p.face) * (10 + reach) * 0.5);
+    ctx.moveTo(x + R * 0.5, y - R * 0.24);
+    ctx.lineTo(x + R * 0.5 + Math.cos(p.face) * (10 + reach), y - R * 0.24 + Math.sin(p.face) * (10 + reach) * 0.5);
+    ctx.stroke();
+
+    // head and straw hat
+    ctx.fillStyle = '#f0c9a4';
+    ctx.beginPath(); ctx.arc(x, y - R * 0.62, R * 0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = dim ? '#8f8f8f' : '#e8c86a';
+    ctx.beginPath();
+    ctx.ellipse(x, y - R * 0.78, R * 0.78, R * 0.2, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 2.4; ctx.stroke();
-    ctx.fillStyle = p.stun > 0 ? '#6a6a6a' : t.dark;
-    ctx.fillRect(-R * 0.3, -R * 0.72, R * 0.5, R * 1.44);
-    // the bumper, thrown forward mid-ram
-    const nudge = p.ramT > 0 ? (1 - p.ramT / RAM_TIME) * 9 : 0;
-    ctx.fillStyle = p.coolT > 0 ? '#5d6b7a' : '#e9f2fa';
-    ctx.fillRect(R * 0.85 + nudge, -R * 0.6, 6, R * 1.2);
-    ctx.restore();
+    ctx.beginPath();
+    ctx.ellipse(x, y - R * 0.94, R * 0.36, R * 0.24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = dim ? '#6f6f6f' : '#a98a34'; ctx.lineWidth = 1.6; ctx.stroke();
+    // eyes, pointing where they're going
+    const ex = Math.cos(p.face) * 2.6, ey = Math.sin(p.face) * 1.6;
+    ctx.fillStyle = '#2a2118';
+    ctx.beginPath(); ctx.arc(x - 3.2 + ex, y - R * 0.6 + ey, 1.7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 3.2 + ex, y - R * 0.6 + ey, 1.7, 0, Math.PI * 2); ctx.fill();
+
+    // safe on your own land
+    if (onOwnLand(p)) {
+        ctx.strokeStyle = hexA(t.color, 0.8); ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(x, y - R * 0.2, R * 1.25, 0, Math.PI * 2); ctx.stroke();
+        if (!p.isBot) {
+            ctx.fillStyle = hexA(t.color, 0.95);
+            ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
+            ctx.fillText('SAFE', x, y - R * 1.55);
+        }
+    }
 
     // what they're carrying, stacked on the back
+    // whatever you're driving along, trotting behind you
     p.carry.forEach((kind, i) => {
-        const ox = -Math.cos(p.face) * (R * 0.5 + i * 5);
-        const oy = -Math.sin(p.face) * (R * 0.5 + i * 5) - i * 7;
-        drawCrate(x + ox, y + oy, 0.55, p.face, kind);
+        const ox = -Math.cos(p.face) * (R * 0.9 + i * 15);
+        const oy = -Math.sin(p.face) * (R * 0.9 + i * 15);
+        const wob = Math.sin(state.elapsed * 9 + i) * 4;
+        ctx.font = '21px Segoe UI';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(kind.emoji, x + ox + wob, y + oy);
+        ctx.textBaseline = 'alphabetic';
     });
 
+    if (p.dog > 0) {
+        const sway = Math.sin(state.elapsed * 7 + p.idx) * 8;
+        ctx.font = '19px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('🐕', x - Math.cos(p.face) * 4 + sway, y + R * 1.15);
+        ctx.textBaseline = 'alphabetic';
+    }
     if (p.stun > 0) {
         ctx.fillStyle = '#fff'; ctx.font = '13px Segoe UI'; ctx.textAlign = 'center';
         ctx.fillText('✦', x - 8, y - R * 1.5);
@@ -880,18 +1519,53 @@ function drawHUD() {
     ctx.fillStyle = load >= CARRY_MAX ? '#ff8a65' : load > 0 ? '#ffa63d' : '#8ea3b5';
     const pct = Math.round((1 - load * CARRY_SLOW) * 100);
     ctx.fillText(load
-        ? `carrying ${load}/${CARRY_MAX} worth ${carriedValue(me)} — ${pct}% speed — get it onto a platform`
-        : 'empty — grab crates, the numbered ones are worth more', W / 2, H - 22);
+        ? `driving ${load}/${CARRY_MAX} worth ${carriedValue(me)} — ${pct}% speed — get them into a pen`
+        : 'empty-handed — walk into the animals to start driving them', W / 2, H - 22);
 
-    // what each crate is worth, bottom right
+    // the order board
+    if (state.order) {
+        const o = state.order;
+        ctx.textAlign = 'center'; ctx.font = 'bold 14px Segoe UI';
+        ctx.fillStyle = '#ffd24a';
+        ctx.fillText(`📋 ORDER: ${o.filled}/${o.need} × ${o.kind.emoji} ${o.kind.name} — pays double`, W / 2, 64);
+    }
+    // the market, and how long until it moves
+    ctx.textAlign = 'center'; ctx.font = 'bold 12px Segoe UI';
+    const moved = CRATE_KINDS.filter(k => state.market[k.name] !== 1);
+    if (moved.length) {
+        ctx.fillStyle = '#cfe0d0';
+        ctx.fillText(moved.map(k => `${k.emoji} ${k.name} ×${state.market[k.name]}`).join('   ') +
+                     `   · market moves in ${Math.ceil(state.marketT)}s`, W / 2, H - 66);
+    } else {
+        ctx.fillStyle = '#a8bfa8';
+        ctx.fillText(`market moves in ${Math.ceil(state.marketT)}s`, W / 2, H - 66);
+    }
+
+    // your tools
+    ctx.textAlign = 'left'; ctx.font = 'bold 13px Segoe UI';
+    const tools = [];
+    tools.push({ t: me.lassoT > 0 ? `🪢 lasso ${me.lassoT.toFixed(1)}s` : '🪢 lasso — E', ok: me.lassoT <= 0 });
+    tools.push({ t: me.bucketT > 0 ? `🪣 feed ${me.bucketT.toFixed(0)}s` : '🪣 feed — Q', ok: me.bucketT <= 0 });
+    if (me.dog > 0) tools.push({ t: `🐕 dog ${me.dog.toFixed(0)}s`, ok: true });
+    let ty = H - 46;
+    tools.forEach(tt => {
+        ctx.fillStyle = tt.ok ? '#ffd24a' : '#7d8f7d';
+        ctx.fillText(tt.t, 18, ty);
+        ty -= 18;
+    });
+
+    // what each animal is worth, bottom right
     ctx.textAlign = 'right';
     ctx.font = 'bold 12px Segoe UI';
     let lx = W - 18;
     for (let i = CRATE_KINDS.length - 1; i >= 0; i--) {
         const k = CRATE_KINDS[i];
         ctx.fillStyle = k.body;
-        ctx.fillText(`${k.name} ${k.v}`, lx, H - 46);
-        lx -= ctx.measureText(`${k.name} ${k.v}`).width + 16;
+        const now = worthOf(k);
+        ctx.fillStyle = now > k.v ? '#b6e34a' : now < k.v ? '#ff8a65' : k.body;
+        const label = `${k.emoji} ${k.name} ${now}`;
+        ctx.fillText(label, lx, H - 46);
+        lx -= ctx.measureText(label).width + 16;
     }
     ctx.textAlign = 'center';
 
@@ -910,14 +1584,21 @@ function drawHUD() {
 }
 
 function render() {
+    ctx.fillStyle = '#3f6b28';
+    ctx.fillRect(0, 0, W, H);
     ctx.save();
     if (state.shake > 0.5) ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
+    ctx.translate(-Math.round(cam.x), 0);
     drawFloor();
     drawPads();
     drawDepots();
     drawPlats();
+    drawFarmKit();
     for (const c of state.crates) {
-        drawCrate(c.x, c.y + Math.sin(state.elapsed * 3 + c.bob) * 3, 1, c.spin, c.kind);
+        // shadow so they sit on the grass
+        ctx.fillStyle = 'rgba(0,0,0,0.24)';
+        ctx.beginPath(); ctx.ellipse(c.x, c.y + 17, 19, 6, 0, 0, Math.PI * 2); ctx.fill();
+        drawCrate(c.x, c.y, 1, 0, c.kind, c);
     }
     const order = state.players.slice().sort((a, b) => a.y - b.y);
     for (const p of order) drawHauler(p);
@@ -940,15 +1621,15 @@ function showOver() {
     const win = rank[0];
     const me = state.players[0];
     const iWon = win === me;
-    document.getElementById('overTitle').textContent = iWon ? 'TOP HAULER' : 'END OF SHIFT';
+    document.getElementById('overTitle').textContent = iWon ? 'BEST FARMHAND' : 'END OF THE DAY';
     document.getElementById('overTitle').style.color = iWon ? '#b6e34a' : '#ff8a65';
     document.getElementById('finalText').innerHTML =
-        `<b style="color:${TEAMS[win.team].color}">${win.isBot ? win.name : 'You'}</b> banked ` +
-        `<b>${win.banked}</b> crate${win.banked === 1 ? '' : 's'}.` +
-        `<br><span style="font-size:14px;color:#9fb3c8">You banked <b>${me.banked}</b>, rammed <b>${me.rammed}</b>, ` +
-        `dropped <b>${me.dropped}</b> crate${me.dropped === 1 ? '' : 's'}` +
-        `${me.raided ? `, and raided a platform <b>${me.raided}</b> time${me.raided === 1 ? '' : 's'}` : ''}.</span>` +
-        `<br><span style="font-size:13px;color:#7d8fa0">${state.plats.filter(q => q.locked).length} of ${PLAT_COUNT} platforms were secured.</span>`;
+        `<b style="color:${TEAMS[win.team].color}">${win.isBot ? win.name : 'You'}</b> penned ` +
+        `<b>${win.banked}</b> worth of livestock.` +
+        `<br><span style="font-size:14px;color:#9fb3c8">You penned <b>${me.banked}</b>, barged rivals <b>${me.rammed}</b> time${me.rammed === 1 ? '' : 's'}, ` +
+        `and lost <b>${me.dropped}</b> animal${me.dropped === 1 ? '' : 's'}` +
+        `${me.raided ? `, while rustling from a pen <b>${me.raided}</b> time${me.raided === 1 ? '' : 's'}` : ''}.</span>` +
+        `<br><span style="font-size:13px;color:#7d8fa0">You shut ${state.plats.filter(q => q.locked && q.owner === me.team).length} of your ${PLAT_COUNT} stalls.</span>`;
     document.getElementById('standings').innerHTML = rank.map((p, i) =>
         `<div class="standing">${i + 1}. <b style="color:${TEAMS[p.team].color}">${p.isBot ? p.name : 'You'}</b> — ${p.banked}</div>`).join('');
     document.getElementById('overOv').classList.remove('hidden');
@@ -1000,6 +1681,7 @@ function pick(sel, attr, fn) {
 pick('#bots', 'n', v => { nBots = parseInt(v, 10); buildTeamPick(); });
 pick('#dur', 's', v => { matchSecs = parseInt(v, 10); });
 pick('#skill', 'k', v => { skill = v; });
+pick('#orders', 'o', v => { ordersOn = (v === 'on'); });
 buildTeamPick();
 
 document.getElementById('start').onclick = () => {
