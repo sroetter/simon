@@ -96,7 +96,9 @@
       The <b>market</b> moves every 75 seconds: one animal doubles in value and another halves, so
       the cow is not always the right target. With <b>orders</b> on there is a standing request —
       fill it and those animals pay double.<br><br>
-      Fill all your stalls and you are done for the day.
+      When <b>every pen on the farm</b> is full the day ends there and then, whatever the clock
+      says — so filling your own last stall can hand the round to somebody who is ahead. Most
+      penned wins.
     </div>
     <div class="keys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — run</div>
@@ -897,8 +899,13 @@ function update(dt) {
     for (const pad of state.pads) pad.spin = Math.max(0, pad.spin - dt * 2);
     for (const q of state.plats) q.flash = Math.max(0, q.flash - dt);
 
-    // all your stalls shut? that's the day
-    if (state.plats.every(q => q.locked)) { state.over = true; showOver(); return; }
+    // every pen on the farm full? that's the day, whatever the clock says
+    if (state.plats.every(q => q.locked)) {
+        state.over = true;
+        say('EVERY PEN IS FULL — THAT IS THE DAY', 2.4);
+        showOver();
+        return;
+    }
     for (const p of state.pops) { p.life -= dt; p.y -= dt * 26; }
     state.pops = state.pops.filter(p => p.life > 0);
 
@@ -1512,6 +1519,16 @@ function drawHUD() {
     ctx.fillStyle = state.time < 15 ? '#ff8a65' : '#eef3f8';
     const m = Math.floor(state.time / 60), s = Math.floor(state.time % 60);
     ctx.fillText(`${m}:${String(s).padStart(2, '0')}`, W / 2, 38);
+
+    // how close the whole farm is to finishing — the day ends when it's full
+    const shut = state.plats.filter(q => q.locked).length;
+    const mineShut = state.plats.filter(q => q.locked && q.owner === state.players[0].team).length;
+    ctx.font = 'bold 13px Segoe UI';
+    ctx.fillStyle = shut === state.plats.length - 1 ? '#ffd24a' : '#cfe0d0';
+    ctx.fillText(`🚧 ${shut}/${state.plats.length} pens shut on the farm` +
+                 `  ·  yours ${mineShut}/${PLAT_COUNT}` +
+                 (shut === state.plats.length - 1 ? '  — one left, then the day ends!' : ''),
+                 W / 2, 60);
 
     const me = state.players[0];
     ctx.font = 'bold 15px Segoe UI';
