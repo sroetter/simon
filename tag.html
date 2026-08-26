@@ -90,7 +90,7 @@ h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; 
 
 .btn.diff { padding: 6px 12px; font-size: 13px; min-width: 76px; background: linear-gradient(135deg, #455a64, #263238); border-color: #b0bec5; box-shadow: 0 4px 0 #1a232a; }
 .btn.diff.bots { padding: 5px 11px; min-width: 0; }
-.btn.diff.kind, .btn.diff.back { padding: 6px 11px; min-width: 0; font-size: 13px; }
+.btn.diff.kind, .btn.diff.back, .btn.diff.role { padding: 6px 11px; min-width: 0; font-size: 13px; }
 .btn.diff.active { background: linear-gradient(135deg, #ff7f50, #d63300); border-color: #ffd9c2; box-shadow: 0 4px 0 #771c00; }
 .label { font-size: 12px; color: #d6e6c5; margin: 9px 0 2px; letter-spacing: 0.5px; }
 
@@ -182,6 +182,13 @@ h2 { font-size: 16px; color: #d6e6c5; font-weight: normal; margin-bottom: 10px; 
             <button class="btn diff kind" data-kind="double">👥 Double Tag</button>
         </div>
         <div id="backBlurb" style="font-size:12px;color:#cce0c1;margin:4px 0 2px;"></div>
+
+        <div class="label">You start as:</div>
+        <div class="row">
+            <button class="btn diff role active" data-role="runner">🏃 Runner</button>
+            <button class="btn diff role" data-role="it">🔥 It</button>
+            <button class="btn diff role" data-role="random">🎲 Random</button>
+        </div>
 
         <div class="label">Number of bots:</div>
         <div class="row">
@@ -442,6 +449,7 @@ const BACKDROPS = {
     },
 };
 let currentBackdrop = 'forest';
+let startRole = 'runner';        // 'runner' | 'it' | 'random'
 // Line Tag always plays on its own ground, whatever else is selected.
 function effectiveBackdrop() { return currentKind === 'line' ? 'lines' : currentBackdrop; }
 const BD = () => BACKDROPS[(state && state.backdrop) || currentBackdrop];
@@ -684,7 +692,12 @@ function makeState(mode, difficulty, bots) {
 
     // Pick a uniformly random initial It from EVERYONE (humans included), so
     // the player can also start as the tagger if they roll into it.
-    const itIdx = Math.floor(Math.random() * total);
+    // Who carries it to start with. 'runner' keeps it off you entirely,
+    // 'it' hands it straight to you, 'random' is the old coin toss.
+    let itIdx;
+    if (startRole === 'it') itIdx = 0;
+    else if (startRole === 'runner' && total > 1) itIdx = 1 + Math.floor(Math.random() * (total - 1));
+    else itIdx = Math.floor(Math.random() * total);
     players[itIdx].isIt = true;
     players[itIdx].isOriginalIt = true;
     players[itIdx].startedIt = true;      // never transferred, never cleansed
@@ -1023,15 +1036,18 @@ document.querySelectorAll('.btn.diff').forEach(b => {
         const isBots = b.classList.contains('bots');
         const isKind = b.classList.contains('kind');
         const isBack = b.classList.contains('back');
+        const isRole = b.classList.contains('role');
         const selector = isBots ? '.btn.diff.bots'
                        : isKind ? '.btn.diff.kind'
                        : isBack ? '.btn.diff.back'
-                       : '.btn.diff:not(.bots):not(.kind):not(.back)';
+                       : isRole ? '.btn.diff.role'
+                       : '.btn.diff:not(.bots):not(.kind):not(.back):not(.role)';
         document.querySelectorAll(selector).forEach(x => x.classList.remove('active'));
         b.classList.add('active');
         if (isBots) botCount = parseInt(b.dataset.bots, 10);
         else if (isKind) { currentKind = b.dataset.kind; refreshKindText(); refreshBackText(); }
         else if (isBack) { currentBackdrop = b.dataset.back; refreshBackText(); }
+        else if (isRole) { startRole = b.dataset.role; }
         else currentDifficulty = b.dataset.diff;
     });
 });
@@ -2461,7 +2477,52 @@ function updateParticles(dt) {
 }
 
 // ===== AI =====
+// Steer round the rocks and logs rather than walking into them. Without this
+// a tagger chasing you will happily grind along the side of a boulder while
+// you stroll away — this pushes out of the obstacle AND slides along it, so
+// they come round the end instead of stalling against it.
+function aiSteerAround(p, out) {
+    if (!out || (!out.ix && !out.iy)) return out;
+    let ax = out.ix, ay = out.iy;
+
+    for (const r of state.rocks) {
+        const dx = p.x - r.x, dy = p.y - r.y;
+        const d = Math.hypot(dx, dy) || 0.001;
+        const reach = Math.max(r.rx, r.ry) + PLAYER_R + 52;
+        if (d > reach) continue;
+        const w = (reach - d) / reach;
+        ax += (dx / d) * w * 1.5;
+        ay += (dy / d) * w * 1.5;
+        const tx = -dy / d, ty = dx / d;
+        const side = Math.sign((out.ix * tx + out.iy * ty) || 1);
+        ax += tx * side * w * 1.5;
+        ay += ty * side * w * 1.5;
+    }
+
+    for (const l of state.logs) {
+        const hw = l.w / 2 + PLAYER_R + 40, hh = l.h / 2 + PLAYER_R + 40;
+        const dx = p.x - l.x, dy = p.y - l.y;
+        if (Math.abs(dx) > hw || Math.abs(dy) > hh) continue;
+        const ox = (hw - Math.abs(dx)) / hw, oy = (hh - Math.abs(dy)) / hh;
+        if (ox < oy) {
+            ax += Math.sign(dx || 1) * ox * 1.7;
+            ay += Math.sign(out.iy || 1) * 1.1;
+        } else {
+            ay += Math.sign(dy || 1) * oy * 1.7;
+            ax += Math.sign(out.ix || 1) * 1.1;
+        }
+    }
+
+    const m = Math.hypot(ax, ay);
+    if (m > 0) { out.ix = ax / m; out.iy = ay / m; }
+    return out;
+}
+
 function aiCommand(p, dt) {
+    return aiSteerAround(p, aiCommandRaw(p, dt));
+}
+
+function aiCommandRaw(p, dt) {
     const out = { ix: 0, iy: 0 };
 
     const cfg = {
