@@ -80,8 +80,9 @@
       Walk up to one and it <b>bolts</b> — get close enough and it falls in behind you. You can drive
       <b>four at once</b>, and the more you have the slower you go.<br><br>
       Everyone has <b>their own part of the farm</b> with <b>three stalls</b> in it — yours are 12,
-      20 and 30. You can only load your own, and <b>on your own land nobody can barge you</b>. Walk
-      onto somebody else's land and you are fair game, but so are their stalls.<br><br>
+      20 and 30. You can only load your own, and <b>on your own land nobody can barge you</b>.<br><br>
+      Walk onto somebody else's land and you are fair game — and <b>every five seconds over the
+      fence costs you a point</b>. Raiding a stall is worth it, loitering is not.<br><br>
       Here is the catch: <b>getting animals into a stall does not pay you</b>. A stall pays only when
       it is <b>full</b>, and until then the gate is open and <b>anyone who walks in can drive your
       animals straight back out</b>. Fill it and the gate <b>shuts</b> for good.<br><br>
@@ -203,6 +204,11 @@ const FOX_ALONE = 260;           // an animal is only fair game if nobody is thi
 // The market moves every 75 seconds.
 const MARKET_EVERY = 75;
 
+// Standing on somebody else's land costs you. Every five seconds over the
+// fence is a point off your day's takings.
+const TRESPASS_EVERY = 5;
+const TRESPASS_COST = 1;
+
 // Platforms hold what you load onto them, but nothing is banked until a
 // platform reaches its quota — before that it can all be stolen back.
 const PLAT_R = 66;
@@ -288,6 +294,7 @@ function makeHauler(idx, isBot, name) {
         rammed: 0, dropped: 0, raided: 0,
         ramT: 0, coolT: 0, stun: 0, raidT: 0, onPlat: null,
         dog: 0, lassoT: 0, bucketT: 0, lasso: null, orders: 0,
+        trespassT: TRESPASS_EVERY, fined: 0,
         step: 0, moving: false,
         padT: 0,
     };
@@ -690,7 +697,10 @@ function raidPlatform(plat, thief) {
     if (plat.locked || !plat.held.length) return false;
     const room = carryCap(thief) - thief.carry.length;
     if (room <= 0) return false;
-    const taken = plat.held.splice(-Math.min(room, plat.held.length));
+    // you can only carry off so much in one go, so a stall is not emptied
+    // in a single walk-through any more
+    const grab = Math.min(room, 2, plat.held.length);
+    const taken = plat.held.splice(-grab);
     let worth = 0;
     for (const h of taken) { thief.carry.push(h.kind); worth += worthOf(h.kind); }
     plat.flash = 0.8;
@@ -762,6 +772,23 @@ function update(dt) {
         p.stun = Math.max(0, p.stun - dt);
         p.padT = Math.max(0, p.padT - dt);
         p.raidT = Math.max(0, p.raidT - dt);
+
+        // trespassing: a point every five seconds you spend over the fence
+        if (onOwnLand(p)) {
+            p.trespassT = TRESPASS_EVERY;
+        } else {
+            p.trespassT -= dt;
+            if (p.trespassT <= 0) {
+                p.trespassT = TRESPASS_EVERY;
+                p.banked = Math.max(0, p.banked - TRESPASS_COST);
+                p.fined += TRESPASS_COST;
+                state.pops.push({
+                    x: p.x, y: p.y - 42, life: 1.4,
+                    text: `-${TRESPASS_COST} TRESPASSING`, color: '#ff8a65',
+                });
+                if (!p.isBot) tone(210, 0.16, 'square', 0.05, -70);
+            }
+        }
 
         let ix = 0, iy = 0;
         if (p.stun <= 0) {
@@ -877,7 +904,7 @@ function update(dt) {
             } else if (!mine && p.onPlat !== plat && p.raidT <= 0 && raidPlatform(plat, p)) {
                 // one grab per visit — drive off and come back for more
                 p.raided++;
-                p.raidT = 1.2;
+                p.raidT = 3.5;
             }
         }
         p.onPlat = standingOn;
@@ -934,6 +961,14 @@ function botThink(p, dt) {
             return { ix: (state.dog.x - p.x) / m0 * cfg.react, iy: (state.dog.y - p.y) / m0 * cfg.react };
         }
     }
+
+    // heading home with a load? don't dawdle on somebody else's land
+    if (p.carry.length && !onOwnLand(p)) {
+        const home = state.depots[p.team];
+        const dx0 = home.x - p.x, dy0 = home.y - p.y, m0 = Math.hypot(dx0, dy0) || 1;
+        // keep the usual logic, but bias hard towards your own side
+        p.hurryHome = { x: dx0 / m0, y: dy0 / m0 };
+    } else p.hurryHome = null;
 
     // a bucket dropped by a rival's pen drags their animals back out
     if (p.bucketT <= 0 && Math.random() < cfg.ram * dt * 3) {
@@ -1003,7 +1038,11 @@ function botThink(p, dt) {
 
     if (full || (plat && worth >= plat.quota - plat.held.reduce((a, h) => a + worthOf(h.kind), 0))) {
         tx = plat ? plat.x : home.x; ty = plat ? plat.y : home.y;
-    } else if (raid && raid !== p.onPlat && p.raidT <= 0 && rd < 360 * cfg.greed * 0.4) {
+    } else if (raid && raid !== p.onPlat && p.raidT <= 0 && rd < 150 * cfg.greed * 0.4 &&
+               p.carry.length === 0) {
+        // only worth crossing the fence when they are empty-handed and it is
+        // close by — the trespass fine makes a long raid a bad trade
+
         tx = raid.x; ty = raid.y;
     } else if (victim && vd < 210 && load < CARRY_MAX && cfg.ram > 0.5 && p.coolT <= 0) {
         tx = victim.x; ty = victim.y;
@@ -1025,6 +1064,7 @@ function botThink(p, dt) {
     }
 
     let dx = tx - p.x, dy = ty - p.y;
+    if (p.hurryHome) { dx += p.hurryHome.x * 260; dy += p.hurryHome.y * 260; }
     const m = Math.hypot(dx, dy) || 1;
     out.ix = (dx / m) * cfg.react;
     out.iy = (dy / m) * cfg.react;
@@ -1556,6 +1596,16 @@ function drawHUD() {
     } else {
         ctx.fillStyle = '#a8bfa8';
         ctx.fillText(`market moves in ${Math.ceil(state.marketT)}s`, W / 2, H - 66);
+    }
+
+    // trespass warning
+    if (!onOwnLand(me)) {
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 15px Segoe UI';
+        ctx.fillStyle = me.trespassT < 1.6 ? '#ff6f6f' : '#ff8a65';
+        const whose = state.players.find(q => q.team === territoryAt(me.x));
+        ctx.fillText(`⚠ TRESPASSING ON ${whose ? (whose.isBot ? whose.name.toUpperCase() : 'YOUR OWN') : ''} LAND` +
+                     ` — -${TRESPASS_COST} in ${me.trespassT.toFixed(1)}s`, W / 2, 86);
     }
 
     // your tools
