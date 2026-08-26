@@ -79,16 +79,15 @@
       the animal, the slower it runs.<br><br>
       Walk up to one and it <b>bolts</b> — get close enough and it falls in behind you. You can drive
       <b>four at once</b>, and the more you have the slower you go.<br><br>
-      Everyone has <b>their own part of the farm</b> with <b>three stalls</b> in it — yours are 12,
-      20 and 30. You can only load your own, and <b>on your own land nobody can barge you</b>.<br><br>
-      Walk onto somebody else's land and you are fair game — and <b>every five seconds over the
-      fence costs you a point</b>. Raiding a stall is worth it, loitering is not.<br><br>
-      Here is the catch: <b>getting animals into a stall does not pay you</b>. A stall pays only when
-      it is <b>full</b>, and until then the gate is open and <b>anyone who walks in can drive your
-      animals straight back out</b>.<br><br>
-      Fill it and the gate <b>shuts</b> — and a shut stall keeps taking animals, <b>banked the moment
-      you walk them in and safe from everybody</b>. So shutting your three early is not the end of
-      your day, it is the start of the safe part of it.<br><br>
+      Nothing sells where it stands. <b>Livestock wagons</b> roll across the farm to the
+      <b>market</b> at the far end — walk your animals into one before it rumbles past, and they
+      sell when it arrives. Miss it and you wait for the next.<br><br>
+      Every wagon takes <b>20</b>. Until it has 20 aboard the tailgate is down and <b>anyone can lift
+      your animals straight back off it</b>. Get it to 20 and it <b>seals</b> — nothing can be
+      taken off it now, it just has to reach the market.<br><br>
+      Everyone has <b>their own part of the farm</b>, and <b>on your own land nobody can barge
+      you</b>. Step over the fence and you are fair game — and <b>every five seconds over there
+      costs you a point</b>.<br><br>
       <b>Barge</b> a rival with <kbd>Space</kbd> and <b>one animal breaks loose</b> — the last one
       they picked up — not the whole herd. <b>Lasso</b> with
       <kbd>E</kbd> to reel in an animal from across the field instead of chasing it. Drop the
@@ -212,11 +211,15 @@ const MARKET_EVERY = 75;
 const TRESPASS_EVERY = 5;
 const TRESPASS_COST = 1;
 
-// Platforms hold what you load onto them, but nothing is banked until a
-// platform reaches its quota — before that it can all be stolen back.
-const PLAT_R = 66;
-const PLAT_QUOTA = [12, 20, 30];   // your three stalls, later ones worth more
-const PLAT_COUNT = 3;              // three stalls each, in your own part of the farm
+// Nothing sells where it stands. Livestock wagons roll across the farm to
+// the market at the far end — get your animals onto one before it goes past.
+const WAGON_W = 104;
+const WAGON_H = 62;
+const WAGON_QUOTA = 20;            // every wagon takes the same: twenty
+const WAGON_HOLD = 10;             // and no more than ten head on one
+const WAGON_SPEED = 96;
+const WAGON_GAP = 6.5;             // seconds between one leaving and the next
+const MARKET_W = 150;              // the market building at the far end
 
 const DEPOT_R = 62;
 
@@ -326,22 +329,12 @@ function newGame() {
         depots.push({ x: terrW * (i + 0.5), y: H * 0.16, team: i });
     }
 
-    // Everyone gets three stalls, standing in their own part of the farm.
+    // Wagons roll in from the left and leave at the market on the right.
     const plats = [];
-    for (let t = 0; t < total; t++) {
-        for (let i = 0; i < PLAT_COUNT; i++) {
-            plats.push({
-                i, owner: t,
-                x: terrW * t + terrW * (0.24 + i * 0.26),
-                y: H * 0.62,
-                quota: PLAT_QUOTA[i],
-                held: [], locked: false, flash: 0,
-            });
-        }
-    }
 
     state = {
-        players, depots, plats, terrW, total,
+        players, depots, wagons: plats, terrW, total,
+        wagonT: 1.5, wagonN: 0, sold: [],
         crates: [], crateT: 0.5,
         pads: [],
         dog: null, dogT: 10,
@@ -364,7 +357,7 @@ function newGame() {
             for (let g = 0; g < 50; g++) {
                 const x = terrW * t + 110 + Math.random() * (terrW - 220);
                 const y = 120 + Math.random() * (H - 240);
-                if (plats.some(q => Math.hypot(q.x - x, q.y - y) < PLAT_R + 90)) continue;
+                if (x > WORLD_W - MARKET_W - 90) continue;
                 if (state.pads.some(q => Math.hypot(q.x - x, q.y - y) < 200)) continue;
                 state.pads.push({ x, y, a: Math.random() * Math.PI * 2, spin: 0 });
                 break;
@@ -380,11 +373,67 @@ function newGame() {
     });
     cam.x = Math.max(0, Math.min(WORLD_W - W, players[0].x - W / 2));
 
+    for (let i = 0; i < 3; i++) spawnWagon(-WAGON_W - i * 340);
     for (let i = 0; i < 6; i++) spawnCrate();
-    say('ROUND THEM UP', 1.6);
+    say('GET THEM ON THE WAGONS', 1.8);
 }
 
 function say(t, s) { state.message = t; state.messageT = s || 1.5; }
+
+// A wagon rolls the length of the farm and sells whatever is on it.
+function spawnWagon(atX) {
+    state.wagons.push({
+        n: ++state.wagonN,
+        x: atX !== undefined ? atX : -WAGON_W,
+        y: H * (0.30 + Math.random() * 0.4),
+        held: [],
+        wob: Math.random() * 6,
+        flash: 0,
+    });
+}
+
+function marketX() { return WORLD_W - MARKET_W; }
+
+function wagonValue(w) { return w.held.reduce((a, h) => a + worthOf(h.kind), 0); }
+function wagonSealed(w) { return wagonValue(w) >= WAGON_QUOTA; }
+
+function updateWagons(dt) {
+    state.wagonT -= dt;
+    if (state.wagonT <= 0) { state.wagonT = WAGON_GAP; spawnWagon(); }
+
+    for (let i = state.wagons.length - 1; i >= 0; i--) {
+        const w = state.wagons[i];
+        w.x += WAGON_SPEED * dt;
+        w.wob += dt * 3;
+        w.flash = Math.max(0, w.flash - dt);
+
+        if (w.x < marketX()) continue;
+
+        // it's reached the market — everything on it sells at today's price
+        const share = {};
+        for (const h of w.held) share[h.team] = (share[h.team] || 0) + worthOf(h.kind);
+        let total = 0;
+        for (const q of state.players) {
+            const got = share[q.team] || 0;
+            if (!got) continue;
+            q.banked += got;
+            q.sold = (q.sold || 0) + 1;
+            total += got;
+            state.pops.push({
+                x: marketX() + MARKET_W / 2 + (Math.random() - 0.5) * 50,
+                y: w.y - 40, text: `SOLD +${got}`,
+                color: TEAMS[q.team].color, life: 1.8,
+            });
+        }
+        if (total) {
+            bank();
+            const me = state.players[0];
+            if ((share[me.team] || 0) > 0) say(`WAGON ${w.n} SOLD YOURS FOR ${share[me.team]}`, 1.6);
+        }
+        state.sold.push({ n: w.n, total, at: state.elapsed });
+        state.wagons.splice(i, 1);
+    }
+}
 
 function rollKind() {
     let r = Math.random();
@@ -455,7 +504,7 @@ function updateFarmKit(dt) {
     if (!state.dog && state.dogT <= 0) {
         for (let t = 0; t < 40; t++) {
             const x = 90 + Math.random() * (WORLD_W - 180), y = 90 + Math.random() * (H - 180);
-            if (state.plats.some(q => Math.hypot(q.x - x, q.y - y) < PLAT_R + 40)) continue;
+            if (x > WORLD_W - MARKET_W - 60) continue;
             state.dog = { x, y, bob: 0 };
             say('THE SHEEPDOG IS OUT 🐕', 1.6);
             break;
@@ -601,9 +650,9 @@ function updateAnimals(dt) {
         }
 
         // never wander into a pen — you have to drive them in
-        for (const q of state.plats) {
+        for (const q of state.wagons) {
             const d = Math.hypot(c.x - q.x, c.y - q.y);
-            if (d < PLAT_R + 30) { ix += (c.x - q.x) / (d || 1) * 1.4; iy += (c.y - q.y) / (d || 1) * 1.4; }
+            if (d < WAGON_W * 0.7) { ix += (c.x - q.x) / (d || 1) * 1.4; iy += (c.y - q.y) / (d || 1) * 1.4; }
         }
 
         const m = Math.hypot(ix, iy);
@@ -623,7 +672,7 @@ function spawnCrate() {
     for (let t = 0; t < 50; t++) {
         const x = 70 + Math.random() * (WORLD_W - 140);
         const y = 70 + Math.random() * (H - 140);
-        if (state.plats.some(q => Math.hypot(q.x - x, q.y - y) < PLAT_R + 30)) continue;
+        if (x > WORLD_W - MARKET_W - 40) continue;
         state.crates.push(makeCrate(x, y));
         return;
     }
@@ -697,18 +746,26 @@ function dropLoad(p) {
 
 // Everything sitting on a platform that hasn't met its quota is up for grabs.
 function raidPlatform(plat, thief) {
-    if (plat.locked || !plat.held.length) return false;
+    if (wagonSealed(plat) || !plat.held.length) return false;
+    // your own animals aren't worth lifting back off
+    if (plat.held.every(h => h.team === thief.team)) return false;
     const room = carryCap(thief) - thief.carry.length;
     if (room <= 0) return false;
     // you can only carry off so much in one go, so a stall is not emptied
     // in a single walk-through any more
     const grab = Math.min(room, 2, plat.held.length);
-    const taken = plat.held.splice(-grab);
+    // take somebody else's, not your own
+    const taken = [];
+    for (let i = plat.held.length - 1; i >= 0 && taken.length < grab; i--) {
+        if (plat.held[i].team === thief.team) continue;
+        taken.push(plat.held.splice(i, 1)[0]);
+    }
+    if (!taken.length) return false;
     let worth = 0;
     for (const h of taken) { thief.carry.push(h.kind); worth += worthOf(h.kind); }
     plat.flash = 0.8;
     state.pops.push({
-        x: plat.x, y: plat.y - PLAT_R * 0.5, life: 1.3,
+        x: plat.x, y: plat.y - WAGON_H, life: 1.3,
         text: `RUSTLED ${worth}!`, color: TEAMS[thief.team].color,
     });
     smash();
@@ -764,6 +821,7 @@ function update(dt) {
     state.marketT -= dt;
     if (state.marketT <= 0) { state.marketT = MARKET_EVERY; moveMarket(); }
 
+    updateWagons(dt);
     updateFarmKit(dt);
     updateAnimals(dt);
     updateLassos(dt);
@@ -847,31 +905,17 @@ function update(dt) {
             }
         }
 
-        // platforms: load what you're carrying, or raid what somebody else left
+        // wagons: get your animals aboard, or lift somebody else's off
         let standingOn = null;
-        for (const plat of state.plats) {
-            if (Math.hypot(p.x - plat.x, p.y - plat.y) > PLAT_R) continue;
+        for (const plat of state.wagons) {
+            if (Math.abs(p.x - plat.x) > WAGON_W / 2 + R ||
+                Math.abs(p.y - plat.y) > WAGON_H / 2 + R) continue;
             standingOn = plat;
 
-            const mine = plat.owner === p.team;
+            const sealed = wagonSealed(plat);
+            const roomLeft = WAGON_QUOTA - wagonValue(plat);
 
-            // A shut stall is safe, so anything more you walk in is banked on
-            // the spot and can never be raided. Finishing early is the reward.
-            if (plat.locked && mine && p.carry.length) {
-                const extra = carriedValue(p);
-                p.banked += extra;
-                p.safeBanked = (p.safeBanked || 0) + extra;
-                p.carry = [];
-                plat.flash = 0.5;
-                state.pops.push({
-                    x: p.x, y: p.y - 34, text: `SAFE +${extra}`,
-                    color: '#b6e34a', life: 1.4,
-                });
-                bank();
-                continue;
-            }
-
-            if (p.carry.length && mine) {
+            if (p.carry.length && !sealed && plat.held.length < WAGON_HOLD) {
                 let worth = carriedValue(p);
                 // an outstanding order pays double on the animals it asked for
                 if (state.order) {
@@ -894,33 +938,30 @@ function update(dt) {
                         rollOrder();
                     }
                 }
-                for (const kind of p.carry) plat.held.push({ team: p.team, kind });
+                for (const kind of p.carry) {
+                    if (plat.held.length >= WAGON_HOLD) break;
+                    plat.held.push({ team: p.team, kind });
+                }
                 p.carry = [];
                 plat.flash = 0.6;
                 state.pops.push({
-                    x: p.x, y: p.y - 32, text: `PENNED ${worth}`,
+                    x: p.x, y: p.y - 32, text: `LOADED ${worth}`,
                     color: TEAMS[p.team].color, life: 1.2,
                 });
                 if (!p.isBot) grab();
 
-                // has it reached its quota? then it's safe, and it pays out
-                const on = plat.held.reduce((a, h) => a + worthOf(h.kind), 0);
-                if (on >= plat.quota) {
-                    plat.locked = true;
+                // twenty aboard and the tailgate goes up — nobody can lift
+                // anything off it now, it just has to reach the market
+                if (wagonSealed(plat)) {
                     plat.flash = 1.4;
-                    const share = {};
-                    for (const h of plat.held) share[h.team] = (share[h.team] || 0) + worthOf(h.kind);
-
-                    // your stall, your money
-                    p.banked += on;
                     state.pops.push({
-                        x: plat.x, y: plat.y - PLAT_R * 0.5,
-                        text: `+${on}`, color: TEAMS[p.team].color, life: 1.8,
+                        x: plat.x, y: plat.y - WAGON_H, text: 'SEALED',
+                        color: '#b6e34a', life: 1.6,
                     });
-                    if (!p.isBot) say(`YOUR STALL ${plat.i + 1} IS FULL — GATE SHUT ON ${on}`, 1.8);
+                    if (!p.isBot) say(`WAGON ${plat.n} IS FULL — SEALED FOR MARKET`, 1.6);
                     bank();
                 }
-            } else if (!mine && p.onPlat !== plat && p.raidT <= 0 && raidPlatform(plat, p)) {
+            } else if (!sealed && p.onPlat !== plat && p.raidT <= 0 && raidPlatform(plat, p)) {
                 // one grab per visit — drive off and come back for more
                 p.raided++;
                 p.raidT = 3.5;
@@ -943,16 +984,7 @@ function update(dt) {
     }
 
     for (const pad of state.pads) pad.spin = Math.max(0, pad.spin - dt * 2);
-    for (const q of state.plats) q.flash = Math.max(0, q.flash - dt);
 
-    // every pen on the farm full? that's the day, whatever the clock says.
-    // Whoever shut theirs first has been banking safely in the meantime.
-    if (state.plats.every(q => q.locked)) {
-        state.over = true;
-        say('EVERY PEN IS FULL — THAT IS THE DAY', 2.4);
-        showOver();
-        return;
-    }
     for (const p of state.pops) { p.life -= dt; p.y -= dt * 26; }
     state.pops = state.pops.filter(p => p.life > 0);
 
@@ -1035,33 +1067,25 @@ function botThink(p, dt) {
 
     // Which platform is worth walking to: the one nearest to being finished
     // that this load could help along.
+    // which wagon can you actually reach before it goes past?
     let plat = null, ps = -Infinity;
-    const mineOpen = state.plats.some(q => q.owner === p.team && !q.locked);
-    for (const q of state.plats) {
-        if (q.owner !== p.team) continue;
+    for (const q of state.wagons) {
+        if (wagonSealed(q) || q.held.length >= WAGON_HOLD) continue;
+        if (q.x > marketX() - 40) continue;              // too late for that one
         const d = Math.hypot(q.x - p.x, q.y - p.y);
-        if (q.locked) {
-            // A shut stall banks whatever you walk in and can't be robbed —
-            // but only once there is nothing left to shut. Otherwise a shut
-            // stall right next to you beats an empty one across the field,
-            // and the rest never get filled.
-            if (mineOpen) continue;
-            const sc = 110 - d * 0.35;
-            if (sc > ps) { ps = sc; plat = q; }
-            continue;
-        }
-        const on = q.held.reduce((a, h) => a + worthOf(h.kind), 0);
-        const need = q.quota - on;
-        const finishes = worth >= need ? 320 : 0;      // this load would lock it
-        const sc = 150 + finishes + on * 4 - d * 0.35;
+        // it's rolling away from you, so cutting it off is what counts
+        const lead = (q.x - p.x) / SPEED;
+        const catchable = q.x + WAGON_SPEED * Math.max(0, lead) < marketX();
+        const sc = (catchable ? 220 : 0) + (WAGON_QUOTA - wagonValue(q)) * 3 - d * 0.4;
         if (sc > ps) { ps = sc; plat = q; }
     }
 
     // A platform sitting there half-full is somebody else's mistake.
     let raid = null, rd = Infinity;
     if (load < CARRY_MAX) {
-        for (const q of state.plats) {
-            if (q.locked || !q.held.length || q.owner === p.team) continue;
+        for (const q of state.wagons) {
+            if (wagonSealed(q) || !q.held.length) continue;
+            if (q.held.every(h => h.team === p.team)) continue;
             const d = Math.hypot(q.x - p.x, q.y - p.y);
             if (d < rd) { rd = d; raid = q; }
         }
@@ -1246,87 +1270,99 @@ function drawFarmKit() {
     }
 }
 
-function drawPlats() {
-    for (const q of state.plats) {
-        const on = q.held.reduce((a, h) => a + worthOf(h.kind), 0);
-        const pct = Math.min(1, on / q.quota);
-        const col = q.locked ? '#b6e34a' : on > 0 ? '#ffd24a' : '#d8c9a8';
-        const flash = q.flash > 0 ? q.flash : 0;
+function drawMarket() {
+    const mx = marketX();
+    // the yard in front of the market
+    ctx.fillStyle = 'rgba(120,96,62,0.55)';
+    ctx.fillRect(mx, 0, MARKET_W, H);
+    ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 5;
+    ctx.setLineDash([16, 12]); ctx.lineDashOffset = -state.elapsed * 26;
+    ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, H); ctx.stroke();
+    ctx.setLineDash([]);
 
-        // trodden dirt inside the pen
-        ctx.fillStyle = q.locked ? 'rgba(120,160,80,0.55)' : 'rgba(120,96,62,0.65)';
-        ctx.beginPath(); ctx.ellipse(q.x, q.y, PLAT_R, PLAT_R * 0.62, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(90,70,44,0.5)';
-        for (let i = 0; i < 14; i++) {
-            const a = i * 1.7 + q.i;
+    // a barn
+    const bx = mx + MARKET_W / 2, by = H / 2;
+    ctx.fillStyle = '#8f3b2e';
+    ctx.fillRect(bx - 54, by - 30, 108, 76);
+    ctx.fillStyle = '#6d2c22';
+    ctx.beginPath();
+    ctx.moveTo(bx - 64, by - 30); ctx.lineTo(bx, by - 74); ctx.lineTo(bx + 64, by - 30);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#f6e6c8';
+    ctx.fillRect(bx - 18, by - 4, 36, 50);
+    ctx.strokeStyle = '#8f3b2e'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(bx - 18, by - 4); ctx.lineTo(bx + 18, by + 46);
+    ctx.moveTo(bx + 18, by - 4); ctx.lineTo(bx - 18, by + 46);
+    ctx.stroke();
+    ctx.fillStyle = '#ffd24a';
+    ctx.font = 'bold 15px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillText('MARKET', bx, by - 86);
+    ctx.font = 'bold 11px Segoe UI'; ctx.fillStyle = '#f0dcae';
+    ctx.fillText('wagons sell here', bx, by + 66);
+}
+
+function drawWagons() {
+    for (const q of state.wagons) {
+        const val = wagonValue(q);
+        const sealed = wagonSealed(q);
+        const bounce = Math.sin(q.wob) * 2;
+        const x = q.x, y = q.y + bounce;
+
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(x, y + WAGON_H * 0.55, WAGON_W * 0.52, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // bed
+        ctx.fillStyle = sealed ? '#6f8f46' : '#9a7038';
+        ctx.fillRect(x - WAGON_W / 2, y - WAGON_H / 2, WAGON_W, WAGON_H);
+        ctx.strokeStyle = sealed ? '#b6e34a' : '#6b4d22';
+        ctx.lineWidth = q.flash > 0 ? 5 : 3.5;
+        ctx.strokeRect(x - WAGON_W / 2, y - WAGON_H / 2, WAGON_W, WAGON_H);
+        // slats
+        ctx.strokeStyle = 'rgba(60,42,18,0.55)'; ctx.lineWidth = 2;
+        for (let sx = x - WAGON_W / 2 + 14; sx < x + WAGON_W / 2; sx += 17) {
+            ctx.beginPath(); ctx.moveTo(sx, y - WAGON_H / 2 + 3); ctx.lineTo(sx, y + WAGON_H / 2 - 3); ctx.stroke();
+        }
+        // wheels
+        ctx.fillStyle = '#4a3520';
+        [-WAGON_W * 0.3, WAGON_W * 0.3].forEach(off => {
+            ctx.beginPath(); ctx.arc(x + off, y + WAGON_H / 2, 12, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#2f210f'; ctx.lineWidth = 3; ctx.stroke();
+            ctx.strokeStyle = '#7a5a30'; ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.ellipse(q.x + Math.cos(a) * PLAT_R * 0.6, q.y + Math.sin(a) * PLAT_R * 0.38, 7, 4, a, 0, Math.PI * 2);
-            ctx.fill();
-        }
+            ctx.moveTo(x + off - 9, y + WAGON_H / 2); ctx.lineTo(x + off + 9, y + WAGON_H / 2);
+            ctx.moveTo(x + off, y + WAGON_H / 2 - 9); ctx.lineTo(x + off, y + WAGON_H / 2 + 9);
+            ctx.stroke();
+        });
 
-        // the pen fence, with a gate at the front
-        ctx.strokeStyle = flash ? '#fff' : (q.locked ? '#b6e34a' : '#c39a5f');
-        ctx.lineWidth = q.locked ? 6 : 5;
-        ctx.beginPath();
-        ctx.ellipse(q.x, q.y, PLAT_R, PLAT_R * 0.62, 0, 0.45, Math.PI * 2 - 0.45);
-        ctx.stroke();
-        ctx.strokeStyle = flash ? '#fff' : '#8a6a3f';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.ellipse(q.x, q.y - 7, PLAT_R * 0.97, PLAT_R * 0.6, 0, 0.45, Math.PI * 2 - 0.45);
-        ctx.stroke();
-        // posts
-        for (let i = 0; i < 12; i++) {
-            const a = 0.45 + (i / 11) * (Math.PI * 2 - 0.9);
-            const px = q.x + Math.cos(a) * PLAT_R, py = q.y + Math.sin(a) * PLAT_R * 0.62;
-            ctx.fillStyle = q.locked ? '#7fa845' : '#8a6a3f';
-            ctx.fillRect(px - 3, py - 13, 6, 20);
-        }
-        // the gate, shut once the pen is full
-        const gx = q.x + Math.cos(0) * PLAT_R, gy = q.y;
-        ctx.strokeStyle = q.locked ? '#b6e34a' : '#a9834f';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        if (q.locked) { ctx.moveTo(gx - 4, gy - 22); ctx.lineTo(gx - 4, gy + 22); }
-        else { ctx.moveTo(gx + 2, gy - 20); ctx.lineTo(gx + 20, gy - 6); }
-        ctx.stroke();
-
-        // the animals penned in it, milling about
-        q.held.slice(-16).forEach((h, i) => {
-            const a = (i / 8) * Math.PI * 2 + q.i;
-            const rr = PLAT_R * 0.5 * (i < 8 ? 0.5 : 0.88);
-            const wob = Math.sin(state.elapsed * 2 + i) * 3;
-            const cx = q.x + Math.cos(a) * rr + wob, cy = q.y + Math.sin(a) * rr * 0.6;
-            ctx.font = '19px Segoe UI';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        // what's aboard
+        q.held.slice(0, WAGON_HOLD).forEach((h, i) => {
+            const cx = x - WAGON_W / 2 + 16 + (i % 5) * 19;
+            const cy = y - 10 + Math.floor(i / 5) * 20;
+            ctx.font = '16px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(h.kind.emoji, cx, cy);
             ctx.textBaseline = 'alphabetic';
             ctx.fillStyle = hexA(TEAMS[h.team].color, 0.95);
-            ctx.fillRect(cx - 6, cy + 10, 12, 2.5);
+            ctx.fillRect(cx - 6, cy + 9, 12, 2.5);
         });
 
-        // quota bar
-        const bw = PLAT_R * 1.5, bx = q.x - bw / 2, by = q.y + PLAT_R * 0.62 + 8;
+        // how full, and how close to market
+        const bw = WAGON_W - 12, bx2 = x - bw / 2, by2 = y + WAGON_H / 2 + 14;
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillRect(bx - 2, by - 2, bw + 4, 12);
-        ctx.fillStyle = 'rgba(255,255,255,0.15)';
-        ctx.fillRect(bx, by, bw, 8);
-        ctx.fillStyle = q.locked ? '#b6e34a' : '#ffd24a';
-        ctx.fillRect(bx, by, bw * pct, 8);
+        ctx.fillRect(bx2 - 2, by2 - 2, bw + 4, 11);
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.fillRect(bx2, by2, bw, 7);
+        ctx.fillStyle = sealed ? '#b6e34a' : '#ffd24a';
+        ctx.fillRect(bx2, by2, bw * Math.min(1, val / WAGON_QUOTA), 7);
         ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
-        const ownr = state.players.find(z => z.team === q.owner);
-        ctx.fillStyle = q.locked ? '#eaffd0' : '#fff8e6';
-        ctx.fillText(q.locked ? `SHUT` : `${on} / ${q.quota}`, q.x, by + 22);
-        ctx.fillStyle = hexA(TEAMS[q.owner].color, 0.95);
-        ctx.font = 'bold 11px Segoe UI';
-        ctx.fillText(ownr && !ownr.isBot ? `YOUR STALL ${q.i + 1}` : `${ownr ? ownr.name : TEAMS[q.owner].name} ${q.i + 1}`,
-                     q.x, q.y - PLAT_R * 0.62 - 24);
-        if (!q.locked && on > 0) {
-            ctx.fillStyle = '#ffd24a'; ctx.font = 'bold 11px Segoe UI';
-            ctx.fillText('GATE OPEN — THEY CAN BE TAKEN', q.x, q.y - PLAT_R * 0.62 - 10);
+        ctx.fillStyle = sealed ? '#b6e34a' : '#fff8e6';
+        ctx.fillText(sealed ? `WAGON ${q.n} — SEALED` : `${val} / ${WAGON_QUOTA}`, x, by2 + 22);
+        if (!sealed && q.held.length) {
+            ctx.fillStyle = '#ff9a5b'; ctx.font = 'bold 11px Segoe UI';
+            ctx.fillText('CAN BE ROBBED', x, y - WAGON_H / 2 - 10);
         }
-        ctx.font = '18px Segoe UI';
-        ctx.fillText(q.locked ? '🔒' : '🚧', q.x, q.y - PLAT_R * 0.2);
     }
 }
 
@@ -1591,15 +1627,20 @@ function drawHUD() {
     const m = Math.floor(state.time / 60), s = Math.floor(state.time % 60);
     ctx.fillText(`${m}:${String(s).padStart(2, '0')}`, W / 2, 38);
 
-    // how close the whole farm is to finishing — the day ends when it's full
-    const shut = state.plats.filter(q => q.locked).length;
-    const mineShut = state.plats.filter(q => q.locked && q.owner === state.players[0].team).length;
+    // the nearest wagon you could still catch
+    const me0 = state.players[0];
+    let near = null, nd = Infinity;
+    for (const q of state.wagons) {
+        if (wagonSealed(q) || q.x > marketX() - 40) continue;
+        const d = Math.hypot(q.x - me0.x, q.y - me0.y);
+        if (d < nd) { nd = d; near = q; }
+    }
     ctx.font = 'bold 13px Segoe UI';
-    ctx.fillStyle = shut === state.plats.length - 1 ? '#ffd24a' : '#cfe0d0';
-    ctx.fillText(`🚧 ${shut}/${state.plats.length} pens shut on the farm` +
-                 `  ·  yours ${mineShut}/${PLAT_COUNT}` +
-                 (shut === state.plats.length - 1 ? '  — one left, then the day ends!' : ''),
-                 W / 2, 60);
+    ctx.fillStyle = '#cfe0d0';
+    ctx.fillText(near
+        ? `🛻 wagon ${near.n} — ${wagonValue(near)}/${WAGON_QUOTA} aboard, ` +
+          `${Math.max(0, Math.round((marketX() - near.x) / WAGON_SPEED))}s from market`
+        : 'no wagon on the field — one along shortly', W / 2, 60);
 
     const me = state.players[0];
     ctx.font = 'bold 15px Segoe UI';
@@ -1607,7 +1648,7 @@ function drawHUD() {
     ctx.fillStyle = load >= CARRY_MAX ? '#ff8a65' : load > 0 ? '#ffa63d' : '#8ea3b5';
     const pct = Math.round((1 - load * CARRY_SLOW) * 100);
     ctx.fillText(load
-        ? `driving ${load}/${CARRY_MAX} worth ${carriedValue(me)} — ${pct}% speed — get them into a pen`
+        ? `driving ${load}/${carryCap(me)} worth ${carriedValue(me)} — ${pct}% speed — get them onto a wagon`
         : 'empty-handed — walk into the animals to start driving them', W / 2, H - 22);
 
     // the order board
@@ -1689,8 +1730,8 @@ function render() {
     ctx.translate(-Math.round(cam.x), 0);
     drawFloor();
     drawPads();
-    drawDepots();
-    drawPlats();
+    drawMarket();
+    drawWagons();
     drawFarmKit();
     for (const c of state.crates) {
         // shadow so they sit on the grass
@@ -1727,11 +1768,11 @@ function showOver() {
         `<br><span style="font-size:14px;color:#9fb3c8">You penned <b>${me.banked}</b>, barged rivals <b>${me.rammed}</b> time${me.rammed === 1 ? '' : 's'}, ` +
         `and lost <b>${me.dropped}</b> animal${me.dropped === 1 ? '' : 's'}` +
         `${me.raided ? `, while rustling from a pen <b>${me.raided}</b> time${me.raided === 1 ? '' : 's'}` : ''}.</span>` +
-        `<br><span style="font-size:13px;color:#7d8fa0">You shut ${state.plats.filter(q => q.locked && q.owner === me.team).length} of your ${PLAT_COUNT} stalls.</span>`;
+        `<br><span style="font-size:13px;color:#7d8fa0">${state.sold.length} wagon${state.sold.length === 1 ? '' : 's'} reached the market.</span>`;
     document.getElementById('standings').innerHTML = rank.map((p, i) => {
         const bits = [];
         const safe = p.safeBanked || 0;
-        if (safe) bits.push(`${safe} banked into shut stalls`);
+        if (p.sold) bits.push(`${p.sold} wagon${p.sold === 1 ? '' : 's'} sold`);
         if (p.orders) bits.push(`${p.orders} order${p.orders === 1 ? '' : 's'}`);
         if (p.fined) bits.push(`&minus;${p.fined} trespassing`);
         if (p.raided) bits.push(`${p.raided} raid${p.raided === 1 ? '' : 's'}`);
