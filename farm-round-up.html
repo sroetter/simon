@@ -85,7 +85,10 @@
       fence costs you a point</b>. Raiding a stall is worth it, loitering is not.<br><br>
       Here is the catch: <b>getting animals into a stall does not pay you</b>. A stall pays only when
       it is <b>full</b>, and until then the gate is open and <b>anyone who walks in can drive your
-      animals straight back out</b>. Fill it and the gate <b>shuts</b> for good.<br><br>
+      animals straight back out</b>.<br><br>
+      Fill it and the gate <b>shuts</b> — and a shut stall keeps taking animals, <b>banked the moment
+      you walk them in and safe from everybody</b>. So shutting your three early is not the end of
+      your day, it is the start of the safe part of it.<br><br>
       <b>Barge</b> a rival with <kbd>Space</kbd> and <b>one animal breaks loose</b> — the last one
       they picked up — not the whole herd. <b>Lasso</b> with
       <kbd>E</kbd> to reel in an animal from across the field instead of chasing it. Drop the
@@ -293,7 +296,7 @@ function makeHauler(idx, isBot, name) {
         carry: [], banked: 0,
         rammed: 0, dropped: 0, raided: 0,
         ramT: 0, coolT: 0, stun: 0, raidT: 0, onPlat: null,
-        dog: 0, lassoT: 0, bucketT: 0, lasso: null, orders: 0,
+        dog: 0, lassoT: 0, bucketT: 0, lasso: null, orders: 0, safeBanked: 0,
         trespassT: TRESPASS_EVERY, fined: 0,
         step: 0, moving: false,
         padT: 0,
@@ -849,9 +852,25 @@ function update(dt) {
         for (const plat of state.plats) {
             if (Math.hypot(p.x - plat.x, p.y - plat.y) > PLAT_R) continue;
             standingOn = plat;
-            if (plat.locked) continue;
 
             const mine = plat.owner === p.team;
+
+            // A shut stall is safe, so anything more you walk in is banked on
+            // the spot and can never be raided. Finishing early is the reward.
+            if (plat.locked && mine && p.carry.length) {
+                const extra = carriedValue(p);
+                p.banked += extra;
+                p.safeBanked = (p.safeBanked || 0) + extra;
+                p.carry = [];
+                plat.flash = 0.5;
+                state.pops.push({
+                    x: p.x, y: p.y - 34, text: `SAFE +${extra}`,
+                    color: '#b6e34a', life: 1.4,
+                });
+                bank();
+                continue;
+            }
+
             if (p.carry.length && mine) {
                 let worth = carriedValue(p);
                 // an outstanding order pays double on the animals it asked for
@@ -926,7 +945,8 @@ function update(dt) {
     for (const pad of state.pads) pad.spin = Math.max(0, pad.spin - dt * 2);
     for (const q of state.plats) q.flash = Math.max(0, q.flash - dt);
 
-    // every pen on the farm full? that's the day, whatever the clock says
+    // every pen on the farm full? that's the day, whatever the clock says.
+    // Whoever shut theirs first has been banking safely in the meantime.
     if (state.plats.every(q => q.locked)) {
         state.over = true;
         say('EVERY PEN IS FULL — THAT IS THE DAY', 2.4);
@@ -1016,13 +1036,24 @@ function botThink(p, dt) {
     // Which platform is worth walking to: the one nearest to being finished
     // that this load could help along.
     let plat = null, ps = -Infinity;
+    const mineOpen = state.plats.some(q => q.owner === p.team && !q.locked);
     for (const q of state.plats) {
-        if (q.locked || q.owner !== p.team) continue;
+        if (q.owner !== p.team) continue;
+        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        if (q.locked) {
+            // A shut stall banks whatever you walk in and can't be robbed —
+            // but only once there is nothing left to shut. Otherwise a shut
+            // stall right next to you beats an empty one across the field,
+            // and the rest never get filled.
+            if (mineOpen) continue;
+            const sc = 110 - d * 0.35;
+            if (sc > ps) { ps = sc; plat = q; }
+            continue;
+        }
         const on = q.held.reduce((a, h) => a + worthOf(h.kind), 0);
         const need = q.quota - on;
-        const d = Math.hypot(q.x - p.x, q.y - p.y);
         const finishes = worth >= need ? 320 : 0;      // this load would lock it
-        const sc = finishes + (q.quota - need) * 6 - d * 0.35;
+        const sc = 150 + finishes + on * 4 - d * 0.35;
         if (sc > ps) { ps = sc; plat = q; }
     }
 
@@ -1697,8 +1728,18 @@ function showOver() {
         `and lost <b>${me.dropped}</b> animal${me.dropped === 1 ? '' : 's'}` +
         `${me.raided ? `, while rustling from a pen <b>${me.raided}</b> time${me.raided === 1 ? '' : 's'}` : ''}.</span>` +
         `<br><span style="font-size:13px;color:#7d8fa0">You shut ${state.plats.filter(q => q.locked && q.owner === me.team).length} of your ${PLAT_COUNT} stalls.</span>`;
-    document.getElementById('standings').innerHTML = rank.map((p, i) =>
-        `<div class="standing">${i + 1}. <b style="color:${TEAMS[p.team].color}">${p.isBot ? p.name : 'You'}</b> — ${p.banked}</div>`).join('');
+    document.getElementById('standings').innerHTML = rank.map((p, i) => {
+        const bits = [];
+        const safe = p.safeBanked || 0;
+        if (safe) bits.push(`${safe} banked into shut stalls`);
+        if (p.orders) bits.push(`${p.orders} order${p.orders === 1 ? '' : 's'}`);
+        if (p.fined) bits.push(`&minus;${p.fined} trespassing`);
+        if (p.raided) bits.push(`${p.raided} raid${p.raided === 1 ? '' : 's'}`);
+        return `<div class="standing">${i + 1}. <b style="color:${TEAMS[p.team].color}">` +
+               `${p.isBot ? p.name : 'You'}</b> — ${p.banked}` +
+               (bits.length ? `<br><span style="font-size:12px;color:#9fb3c8">${bits.join(' · ')}</span>` : '') +
+               `</div>`;
+    }).join('');
     document.getElementById('overOv').classList.remove('hidden');
 }
 
