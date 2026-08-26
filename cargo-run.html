@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cargo Run - Simon's Game Gallery</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+        font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background:#0e1116; color:#eef3f8; overflow:hidden;
+        -webkit-user-select:none; user-select:none;
+    }
+    canvas { display:block; }
+    .back-btn {
+        position:fixed; top:14px; left:14px; z-index:99999; text-decoration:none;
+        color:#1b1b1b; background:rgba(255,255,255,0.9); border:1px solid rgba(0,0,0,0.25);
+        padding:8px 16px; border-radius:8px; font-size:14px; line-height:1.2;
+    }
+    .back-btn:hover { background:#fff; }
+    .footer-link {
+        position:fixed; bottom:8px; left:0; right:0; text-align:center;
+        font-size:12px; color:rgba(255,255,255,0.35); z-index:20; pointer-events:none;
+    }
+    .footer-link a { color:rgba(255,255,255,0.65); pointer-events:auto; }
+
+    .overlay {
+        position:fixed; inset:0; z-index:40; display:flex; align-items:center;
+        justify-content:center; padding:16px; overflow-y:auto; background:rgba(8,11,16,0.86);
+    }
+    .overlay.hidden { display:none; }
+    .panel {
+        background:linear-gradient(150deg,#1d2836,#121821);
+        border:2px solid #ffa63d; border-radius:18px; padding:20px 26px;
+        max-width:660px; width:94%; text-align:center;
+        max-height:calc(100vh - 32px); overflow-y:auto;
+        box-shadow:0 18px 60px rgba(0,0,0,0.65), 0 0 44px rgba(255,166,61,0.14);
+    }
+    h1 { font-size:clamp(26px,5.5vw,42px); letter-spacing:2px; margin-bottom:4px;
+         text-shadow:0 0 16px rgba(255,166,61,0.4); }
+    h2 { font-size:15px; font-weight:normal; color:#9fb3c8; margin-bottom:10px; }
+    .rules { text-align:left; font-size:13.5px; line-height:1.6; color:#dbe6f0;
+             background:rgba(0,0,0,0.3); border-radius:10px; padding:12px 14px; margin:10px 0; }
+    .rules b { color:#ffa63d; }
+    .keys { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0; font-size:13px; }
+    .keys div { background:rgba(0,0,0,0.3); border-radius:8px; padding:8px 10px; text-align:left; }
+    kbd { background:#141b25; border:1px solid #4a6070; border-bottom-width:2px;
+          border-radius:5px; padding:1px 6px; font-size:12px; color:#cfe2f0; }
+    .label { font-size:12px; color:#9fb3c8; margin:10px 0 3px; letter-spacing:1px; }
+    .row { display:flex; gap:7px; justify-content:center; flex-wrap:wrap; }
+    .btn {
+        background:linear-gradient(135deg,#ffa63d,#c96a0b); color:#22160a;
+        border:2px solid #ffd9a6; border-radius:10px; cursor:pointer;
+        padding:11px 24px; font-size:16px; font-weight:bold; box-shadow:0 4px 0 #7d4206;
+    }
+    .btn:hover { filter:brightness(1.1); }
+    .btn:active { transform:translateY(2px); box-shadow:0 2px 0 #7d4206; }
+    .btn.small { padding:6px 12px; font-size:13px; min-width:56px; color:#eef3f8;
+                 background:linear-gradient(135deg,#2a3a4c,#18222e); border-color:#5a7488; box-shadow:0 3px 0 #0d141c; }
+    .btn.small.sel { background:linear-gradient(135deg,#ffa63d,#c96a0b); color:#22160a; border-color:#ffe3c2; }
+    .btn.team { min-width:78px; font-weight:bold; color:#141b25; }
+    .btn.team.sel { box-shadow:0 0 12px rgba(255,255,255,0.5); border-color:#fff; }
+    .final { font-size:17px; color:#ffa63d; margin:8px 0; }
+    .standing { font-size:14px; margin:3px 0; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<div class="overlay" id="titleOv">
+  <div class="panel">
+    <h1>📦 CARGO RUN</h1>
+    <h2>Everyone wants the same crates. Only one of you gets paid.</h2>
+    <div class="rules">
+      <b>Crates</b> drop all over the yard and they are <b>not worth the same</b> — a plain crate is
+      1, a blue chest 3, a purple safe 5, and gold bullion is worth <b>10</b>. The number is written
+      on the lid.<br><br>
+      Carry up to <b>four at once</b> — each one slows you down — and load them onto one of the
+      <b>three platforms</b> in the middle.<br><br>
+      Here is the catch: <b>loading a platform does not pay you</b>. A platform only pays out when it
+      reaches its <b>quota</b> — 12, 20 and 30 — and until then everything sitting on it can be
+      <b>stolen straight back off it</b> by anybody who drives over it. Once the quota is met the
+      platform <b>locks</b>, everyone who contributed is paid what they put in, and it is safe for good.<br><br>
+      <b>Ram</b> with <kbd>Space</kbd> and they drop their whole load on the floor. Miss and you are
+      on a cooldown, wide open. <b>Boost pads</b> fling you across the yard.<br><br>
+      Lock all three platforms and the shift ends early.
+    </div>
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — drive</div>
+      <div><kbd>Space</kbd> — ram</div>
+      <div>Drive onto a platform to load or raid</div>
+      <div><kbd>Esc</kbd> — pause</div>
+    </div>
+    <div class="label">RIVAL HAULERS</div>
+    <div class="row" id="bots">
+      <button class="btn small" data-n="1">1</button>
+      <button class="btn small sel" data-n="2">2</button>
+      <button class="btn small" data-n="3">3</button>
+    </div>
+    <div class="label">YOUR COLOUR</div>
+    <div class="row" id="teamPick"></div>
+    <div class="label">ROUND LENGTH</div>
+    <div class="row" id="dur">
+      <button class="btn small" data-s="60">1 MIN</button>
+      <button class="btn small sel" data-s="120">2 MIN</button>
+      <button class="btn small" data-s="180">3 MIN</button>
+    </div>
+    <div class="label">RIVAL SKILL</div>
+    <div class="row" id="skill">
+      <button class="btn small" data-k="easy">EASY</button>
+      <button class="btn small sel" data-k="normal">NORMAL</button>
+      <button class="btn small" data-k="hard">HARD</button>
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="start">START HAULING</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overOv">
+  <div class="panel">
+    <h1 id="overTitle">END OF SHIFT</h1>
+    <div class="final" id="finalText"></div>
+    <div id="standings" style="margin:10px 0;"></div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn" id="again">RUN AGAIN</button>
+      <button class="btn small" id="menu">MENU</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener('resize', resize); resize();
+
+/* ==================================================================
+   CONSTANTS
+   ================================================================== */
+const R = 18;                    // hauler radius
+const SPEED = 250;
+const CARRY_MAX = 4;
+const CARRY_SLOW = 0.11;         // per crate on your back
+const CRATE_R = 15;
+const CRATE_MAX = 16;
+const CRATE_EVERY = 1.3;
+
+// Crates are worth different amounts, and the good ones are rarer.
+const CRATE_KINDS = [
+    { v:1, chance:0.46, name:'crate',  body:'#d99a4e', edge:'#6b4415', top:'#f0b96f' },
+    { v:3, chance:0.30, name:'chest',  body:'#7fc7e8', edge:'#255d78', top:'#b7e6fb' },
+    { v:5, chance:0.17, name:'safe',   body:'#b9a2ff', edge:'#4a3789', top:'#dccfff' },
+    { v:10, chance:0.07, name:'bullion', body:'#ffd24a', edge:'#8a6407', top:'#fff0b0' },
+];
+
+// Platforms hold what you load onto them, but nothing is banked until a
+// platform reaches its quota — before that it can all be stolen back.
+const PLAT_R = 74;
+const PLAT_QUOTA = [12, 20, 30];   // by platform index — later ones pay more
+const PLAT_COUNT = 3;
+
+const DEPOT_R = 62;
+
+const RAM_REACH = 74;
+const RAM_ARC = 0.95;
+const RAM_TIME = 0.22;
+const RAM_COOL = 1.1;            // a missed ram leaves you open
+const RAM_KNOCK = 980;
+const RAM_DRAG = 3.0;
+const RAM_STUN = 0.9;
+
+const PAD_R = 46;
+const PAD_PUSH = 900;
+
+const TEAMS = [
+    { name:'ORANGE', color:'#ffa63d', dark:'#9c5a06' },
+    { name:'CYAN',   color:'#3fd2e8', dark:'#0d6473' },
+    { name:'LIME',   color:'#b6e34a', dark:'#5c7414' },
+    { name:'PINK',   color:'#ff6fa8', dark:'#8f2455' },
+    { name:'VIOLET', color:'#a98bff', dark:'#463584' },
+    { name:'SAND',   color:'#e8d9b0', dark:'#7a6c46' },
+];
+const SKILL = {
+    easy:   { react:0.72, ram:0.3, greed:1.6, care:0.5 },
+    normal: { react:0.9,  ram:0.7, greed:2.4, care:0.8 },
+    hard:   { react:1.0,  ram:1.0, greed:3.2, care:1.0 },
+};
+const NAMES = ['Vex','Rook','Juno','Pike','Cass','Nim','Bo','Sol','Wren','Tao','Fen','Ivo'];
+
+let nBots = 2, myTeam = 0, matchSecs = 120, skill = 'normal';
+
+/* ==================================================================
+   SOUND
+   ================================================================== */
+let audio = null;
+function actx() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); return audio; }
+function tone(f, dur = 0.1, type = 'sine', vol = 0.05, slide = 0) {
+    try {
+        const a = actx(), o = a.createOscillator(), g = a.createGain();
+        o.type = type; o.frequency.setValueAtTime(f, a.currentTime);
+        if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, f + slide), a.currentTime + dur);
+        g.gain.setValueAtTime(vol, a.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+        o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+    } catch (e) {}
+}
+const grab   = () => tone(760, 0.07, 'sine', 0.045);
+const bank   = () => { tone(660, 0.1, 'triangle', 0.06); tone(990, 0.14, 'triangle', 0.05); };
+const smash  = () => { tone(180, 0.16, 'square', 0.075, -110); tone(90, 0.2, 'sawtooth', 0.05); };
+const whoosh = () => tone(420, 0.08, 'triangle', 0.035, -200);
+const boostS = () => tone(300, 0.14, 'square', 0.05, 500);
+const crack  = () => tone(140, 0.3, 'sawtooth', 0.06, -80);
+const horn   = () => { tone(300, 0.3, 'square', 0.06); tone(400, 0.34, 'square', 0.05); };
+
+/* ==================================================================
+   STATE
+   ================================================================== */
+let state = null;
+const keys = {};
+addEventListener('keydown', e => {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    if (e.code === 'Escape' && state && !state.over) state.paused = !state.paused;
+    if (e.code === 'Space' && state && !state.paused) ram(state.players[0]);
+    keys[e.code] = true;
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+function makeHauler(idx, isBot, name) {
+    return {
+        idx, isBot, name,
+        x: 0, y: 0, face: 0,
+        kx: 0, ky: 0,
+        carry: [], banked: 0,
+        rammed: 0, dropped: 0, raided: 0,
+        ramT: 0, coolT: 0, stun: 0, raidT: 0, onPlat: null,
+        step: 0, moving: false,
+        padT: 0,
+    };
+}
+
+function newGame() {
+    const players = [];
+    const names = NAMES.slice();
+    for (let i = names.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [names[i], names[j]] = [names[j], names[i]];
+    }
+    players.push(makeHauler(0, false, 'You'));
+    for (let i = 0; i < nBots; i++) players.push(makeHauler(i + 1, true, names[i % names.length]));
+
+    const total = players.length;
+    const depots = [];
+    const rad = Math.min(W, H) * 0.36;
+    for (let i = 0; i < total; i++) {
+        const a = (i / total) * Math.PI * 2 - Math.PI / 2;
+        depots.push({ x: W / 2 + Math.cos(a) * rad, y: H / 2 + Math.sin(a) * rad, team: i });
+    }
+
+    // Platforms sit around the middle, shared by everyone.
+    const plats = [];
+    for (let i = 0; i < PLAT_COUNT; i++) {
+        const a = (i / PLAT_COUNT) * Math.PI * 2 - Math.PI / 2 + 0.4;
+        const rr = Math.min(W, H) * 0.17;
+        plats.push({
+            i,
+            x: W / 2 + Math.cos(a) * rr,
+            y: H / 2 + Math.sin(a) * rr,
+            quota: PLAT_QUOTA[i],
+            held: [],            // { team, value } stacked on it, still stealable
+            locked: false,
+            flash: 0,
+        });
+    }
+
+    state = {
+        players, depots, plats,
+        crates: [], crateT: 0.5,
+        pads: [],
+        time: matchSecs, elapsed: 0,
+        pops: [], shake: 0,
+        paused: false, over: false,
+        message: '', messageT: 0,
+    };
+
+    // boost pads, kept off the depots
+    for (let i = 0; i < 4; i++) {
+        for (let t = 0; t < 50; t++) {
+            const x = 120 + Math.random() * (W - 240);
+            const y = 120 + Math.random() * (H - 240);
+            if (depots.some(d => Math.hypot(d.x - x, d.y - y) < DEPOT_R + 120)) continue;
+            if (state.pads.some(q => Math.hypot(q.x - x, q.y - y) < 220)) continue;
+            state.pads.push({ x, y, a: Math.random() * Math.PI * 2, spin: 0 });
+            break;
+        }
+    }
+
+    players.forEach((p, i) => {
+        const d = depots[i];
+        p.team = i;
+        p.x = d.x; p.y = d.y;
+        p.face = Math.atan2(H / 2 - p.y, W / 2 - p.x);
+    });
+
+    for (let i = 0; i < 6; i++) spawnCrate();
+    say('HAUL THEM HOME', 1.6);
+}
+
+function say(t, s) { state.message = t; state.messageT = s || 1.5; }
+
+function rollKind() {
+    let r = Math.random();
+    for (const k of CRATE_KINDS) { if (r < k.chance) return k; r -= k.chance; }
+    return CRATE_KINDS[0];
+}
+function makeCrate(x, y, kind) {
+    return { x, y, kind: kind || rollKind(), spin: Math.random() * 3, bob: Math.random() * 6 };
+}
+
+function spawnCrate() {
+    if (state.crates.length >= CRATE_MAX) return;
+    for (let t = 0; t < 50; t++) {
+        const x = 70 + Math.random() * (W - 140);
+        const y = 70 + Math.random() * (H - 140);
+        if (state.depots.some(d => Math.hypot(d.x - x, d.y - y) < DEPOT_R + 40)) continue;
+        if (state.plats.some(q => Math.hypot(q.x - x, q.y - y) < PLAT_R + 30)) continue;
+        state.crates.push(makeCrate(x, y));
+        return;
+    }
+}
+
+function carriedValue(p) { return p.carry.reduce((a, k) => a + k.v, 0); }
+
+function dropLoad(p) {
+    if (!p.carry.length) return;
+    const n = p.carry.length, worth = carriedValue(p);
+    for (const kind of p.carry) {
+        const a = Math.random() * Math.PI * 2, r = 34 + Math.random() * 62;
+        state.crates.push(makeCrate(
+            Math.max(30, Math.min(W - 30, p.x + Math.cos(a) * r)),
+            Math.max(30, Math.min(H - 30, p.y + Math.sin(a) * r)),
+            kind));
+    }
+    p.dropped += n;
+    p.carry = [];
+    state.pops.push({
+        x: p.x, y: p.y - 30, life: 1.2,
+        text: `DROPPED ${worth}!`,
+        color: TEAMS[p.team].color,
+    });
+}
+
+// Everything sitting on a platform that hasn't met its quota is up for grabs.
+function raidPlatform(plat, thief) {
+    if (plat.locked || !plat.held.length) return false;
+    const room = CARRY_MAX - thief.carry.length;
+    if (room <= 0) return false;
+    const taken = plat.held.splice(-Math.min(room, plat.held.length));
+    let worth = 0;
+    for (const h of taken) { thief.carry.push(h.kind); worth += h.kind.v; }
+    plat.flash = 0.8;
+    state.pops.push({
+        x: plat.x, y: plat.y - PLAT_R * 0.5, life: 1.3,
+        text: `RAIDED ${worth}!`, color: TEAMS[thief.team].color,
+    });
+    smash();
+    return true;
+}
+
+/* ==================================================================
+   RAMMING
+   ================================================================== */
+function ram(p) {
+    if (!p || state.over || p.coolT > 0 || p.stun > 0) return;
+    p.ramT = RAM_TIME;
+    p.coolT = RAM_COOL;
+    whoosh();
+    let hit = false;
+    for (const q of state.players) {
+        if (q === p) continue;
+        const dx = q.x - p.x, dy = q.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d > RAM_REACH + R) continue;
+        let da = Math.atan2(dy, dx) - p.face;
+        while (da > Math.PI) da -= Math.PI * 2;
+        while (da < -Math.PI) da += Math.PI * 2;
+        if (Math.abs(da) > RAM_ARC) continue;
+
+        const m = d || 1;
+        q.kx = (dx / m) * RAM_KNOCK;
+        q.ky = (dy / m) * RAM_KNOCK;
+        q.stun = RAM_STUN;
+        p.rammed++;
+        state.shake = 15;
+        smash();
+        dropLoad(q);
+        hit = true;
+    }
+    if (!hit) state.pops.push({ x: p.x, y: p.y - 30, text: 'missed', color: '#8ea3b5', life: 0.8 });
+}
+
+/* ==================================================================
+   UPDATE
+   ================================================================== */
+function update(dt) {
+    state.elapsed += dt;
+    state.shake = Math.max(0, state.shake - dt * 55);
+    if (state.messageT > 0) state.messageT -= dt;
+
+    state.crateT -= dt;
+    if (state.crateT <= 0) { state.crateT = CRATE_EVERY; spawnCrate(); }
+
+    for (const p of state.players) {
+        p.ramT = Math.max(0, p.ramT - dt);
+        p.coolT = Math.max(0, p.coolT - dt);
+        p.stun = Math.max(0, p.stun - dt);
+        p.padT = Math.max(0, p.padT - dt);
+        p.raidT = Math.max(0, p.raidT - dt);
+
+        let ix = 0, iy = 0;
+        if (p.stun <= 0) {
+            if (p.isBot) { const c = botThink(p, dt); ix = c.ix; iy = c.iy; }
+            else {
+                if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
+                if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
+                if (keys['KeyW'] || keys['ArrowUp']) iy -= 1;
+                if (keys['KeyS'] || keys['ArrowDown']) iy += 1;
+            }
+            const m = Math.hypot(ix, iy);
+            if (m > 0) { ix /= m; iy /= m; p.face = Math.atan2(iy, ix); }
+            p.moving = m > 0;
+        } else p.moving = false;
+
+        const load = 1 - p.carry.length * CARRY_SLOW;
+        const sp = SPEED * load * (p.ramT > 0 ? 0.5 : 1);
+        p.x += ix * sp * dt + p.kx * dt;
+        p.y += iy * sp * dt + p.ky * dt;
+        if (p.moving) p.step += dt * 11;
+
+        const drag = Math.exp(-RAM_DRAG * dt);
+        p.kx *= drag; p.ky *= drag;
+        if (Math.abs(p.kx) < 6) p.kx = 0;
+        if (Math.abs(p.ky) < 6) p.ky = 0;
+
+        if (p.x < R) { p.x = R; p.kx = Math.abs(p.kx) * 0.4; }
+        if (p.x > W - R) { p.x = W - R; p.kx = -Math.abs(p.kx) * 0.4; }
+        if (p.y < R) { p.y = R; p.ky = Math.abs(p.ky) * 0.4; }
+        if (p.y > H - R) { p.y = H - R; p.ky = -Math.abs(p.ky) * 0.4; }
+
+        // boost pads
+        for (const pad of state.pads) {
+            if (p.padT > 0) break;
+            if (Math.hypot(p.x - pad.x, p.y - pad.y) > PAD_R) continue;
+            p.kx += Math.cos(pad.a) * PAD_PUSH;
+            p.ky += Math.sin(pad.a) * PAD_PUSH;
+            p.padT = 0.6;
+            pad.spin = 1;
+            if (!p.isBot) boostS(); else boostS();
+            state.pops.push({ x: p.x, y: p.y - 28, text: 'BOOST!', color: '#7fe7ff', life: 0.8 });
+        }
+
+        // pick crates up
+        if (p.carry.length < CARRY_MAX) {
+            for (let i = state.crates.length - 1; i >= 0; i--) {
+                const c = state.crates[i];
+                if (Math.hypot(c.x - p.x, c.y - p.y) > R + CRATE_R) continue;
+                state.crates.splice(i, 1);
+                p.carry.push(c.kind);
+                if (!p.isBot) grab();
+                break;
+            }
+        }
+
+        // platforms: load what you're carrying, or raid what somebody else left
+        let standingOn = null;
+        for (const plat of state.plats) {
+            if (Math.hypot(p.x - plat.x, p.y - plat.y) > PLAT_R) continue;
+            standingOn = plat;
+            if (plat.locked) continue;
+
+            if (p.carry.length) {
+                const worth = carriedValue(p);
+                for (const kind of p.carry) plat.held.push({ team: p.team, kind });
+                p.carry = [];
+                plat.flash = 0.6;
+                state.pops.push({
+                    x: p.x, y: p.y - 32, text: `LOADED ${worth}`,
+                    color: TEAMS[p.team].color, life: 1.2,
+                });
+                if (!p.isBot) grab();
+
+                // has it reached its quota? then it's safe, and it pays out
+                const on = plat.held.reduce((a, h) => a + h.kind.v, 0);
+                if (on >= plat.quota) {
+                    plat.locked = true;
+                    plat.flash = 1.4;
+                    const share = {};
+                    for (const h of plat.held) share[h.team] = (share[h.team] || 0) + h.kind.v;
+                    for (const q of state.players) {
+                        const got = share[q.team] || 0;
+                        if (!got) continue;
+                        q.banked += got;
+                        state.pops.push({
+                            x: plat.x + (Math.random() - 0.5) * 50, y: plat.y - PLAT_R * 0.4,
+                            text: `+${got}`, color: TEAMS[q.team].color, life: 1.6,
+                        });
+                    }
+                    say(`PLATFORM ${plat.i + 1} IS SAFE — ${on} BANKED`, 1.8);
+                    bank();
+                }
+            } else if (p.onPlat !== plat && p.raidT <= 0 && raidPlatform(plat, p)) {
+                // one grab per visit — drive off and come back for more
+                p.raided++;
+                p.raidT = 1.2;
+            }
+        }
+        p.onPlat = standingOn;
+    }
+
+    // keep bodies apart
+    for (let i = 0; i < state.players.length; i++) {
+        for (let j = i + 1; j < state.players.length; j++) {
+            const a = state.players[i], b = state.players[j];
+                const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+            if (d < R * 2 && d > 0.001) {
+                const push = (R * 2 - d) / 2 * 0.5;
+                a.x -= (dx / d) * push; a.y -= (dy / d) * push;
+                b.x += (dx / d) * push; b.y += (dy / d) * push;
+            }
+        }
+    }
+
+    for (const pad of state.pads) pad.spin = Math.max(0, pad.spin - dt * 2);
+    for (const q of state.plats) q.flash = Math.max(0, q.flash - dt);
+
+    // all three locked? the shift is over early
+    if (state.plats.every(q => q.locked)) { state.over = true; showOver(); return; }
+    for (const p of state.pops) { p.life -= dt; p.y -= dt * 26; }
+    state.pops = state.pops.filter(p => p.life > 0);
+
+    state.time -= dt;
+    if (state.time <= 0) { state.time = 0; state.over = true; showOver(); }
+}
+
+/* ==================================================================
+   RIVALS
+   ================================================================== */
+function botThink(p, dt) {
+    const cfg = SKILL[skill];
+    const out = { ix: 0, iy: 0 };
+    const home = state.depots[p.team];
+
+    // somebody loaded and close is worth a shunt
+    let victim = null, vd = Infinity;
+    for (const q of state.players) {
+        if (q === p || !q.carry.length) continue;
+        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        if (d < vd) { vd = d; victim = q; }
+    }
+    if (victim && vd < RAM_REACH && p.coolT <= 0 && Math.random() < cfg.ram) {
+        p.face = Math.atan2(victim.y - p.y, victim.x - p.x);
+        ram(p);
+    }
+
+    let tx, ty;
+    const load = p.carry.length;
+    const worth = carriedValue(p);
+    const full = load >= CARRY_MAX;
+
+    // Which platform is worth walking to: the one nearest to being finished
+    // that this load could help along.
+    let plat = null, ps = -Infinity;
+    for (const q of state.plats) {
+        if (q.locked) continue;
+        const on = q.held.reduce((a, h) => a + h.kind.v, 0);
+        const need = q.quota - on;
+        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        const finishes = worth >= need ? 320 : 0;      // this load would lock it
+        const sc = finishes + (q.quota - need) * 6 - d * 0.35;
+        if (sc > ps) { ps = sc; plat = q; }
+    }
+
+    // A platform sitting there half-full is somebody else's mistake.
+    let raid = null, rd = Infinity;
+    if (load < CARRY_MAX) {
+        for (const q of state.plats) {
+            if (q.locked || !q.held.length) continue;
+            const mine = q.held.filter(h => h.team === p.team).length;
+            if (mine === q.held.length) continue;       // it's all yours anyway
+            const d = Math.hypot(q.x - p.x, q.y - p.y);
+            if (d < rd) { rd = d; raid = q; }
+        }
+    }
+
+    if (full || (plat && worth >= plat.quota - plat.held.reduce((a, h) => a + h.kind.v, 0))) {
+        tx = plat ? plat.x : home.x; ty = plat ? plat.y : home.y;
+    } else if (raid && raid !== p.onPlat && p.raidT <= 0 && rd < 360 * cfg.greed * 0.4) {
+        tx = raid.x; ty = raid.y;
+    } else if (victim && vd < 210 && load < CARRY_MAX && cfg.ram > 0.5 && p.coolT <= 0) {
+        tx = victim.x; ty = victim.y;
+    } else if (load >= Math.max(1, Math.round(cfg.greed)) && plat) {
+        tx = plat.x; ty = plat.y;
+    } else {
+        // best crate going: worth a lot, and not far
+        let best = null, bs = -Infinity;
+        for (const c of state.crates) {
+            const d = Math.hypot(c.x - p.x, c.y - p.y);
+            const sc = c.kind.v * 34 * cfg.greed * 0.4 - d;
+            if (sc > bs) { bs = sc; best = c; }
+        }
+        if (best) { tx = best.x; ty = best.y; }
+        else if (plat) { tx = plat.x; ty = plat.y; }
+        else { tx = home.x; ty = home.y; }
+    }
+
+    let dx = tx - p.x, dy = ty - p.y;
+    const m = Math.hypot(dx, dy) || 1;
+    out.ix = (dx / m) * cfg.react;
+    out.iy = (dy / m) * cfg.react;
+    return out;
+}
+
+/* ==================================================================
+   RENDER
+   ================================================================== */
+function hexA(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+function drawFloor() {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#2b3442');
+    g.addColorStop(1, '#1b222c');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(255,255,255,0.045)';
+    ctx.lineWidth = 2;
+    for (let x = 0; x < W; x += 84) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 84) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    // hazard stripes round the edge
+    ctx.save();
+    ctx.globalAlpha = 0.16;
+    for (let i = -H; i < W + H; i += 34) {
+        ctx.strokeStyle = i % 68 === 0 ? '#ffa63d' : '#1b222c';
+        ctx.lineWidth = 16;
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i - H, H); ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function drawPlats() {
+    for (const q of state.plats) {
+        const on = q.held.reduce((a, h) => a + h.kind.v, 0);
+        const pct = Math.min(1, on / q.quota);
+        const col = q.locked ? '#b6e34a' : on > 0 ? '#ffd24a' : '#8ea3b5';
+        const flash = q.flash > 0 ? q.flash : 0;
+
+        // the deck
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath(); ctx.ellipse(q.x, q.y + 10, PLAT_R, PLAT_R * 0.62, 0, 0, Math.PI * 2); ctx.fill();
+        const g = ctx.createRadialGradient(q.x - 14, q.y - 14, 6, q.x, q.y, PLAT_R);
+        g.addColorStop(0, q.locked ? '#43603a' : '#3b4756');
+        g.addColorStop(1, q.locked ? '#22331d' : '#232c37');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(q.x, q.y, PLAT_R, PLAT_R * 0.62, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = flash ? '#fff' : col;
+        ctx.lineWidth = q.locked ? 5 : 3.5;
+        ctx.beginPath(); ctx.ellipse(q.x, q.y, PLAT_R, PLAT_R * 0.62, 0, 0, Math.PI * 2); ctx.stroke();
+
+        // what's stacked on it, coloured by who put it there
+        q.held.slice(-14).forEach((h, i) => {
+            const a = (i / 7) * Math.PI * 2;
+            const rr = PLAT_R * 0.44 * (i < 7 ? 0.55 : 1);
+            const cx = q.x + Math.cos(a) * rr, cy = q.y + Math.sin(a) * rr * 0.62 - (i < 7 ? 8 : 0);
+            drawCrate(cx, cy, 0.44, a * 0.2, h.kind);
+            ctx.fillStyle = hexA(TEAMS[h.team].color, 0.9);
+            ctx.fillRect(cx - 5, cy + 7, 10, 2.5);
+        });
+
+        // quota bar
+        const bw = PLAT_R * 1.5, bx = q.x - bw / 2, by = q.y + PLAT_R * 0.62 + 8;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(bx - 2, by - 2, bw + 4, 12);
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillRect(bx, by, bw, 8);
+        ctx.fillStyle = q.locked ? '#b6e34a' : '#ffd24a';
+        ctx.fillRect(bx, by, bw * pct, 8);
+        ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillStyle = q.locked ? '#b6e34a' : '#e6eef6';
+        ctx.fillText(q.locked ? `PLATFORM ${q.i + 1} — SAFE` : `${on} / ${q.quota}`, q.x, by + 22);
+        if (!q.locked && on > 0) {
+            ctx.fillStyle = '#ff9a5b'; ctx.font = 'bold 11px Segoe UI';
+            ctx.fillText('STEALABLE', q.x, q.y - PLAT_R * 0.62 - 8);
+        }
+        ctx.font = '20px Segoe UI';
+        ctx.fillText(q.locked ? '🔒' : '📥', q.x, q.y + 6);
+    }
+}
+
+function drawDepots() {
+    for (const d of state.depots) {
+        const t = TEAMS[d.team];
+        const mine = d.team === myTeam;
+        const g = ctx.createRadialGradient(d.x, d.y, 8, d.x, d.y, DEPOT_R);
+        g.addColorStop(0, hexA(t.color, 0.34));
+        g.addColorStop(1, hexA(t.color, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(d.x, d.y, DEPOT_R, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = t.color;
+        ctx.lineWidth = mine ? 5 : 3;
+        ctx.setLineDash([13, 9]);
+        ctx.lineDashOffset = -state.elapsed * 20;
+        ctx.beginPath(); ctx.arc(d.x, d.y, DEPOT_R, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = t.color;
+        ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText(mine ? 'YOUR DEPOT' : t.name, d.x, d.y - DEPOT_R + 18);
+        ctx.font = '22px Segoe UI';
+        ctx.fillText('🏠', d.x, d.y + 8);
+    }
+}
+
+function drawPads() {
+    for (const pad of state.pads) {
+        const pulse = 1 + Math.sin(state.elapsed * 4) * 0.06 + pad.spin * 0.2;
+        ctx.save();
+        ctx.translate(pad.x, pad.y);
+        const g = ctx.createRadialGradient(0, 0, 4, 0, 0, PAD_R * pulse);
+        g.addColorStop(0, 'rgba(127,231,255,0.4)');
+        g.addColorStop(1, 'rgba(127,231,255,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, 0, PAD_R * pulse, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#7fe7ff'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(0, 0, PAD_R * 0.72, 0, Math.PI * 2); ctx.stroke();
+        ctx.rotate(pad.a);
+        ctx.fillStyle = '#7fe7ff';
+        for (let i = 0; i < 3; i++) {
+            const off = i * 13 - 13;
+            ctx.beginPath();
+            ctx.moveTo(off + 12, 0); ctx.lineTo(off - 3, -10); ctx.lineTo(off - 3, 10);
+            ctx.closePath(); ctx.fill();
+        }
+        ctx.restore();
+    }
+}
+
+function drawCrate(x, y, s, spin, kind) {
+    const k = kind || CRATE_KINDS[0];
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(spin || 0);
+    ctx.scale(s, s);
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.fillRect(-CRATE_R + 3, -CRATE_R + 5, CRATE_R * 2, CRATE_R * 2);
+    const g = ctx.createLinearGradient(-CRATE_R, -CRATE_R, CRATE_R, CRATE_R);
+    g.addColorStop(0, k.top); g.addColorStop(1, k.body);
+    ctx.fillStyle = g;
+    ctx.fillRect(-CRATE_R, -CRATE_R, CRATE_R * 2, CRATE_R * 2);
+    ctx.strokeStyle = k.edge; ctx.lineWidth = 2.4;
+    ctx.strokeRect(-CRATE_R, -CRATE_R, CRATE_R * 2, CRATE_R * 2);
+    ctx.beginPath();
+    ctx.moveTo(-CRATE_R, -CRATE_R); ctx.lineTo(CRATE_R, CRATE_R);
+    ctx.moveTo(CRATE_R, -CRATE_R); ctx.lineTo(-CRATE_R, CRATE_R);
+    ctx.stroke();
+    // what it's worth, written on the lid
+    ctx.fillStyle = k.edge;
+    ctx.font = 'bold ' + Math.round(15 / Math.max(0.5, s)) * s * 1.1 + 'px Segoe UI';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(k.v), 0, 1);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+}
+
+function drawHauler(p) {
+    const t = TEAMS[p.team];
+    const bob = p.moving ? Math.abs(Math.sin(p.step)) * 2.5 : 0;
+    const x = p.x, y = p.y - bob;
+
+    // you, unmistakably
+    if (!p.isBot) {
+        const pulse = 1 + Math.sin(state.elapsed * 5) * 0.08;
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 3.5;
+        ctx.setLineDash([9, 7]); ctx.lineDashOffset = -state.elapsed * 34;
+        ctx.beginPath(); ctx.ellipse(p.x, p.y + R * 0.5, R * 1.7 * pulse, R * 0.95 * pulse, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        const hop = Math.sin(state.elapsed * 4) * 4;
+        ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - R * 2.5 - hop);
+        ctx.lineTo(p.x - 11, p.y - R * 3.2 - hop);
+        ctx.lineTo(p.x + 11, p.y - R * 3.2 - hop);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+
+    ctx.fillStyle = 'rgba(0,0,0,0.34)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y + R * 0.72, R * 0.98, R * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+
+    // the trolley
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(p.face);
+    ctx.fillStyle = p.stun > 0 ? '#8f8f8f' : t.color;
+    ctx.beginPath();
+    ctx.roundRect(-R * 0.95, -R * 0.72, R * 1.9, R * 1.44, 6);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 2.4; ctx.stroke();
+    ctx.fillStyle = p.stun > 0 ? '#6a6a6a' : t.dark;
+    ctx.fillRect(-R * 0.3, -R * 0.72, R * 0.5, R * 1.44);
+    // the bumper, thrown forward mid-ram
+    const nudge = p.ramT > 0 ? (1 - p.ramT / RAM_TIME) * 9 : 0;
+    ctx.fillStyle = p.coolT > 0 ? '#5d6b7a' : '#e9f2fa';
+    ctx.fillRect(R * 0.85 + nudge, -R * 0.6, 6, R * 1.2);
+    ctx.restore();
+
+    // what they're carrying, stacked on the back
+    p.carry.forEach((kind, i) => {
+        const ox = -Math.cos(p.face) * (R * 0.5 + i * 5);
+        const oy = -Math.sin(p.face) * (R * 0.5 + i * 5) - i * 7;
+        drawCrate(x + ox, y + oy, 0.55, p.face, kind);
+    });
+
+    if (p.stun > 0) {
+        ctx.fillStyle = '#fff'; ctx.font = '13px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('✦', x - 8, y - R * 1.5);
+        ctx.fillText('✦', x + 8, y - R * 1.7);
+    }
+    if (p.coolT > 0 && p.stun <= 0) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(x, y, R * 1.35, -Math.PI / 2, -Math.PI / 2 + (1 - p.coolT / RAM_COOL) * Math.PI * 2);
+        ctx.stroke();
+    }
+    if (p.isBot) {
+        ctx.fillStyle = hexA(t.color, 0.9);
+        ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText(p.name, x, y + R * 1.9);
+    } else {
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('YOU', x, y + R * 1.9);
+    }
+}
+
+function drawHUD() {
+    const rank = state.players.slice().sort((a, b) => b.banked - a.banked);
+    ctx.textAlign = 'left';
+    rank.forEach((p, i) => {
+        const y = 26 + i * 24;
+        const t = TEAMS[p.team];
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(14, y - 14, 226, 20);
+        ctx.fillStyle = t.color;
+        ctx.fillRect(14, y - 14, 6, 20);
+        ctx.font = (p.isBot ? '' : 'bold ') + '14px Segoe UI';
+        ctx.fillStyle = p.isBot ? '#cfe0ee' : '#fff';
+        ctx.fillText(`${i + 1}. ${p.isBot ? p.name : 'YOU'}`, 28, y);
+        ctx.textAlign = 'right';
+        ctx.fillText(`${p.banked}`, 234, y);
+        if (p.carry.length) {
+            ctx.fillStyle = 'rgba(255,210,74,0.95)';
+            ctx.fillText('+' + carriedValue(p), 196, y);
+        }
+        ctx.textAlign = 'left';
+    });
+
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 30px Segoe UI';
+    ctx.fillStyle = state.time < 15 ? '#ff8a65' : '#eef3f8';
+    const m = Math.floor(state.time / 60), s = Math.floor(state.time % 60);
+    ctx.fillText(`${m}:${String(s).padStart(2, '0')}`, W / 2, 38);
+
+    const me = state.players[0];
+    ctx.font = 'bold 15px Segoe UI';
+    const load = me.carry.length;
+    ctx.fillStyle = load >= CARRY_MAX ? '#ff8a65' : load > 0 ? '#ffa63d' : '#8ea3b5';
+    const pct = Math.round((1 - load * CARRY_SLOW) * 100);
+    ctx.fillText(load
+        ? `carrying ${load}/${CARRY_MAX} worth ${carriedValue(me)} — ${pct}% speed — get it onto a platform`
+        : 'empty — grab crates, the numbered ones are worth more', W / 2, H - 22);
+
+    // what each crate is worth, bottom right
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 12px Segoe UI';
+    let lx = W - 18;
+    for (let i = CRATE_KINDS.length - 1; i >= 0; i--) {
+        const k = CRATE_KINDS[i];
+        ctx.fillStyle = k.body;
+        ctx.fillText(`${k.name} ${k.v}`, lx, H - 46);
+        lx -= ctx.measureText(`${k.name} ${k.v}`).width + 16;
+    }
+    ctx.textAlign = 'center';
+
+    if (state.messageT > 0) {
+        ctx.globalAlpha = Math.min(1, state.messageT);
+        ctx.font = 'bold 30px Segoe UI';
+        ctx.fillStyle = '#ffa63d';
+        ctx.fillText(state.message, W / 2, 92);
+        ctx.globalAlpha = 1;
+    }
+    if (state.paused) {
+        ctx.fillStyle = 'rgba(8,11,16,0.66)'; ctx.fillRect(0, 0, W, H);
+        ctx.font = 'bold 46px Segoe UI'; ctx.fillStyle = '#eef3f8';
+        ctx.fillText('PAUSED', W / 2, H / 2);
+    }
+}
+
+function render() {
+    ctx.save();
+    if (state.shake > 0.5) ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
+    drawFloor();
+    drawPads();
+    drawDepots();
+    drawPlats();
+    for (const c of state.crates) {
+        drawCrate(c.x, c.y + Math.sin(state.elapsed * 3 + c.bob) * 3, 1, c.spin, c.kind);
+    }
+    const order = state.players.slice().sort((a, b) => a.y - b.y);
+    for (const p of order) drawHauler(p);
+    for (const p of state.pops) {
+        ctx.globalAlpha = Math.min(1, p.life);
+        ctx.fillStyle = p.color; ctx.font = 'bold 17px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText(p.text, p.x, p.y);
+        ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    drawHUD();
+}
+
+/* ==================================================================
+   END
+   ================================================================== */
+function showOver() {
+    horn();
+    const rank = state.players.slice().sort((a, b) => b.banked - a.banked);
+    const win = rank[0];
+    const me = state.players[0];
+    const iWon = win === me;
+    document.getElementById('overTitle').textContent = iWon ? 'TOP HAULER' : 'END OF SHIFT';
+    document.getElementById('overTitle').style.color = iWon ? '#b6e34a' : '#ff8a65';
+    document.getElementById('finalText').innerHTML =
+        `<b style="color:${TEAMS[win.team].color}">${win.isBot ? win.name : 'You'}</b> banked ` +
+        `<b>${win.banked}</b> crate${win.banked === 1 ? '' : 's'}.` +
+        `<br><span style="font-size:14px;color:#9fb3c8">You banked <b>${me.banked}</b>, rammed <b>${me.rammed}</b>, ` +
+        `dropped <b>${me.dropped}</b> crate${me.dropped === 1 ? '' : 's'}` +
+        `${me.raided ? `, and raided a platform <b>${me.raided}</b> time${me.raided === 1 ? '' : 's'}` : ''}.</span>` +
+        `<br><span style="font-size:13px;color:#7d8fa0">${state.plats.filter(q => q.locked).length} of ${PLAT_COUNT} platforms were secured.</span>`;
+    document.getElementById('standings').innerHTML = rank.map((p, i) =>
+        `<div class="standing">${i + 1}. <b style="color:${TEAMS[p.team].color}">${p.isBot ? p.name : 'You'}</b> — ${p.banked}</div>`).join('');
+    document.getElementById('overOv').classList.remove('hidden');
+}
+
+/* ==================================================================
+   LOOP
+   ================================================================== */
+let last = 0;
+function loop(now) {
+    const dt = last ? Math.min((now - last) / 1000, 0.033) : 0.016;
+    last = now;
+    if (state) {
+        if (!state.paused && !state.over) update(dt);
+        render();
+    } else {
+        ctx.fillStyle = '#0e1116'; ctx.fillRect(0, 0, W, H);
+    }
+    requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ==================================================================
+   MENU
+   ================================================================== */
+function buildTeamPick() {
+    const row = document.getElementById('teamPick');
+    row.innerHTML = '';
+    const total = nBots + 1;
+    if (myTeam >= total) myTeam = 0;
+    for (let t = 0; t < total; t++) {
+        const b = document.createElement('button');
+        b.className = 'btn small team' + (t === myTeam ? ' sel' : '');
+        b.textContent = TEAMS[t].name;
+        b.style.background = TEAMS[t].color;
+        b.onclick = () => { myTeam = t; buildTeamPick(); };
+        row.appendChild(b);
+    }
+}
+function pick(sel, attr, fn) {
+    document.querySelectorAll(sel + ' button').forEach(b => {
+        b.onclick = () => {
+            document.querySelectorAll(sel + ' button').forEach(x => x.classList.remove('sel'));
+            b.classList.add('sel');
+            fn(b.dataset[attr]);
+        };
+    });
+}
+pick('#bots', 'n', v => { nBots = parseInt(v, 10); buildTeamPick(); });
+pick('#dur', 's', v => { matchSecs = parseInt(v, 10); });
+pick('#skill', 'k', v => { skill = v; });
+buildTeamPick();
+
+document.getElementById('start').onclick = () => {
+    actx();
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('overOv').classList.add('hidden');
+    newGame();
+};
+document.getElementById('again').onclick = () => {
+    document.getElementById('overOv').classList.add('hidden');
+    newGame();
+};
+document.getElementById('menu').onclick = () => {
+    document.getElementById('overOv').classList.add('hidden');
+    document.getElementById('titleOv').classList.remove('hidden');
+    state = null;
+};
+})();
+</script>
+</body>
+</html>
