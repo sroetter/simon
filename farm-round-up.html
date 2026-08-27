@@ -399,8 +399,11 @@ function spawnWagon(plot, atX) {
     state.wagons.push({
         n: ++state.wagonN,
         plot,
-        // it rolls in at the near side of that plot and crosses it
-        x: atX !== undefined ? atX : state.terrW * plot - WAGON_W,
+        // It starts just inside its own plot and crosses the whole width.
+        // Not one wagon-length before the boundary — that is where the
+        // previous plot's market stands, so a fresh wagon would appear
+        // right beside the market it is meant to be heading away from.
+        x: atX !== undefined ? atX : state.terrW * plot + WAGON_W * 0.6,
         y: H * (0.24 + Math.random() * 0.5),
         held: [],
         wob: Math.random() * 6,
@@ -423,7 +426,7 @@ function updateWagons(dt) {
         const here = state.wagons.filter(w => w.plot === t);
         if (here.length >= wantWagons(t)) { state.wagonT[t] = 1.5; continue; }
         // don't let two on your plot arrive on top of one another
-        const tooClose = here.some(w => w.x < state.terrW * t + WAGON_W * 1.6);
+        const tooClose = here.some(w => w.x < state.terrW * t + WAGON_W * 2.2);
         if (tooClose) { state.wagonT[t] = 1.5; continue; }
         state.wagonT[t] = t === myTeam ? WAGON_GAP * 0.5 : WAGON_GAP;
         spawnWagon(t);
