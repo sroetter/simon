@@ -79,9 +79,10 @@
       the animal, the slower it runs.<br><br>
       Walk up to one and it <b>bolts</b> — get close enough and it falls in behind you. You can drive
       <b>four at once</b>, and the more you have the slower you go.<br><br>
-      Nothing sells where it stands. A <b>livestock wagon</b> rolls through <b>every plot</b> towards
-      the <b>market</b> standing on the line between plots — get your animals aboard before it
-      arrives. Miss it and another is along in nine seconds.<br><br>
+      Nothing sells where it stands. <b>Livestock wagons</b> roll through <b>every plot</b> towards
+      the <b>market</b> standing on the line between plots — get your animals aboard before one
+      arrives. <b>Your own plot always has two rolling</b>, so there is always something to aim for;
+      everyone else's has one.<br><br>
       Every wagon takes <b>20</b>, and this is where the day is won: <b>whoever puts on the animal
       that takes it to 20 gets the entire load</b> — everyone else's animals included — <b>plus 5
       for finishing it</b>. A wagon that reaches the market short of 20 just hands everybody back
@@ -222,6 +223,7 @@ const WAGON_QUOTA = 20;            // every wagon takes the same: twenty
 const WAGON_HOLD = 10;             // and no more than ten head on one
 const WAGON_SPEED = 74;
 const WAGON_GAP = 9;               // seconds between wagons through a plot
+const YOUR_WAGONS = 2;             // your own plot always has two rolling
 const MARKET_W = 76;               // a market sits on the line between plots
 const FULL_BONUS = 5;              // for being the one who fills a wagon
 
@@ -378,8 +380,10 @@ function newGame() {
     cam.x = Math.max(0, Math.min(WORLD_W - W, players[0].x - W / 2));
 
     for (let t = 0; t < total; t++) {
-        state.wagonT[t] = WAGON_GAP;
+        state.wagonT[t] = t === myTeam ? WAGON_GAP * 0.5 : WAGON_GAP;
         spawnWagon(t, terrW * t + terrW * 0.18);
+        // your own plot starts with a second one already rolling
+        if (t === myTeam) spawnWagon(t, terrW * t + terrW * 0.62);
     }
     for (let i = 0; i < 6; i++) spawnCrate();
     say('GET THEM ON THE WAGONS', 1.8);
@@ -388,6 +392,9 @@ function newGame() {
 function say(t, s) { state.message = t; state.messageT = s || 1.5; }
 
 // A wagon rolls the length of the farm and sells whatever is on it.
+// Your own plot keeps two on the go, so there is always one to aim for.
+function wantWagons(plot) { return plot === myTeam ? YOUR_WAGONS : 1; }
+
 function spawnWagon(plot, atX) {
     state.wagons.push({
         n: ++state.wagonN,
@@ -409,12 +416,16 @@ function wagonValue(w) { return w.held.reduce((a, h) => a + worthOf(h.kind), 0);
 function wagonSealed(w) { return wagonValue(w) >= WAGON_QUOTA; }
 
 function updateWagons(dt) {
-    // every plot gets its own wagon, on its own clock
+    // every plot keeps its wagons topped up — two on yours, one on theirs
     for (let t = 0; t < state.total; t++) {
         state.wagonT[t] -= dt;
         if (state.wagonT[t] > 0) continue;
-        if (state.wagons.some(w => w.plot === t)) { state.wagonT[t] = 1.5; continue; }
-        state.wagonT[t] = WAGON_GAP;
+        const here = state.wagons.filter(w => w.plot === t);
+        if (here.length >= wantWagons(t)) { state.wagonT[t] = 1.5; continue; }
+        // don't let two on your plot arrive on top of one another
+        const tooClose = here.some(w => w.x < state.terrW * t + WAGON_W * 1.6);
+        if (tooClose) { state.wagonT[t] = 1.5; continue; }
+        state.wagonT[t] = t === myTeam ? WAGON_GAP * 0.5 : WAGON_GAP;
         spawnWagon(t);
     }
 
@@ -471,6 +482,15 @@ function updateWagons(dt) {
         if (total) bank();
         state.sold.push({ n: w.n, total, at: state.elapsed });
         state.wagons.splice(i, 1);
+        // Your plot never goes short — the next one rolls straight in behind
+        // the one that just sold.
+        if (w.plot === myTeam) {
+            const left = state.wagons.filter(z => z.plot === w.plot);
+            if (left.length < wantWagons(w.plot)) {
+                spawnWagon(w.plot);
+                state.wagonT[w.plot] = WAGON_GAP * 0.5;
+            }
+        }
     }
 }
 
