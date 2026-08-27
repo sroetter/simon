@@ -79,12 +79,15 @@
       the animal, the slower it runs.<br><br>
       Walk up to one and it <b>bolts</b> — get close enough and it falls in behind you. You can drive
       <b>four at once</b>, and the more you have the slower you go.<br><br>
-      Nothing sells where it stands. <b>Livestock wagons</b> roll across the farm to the
-      <b>market</b> at the far end — walk your animals into one before it rumbles past, and they
-      sell when it arrives. Miss it and you wait for the next.<br><br>
-      Every wagon takes <b>20</b>. Until it has 20 aboard the tailgate is down and <b>anyone can lift
-      your animals straight back off it</b>. Get it to 20 and it <b>seals</b> — nothing can be
-      taken off it now, it just has to reach the market.<br><br>
+      Nothing sells where it stands. A <b>livestock wagon</b> rolls through <b>every plot</b> towards
+      the <b>market</b> standing on the line between plots — get your animals aboard before it
+      arrives. Miss it and another is along in nine seconds.<br><br>
+      Every wagon takes <b>20</b>, and this is where the day is won: <b>whoever puts on the animal
+      that takes it to 20 gets the entire load</b> — everyone else's animals included — <b>plus 5
+      for finishing it</b>. A wagon that reaches the market short of 20 just hands everybody back
+      what they put on.<br><br>
+      Until it hits 20 the tailgate is down and <b>anyone can lift your animals straight back off
+      it</b>. Fill it and it <b>seals</b>: untouchable, and already yours.<br><br>
       Everyone has <b>their own part of the farm</b>, and <b>on your own land nobody can barge
       you</b>. Step over the fence and you are fair game — and <b>every five seconds over there
       costs you a point</b>.<br><br>
@@ -212,14 +215,15 @@ const TRESPASS_EVERY = 5;
 const TRESPASS_COST = 1;
 
 // Nothing sells where it stands. Livestock wagons roll across the farm to
-// the market at the far end — get your animals onto one before it goes past.
+// down through everyone's plot to the market along the bottom.
 const WAGON_W = 104;
 const WAGON_H = 62;
 const WAGON_QUOTA = 20;            // every wagon takes the same: twenty
 const WAGON_HOLD = 10;             // and no more than ten head on one
-const WAGON_SPEED = 96;
-const WAGON_GAP = 6.5;             // seconds between one leaving and the next
-const MARKET_W = 150;              // the market building at the far end
+const WAGON_SPEED = 74;
+const WAGON_GAP = 9;               // seconds between wagons through a plot
+const MARKET_W = 76;               // a market sits on the line between plots
+const FULL_BONUS = 5;              // for being the one who fills a wagon
 
 const DEPOT_R = 62;
 
@@ -334,7 +338,7 @@ function newGame() {
 
     state = {
         players, depots, wagons: plats, terrW, total,
-        wagonT: 1.5, wagonN: 0, sold: [],
+        wagonT: [], wagonN: 0, sold: [],
         crates: [], crateT: 0.5,
         pads: [],
         dog: null, dogT: 10,
@@ -357,7 +361,7 @@ function newGame() {
             for (let g = 0; g < 50; g++) {
                 const x = terrW * t + 110 + Math.random() * (terrW - 220);
                 const y = 120 + Math.random() * (H - 240);
-                if (x > WORLD_W - MARKET_W - 90) continue;
+                if (x > terrW * (t + 1) - MARKET_W - 70) continue;
                 if (state.pads.some(q => Math.hypot(q.x - x, q.y - y) < 200)) continue;
                 state.pads.push({ x, y, a: Math.random() * Math.PI * 2, spin: 0 });
                 break;
@@ -373,7 +377,10 @@ function newGame() {
     });
     cam.x = Math.max(0, Math.min(WORLD_W - W, players[0].x - W / 2));
 
-    for (let i = 0; i < 3; i++) spawnWagon(-WAGON_W - i * 340);
+    for (let t = 0; t < total; t++) {
+        state.wagonT[t] = WAGON_GAP;
+        spawnWagon(t, terrW * t + terrW * 0.18);
+    }
     for (let i = 0; i < 6; i++) spawnCrate();
     say('GET THEM ON THE WAGONS', 1.8);
 }
@@ -381,55 +388,87 @@ function newGame() {
 function say(t, s) { state.message = t; state.messageT = s || 1.5; }
 
 // A wagon rolls the length of the farm and sells whatever is on it.
-function spawnWagon(atX) {
+function spawnWagon(plot, atX) {
     state.wagons.push({
         n: ++state.wagonN,
-        x: atX !== undefined ? atX : -WAGON_W,
-        y: H * (0.30 + Math.random() * 0.4),
+        plot,
+        // it rolls in at the near side of that plot and crosses it
+        x: atX !== undefined ? atX : state.terrW * plot - WAGON_W,
+        y: H * (0.24 + Math.random() * 0.5),
         held: [],
         wob: Math.random() * 6,
         flash: 0,
+        filler: null,               // whoever tops it up to twenty
     });
 }
 
-function marketX() { return WORLD_W - MARKET_W; }
+// the market on the line at the far side of a plot
+function marketX(plot) { return state.terrW * (plot + 1) - MARKET_W; }
 
 function wagonValue(w) { return w.held.reduce((a, h) => a + worthOf(h.kind), 0); }
 function wagonSealed(w) { return wagonValue(w) >= WAGON_QUOTA; }
 
 function updateWagons(dt) {
-    state.wagonT -= dt;
-    if (state.wagonT <= 0) { state.wagonT = WAGON_GAP; spawnWagon(); }
+    // every plot gets its own wagon, on its own clock
+    for (let t = 0; t < state.total; t++) {
+        state.wagonT[t] -= dt;
+        if (state.wagonT[t] > 0) continue;
+        if (state.wagons.some(w => w.plot === t)) { state.wagonT[t] = 1.5; continue; }
+        state.wagonT[t] = WAGON_GAP;
+        spawnWagon(t);
+    }
 
     for (let i = state.wagons.length - 1; i >= 0; i--) {
         const w = state.wagons[i];
-        w.x += WAGON_SPEED * dt;
+        w.x += WAGON_SPEED * dt;                 // across the plot to its market
         w.wob += dt * 3;
         w.flash = Math.max(0, w.flash - dt);
 
-        if (w.x < marketX()) continue;
+        if (w.x < marketX(w.plot)) continue;
 
-        // it's reached the market — everything on it sells at today's price
+        // It's reached the market. Fill a wagon and the whole load is yours,
+        // plus five for finishing it. Leave it short and everybody just gets
+        // back what they put on.
         const share = {};
         for (const h of w.held) share[h.team] = (share[h.team] || 0) + worthOf(h.kind);
+        const whole = w.held.reduce((a, h) => a + worthOf(h.kind), 0);
         let total = 0;
-        for (const q of state.players) {
-            const got = share[q.team] || 0;
-            if (!got) continue;
-            q.banked += got;
-            q.sold = (q.sold || 0) + 1;
-            total += got;
-            state.pops.push({
-                x: marketX() + MARKET_W / 2 + (Math.random() - 0.5) * 50,
-                y: w.y - 40, text: `SOLD +${got}`,
-                color: TEAMS[q.team].color, life: 1.8,
-            });
-        }
-        if (total) {
-            bank();
+
+        if (w.filler !== null && whole > 0) {
+            const winner = state.players.find(q => q.team === w.filler);
+            if (winner) {
+                const paid = whole + FULL_BONUS;
+                winner.banked += paid;
+                winner.sold = (winner.sold || 0) + 1;
+                winner.filled = (winner.filled || 0) + 1;
+                total = paid;
+                state.pops.push({
+                    x: w.x, y: w.y - 40,
+                    text: `FULL WAGON — ALL ${whole} +${FULL_BONUS}!`,
+                    color: TEAMS[winner.team].color, life: 2.2,
+                });
+                const me = state.players[0];
+                say(winner === me
+                    ? `YOU FILLED IT — THE WHOLE ${whole} PLUS ${FULL_BONUS}`
+                    : `${winner.name} FILLED ONE — TOOK ALL ${whole}`, 2.0);
+            }
+        } else {
+            for (const q of state.players) {
+                const got = share[q.team] || 0;
+                if (!got) continue;
+                q.banked += got;
+                q.sold = (q.sold || 0) + 1;
+                total += got;
+                state.pops.push({
+                    x: w.x + (Math.random() - 0.5) * 50,
+                    y: w.y - 30, text: `+${got}`,
+                    color: TEAMS[q.team].color, life: 1.8,
+                });
+            }
             const me = state.players[0];
-            if ((share[me.team] || 0) > 0) say(`WAGON ${w.n} SOLD YOURS FOR ${share[me.team]}`, 1.6);
+            if ((share[me.team] || 0) > 0) say(`WENT SHORT — YOU GOT BACK ${share[me.team]}`, 1.6);
         }
+        if (total) bank();
         state.sold.push({ n: w.n, total, at: state.elapsed });
         state.wagons.splice(i, 1);
     }
@@ -504,7 +543,7 @@ function updateFarmKit(dt) {
     if (!state.dog && state.dogT <= 0) {
         for (let t = 0; t < 40; t++) {
             const x = 90 + Math.random() * (WORLD_W - 180), y = 90 + Math.random() * (H - 180);
-            if (x > WORLD_W - MARKET_W - 60) continue;
+            if (x % state.terrW > state.terrW - MARKET_W - 50) continue;
             state.dog = { x, y, bob: 0 };
             say('THE SHEEPDOG IS OUT 🐕', 1.6);
             break;
@@ -672,7 +711,7 @@ function spawnCrate() {
     for (let t = 0; t < 50; t++) {
         const x = 70 + Math.random() * (WORLD_W - 140);
         const y = 70 + Math.random() * (H - 140);
-        if (x > WORLD_W - MARKET_W - 40) continue;
+        if (x % state.terrW > state.terrW - MARKET_W - 40) continue;
         state.crates.push(makeCrate(x, y));
         return;
     }
@@ -952,13 +991,15 @@ function update(dt) {
 
                 // twenty aboard and the tailgate goes up — nobody can lift
                 // anything off it now, it just has to reach the market
-                if (wagonSealed(plat)) {
+                if (wagonSealed(plat) && plat.filler === null) {
+                    plat.filler = p.team;          // you topped it up, it's all yours
                     plat.flash = 1.4;
                     state.pops.push({
-                        x: plat.x, y: plat.y - WAGON_H, text: 'SEALED',
-                        color: '#b6e34a', life: 1.6,
+                        x: plat.x, y: plat.y - WAGON_H,
+                        text: `FILLED IT — ALL YOURS +${FULL_BONUS}`,
+                        color: TEAMS[p.team].color, life: 2.0,
                     });
-                    if (!p.isBot) say(`WAGON ${plat.n} IS FULL — SEALED FOR MARKET`, 1.6);
+                    if (!p.isBot) say(`YOU FILLED WAGON ${plat.n} — THE LOT IS YOURS`, 1.8);
                     bank();
                 }
             } else if (!sealed && p.onPlat !== plat && p.raidT <= 0 && raidPlatform(plat, p)) {
@@ -1071,11 +1112,11 @@ function botThink(p, dt) {
     let plat = null, ps = -Infinity;
     for (const q of state.wagons) {
         if (wagonSealed(q) || q.held.length >= WAGON_HOLD) continue;
-        if (q.x > marketX() - 40) continue;              // too late for that one
+        if (q.x > marketX(q.plot) - 30) continue;          // too late for that one
         const d = Math.hypot(q.x - p.x, q.y - p.y);
         // it's rolling away from you, so cutting it off is what counts
-        const lead = (q.x - p.x) / SPEED;
-        const catchable = q.x + WAGON_SPEED * Math.max(0, lead) < marketX();
+        const lead = d / SPEED;
+        const catchable = q.x + WAGON_SPEED * lead < marketX(q.plot);
         const sc = (catchable ? 220 : 0) + (WAGON_QUOTA - wagonValue(q)) * 3 - d * 0.4;
         if (sc > ps) { ps = sc; plat = q; }
     }
@@ -1271,35 +1312,29 @@ function drawFarmKit() {
 }
 
 function drawMarket() {
-    const mx = marketX();
-    // the yard in front of the market
-    ctx.fillStyle = 'rgba(120,96,62,0.55)';
-    ctx.fillRect(mx, 0, MARKET_W, H);
-    ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 5;
-    ctx.setLineDash([16, 12]); ctx.lineDashOffset = -state.elapsed * 26;
-    ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, H); ctx.stroke();
-    ctx.setLineDash([]);
+    // a market stands on the line between one plot and the next
+    for (let t = 0; t < state.total; t++) {
+        const mx = marketX(t);
+        ctx.fillStyle = 'rgba(120,96,62,0.5)';
+        ctx.fillRect(mx, 0, MARKET_W, H);
+        ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 4;
+        ctx.setLineDash([14, 11]); ctx.lineDashOffset = -state.elapsed * 24;
+        ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, H); ctx.stroke();
+        ctx.setLineDash([]);
 
-    // a barn
-    const bx = mx + MARKET_W / 2, by = H / 2;
-    ctx.fillStyle = '#8f3b2e';
-    ctx.fillRect(bx - 54, by - 30, 108, 76);
-    ctx.fillStyle = '#6d2c22';
-    ctx.beginPath();
-    ctx.moveTo(bx - 64, by - 30); ctx.lineTo(bx, by - 74); ctx.lineTo(bx + 64, by - 30);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#f6e6c8';
-    ctx.fillRect(bx - 18, by - 4, 36, 50);
-    ctx.strokeStyle = '#8f3b2e'; ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(bx - 18, by - 4); ctx.lineTo(bx + 18, by + 46);
-    ctx.moveTo(bx + 18, by - 4); ctx.lineTo(bx - 18, by + 46);
-    ctx.stroke();
-    ctx.fillStyle = '#ffd24a';
-    ctx.font = 'bold 15px Segoe UI'; ctx.textAlign = 'center';
-    ctx.fillText('MARKET', bx, by - 86);
-    ctx.font = 'bold 11px Segoe UI'; ctx.fillStyle = '#f0dcae';
-    ctx.fillText('wagons sell here', bx, by + 66);
+        const bx = mx + MARKET_W / 2, by = H / 2;
+        ctx.fillStyle = '#8f3b2e';
+        ctx.fillRect(bx - 30, by - 14, 60, 46);
+        ctx.fillStyle = '#6d2c22';
+        ctx.beginPath();
+        ctx.moveTo(bx - 36, by - 14); ctx.lineTo(bx, by - 46); ctx.lineTo(bx + 36, by - 14);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#f6e6c8';
+        ctx.fillRect(bx - 10, by + 6, 20, 26);
+        ctx.fillStyle = '#ffd24a';
+        ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText('MARKET', bx, by - 56);
+    }
 }
 
 function drawWagons() {
@@ -1631,7 +1666,7 @@ function drawHUD() {
     const me0 = state.players[0];
     let near = null, nd = Infinity;
     for (const q of state.wagons) {
-        if (wagonSealed(q) || q.x > marketX() - 40) continue;
+        if (wagonSealed(q) || q.x > marketX(q.plot) - 30) continue;
         const d = Math.hypot(q.x - me0.x, q.y - me0.y);
         if (d < nd) { nd = d; near = q; }
     }
@@ -1639,7 +1674,7 @@ function drawHUD() {
     ctx.fillStyle = '#cfe0d0';
     ctx.fillText(near
         ? `🛻 wagon ${near.n} — ${wagonValue(near)}/${WAGON_QUOTA} aboard, ` +
-          `${Math.max(0, Math.round((marketX() - near.x) / WAGON_SPEED))}s from market`
+          `${Math.max(0, Math.round((marketX(near.plot) - near.x) / WAGON_SPEED))}s from market`
         : 'no wagon on the field — one along shortly', W / 2, 60);
 
     const me = state.players[0];
