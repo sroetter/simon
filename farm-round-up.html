@@ -112,9 +112,11 @@
       costs you a point</b>.<br><br>
       Everything you bank at the end of a day goes in the tin, and the <b>feed store</b> will sell
       you <b>seed</b>, a <b>scarecrow</b>, a <b>farm dog of your own</b>, and eventually <b>the next
-      plot of land</b>. Sow seed on your own ground with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>,
-      leave it to come up, then pick it and put it on a wagon like anything else — wheat sells for
-      6, corn 14, a pumpkin 30.<br><br>
+      plot of land</b>.<br><br>
+      Every plot has a <b>ploughed field</b> in the bottom corner — that is the only ground that
+      takes seed, and yours is marked in your own colour. Stand in it and press <kbd>1</kbd>
+      <kbd>2</kbd> <kbd>3</kbd> to sow, leave it to come up, then pick it and load it onto a wagon
+      like anything else — wheat sells for 6, corn 14, a pumpkin 30.<br><br>
       And watch for <b>deer</b> 🦌. They walk in, pick the crop nobody is standing near, and take a
       few seconds over it — two crops each and they wander off satisfied. Get close and they bolt;
       a <b>scarecrow</b> keeps them off everything around it for good.<br><br>
@@ -264,6 +266,10 @@ const CROPS = [
 ];
 const PLANT_R = 22;
 const PLANT_GAP = 62;            // how far apart you can sow them
+// Every plot has a ploughed field in the corner. That is the only ground
+// that takes seed — you can see it, so you know where to stand.
+const FIELD_W = 420;
+const FIELD_H = 250;
 
 // Deer come for whatever is growing.
 const DEER_FROM = 20;
@@ -582,10 +588,32 @@ function spawnWagon(plot, atX) {
 // the market on the line at the far side of a plot
 function marketX(plot) { return state.terrW * (plot + 1) - MARKET_W; }
 
+// The ploughed field on a given plot.
+function fieldOf(plot) {
+    return { x: state.terrW * plot + 70, y: H - FIELD_H - 60, w: FIELD_W, h: FIELD_H };
+}
+function inField(p, plot) {
+    const f = fieldOf(plot);
+    return p.x > f.x && p.x < f.x + f.w && p.y > f.y && p.y < f.y + f.h;
+}
+// which of your fields are you standing in, if any
+function myFieldAt(p) {
+    if (inField(p, p.team)) return p.team;
+    for (const t of (p.extraPlots || [])) if (inField(p, t)) return t;
+    return -1;
+}
+
 // Sow a seed on your own land.
 function plantSeed(p, key) {
     if (!p || state.over || !p.seeds) return;
-    if (!onOwnLand(p)) { state.pops.push({ x:p.x, y:p.y-34, text:'NOT YOUR LAND', color:'#ff8a65', life:1.2 }); return; }
+    if (myFieldAt(p) < 0) {
+        state.pops.push({
+            x: p.x, y: p.y - 34,
+            text: onOwnLand(p) ? 'STAND IN YOUR FIELD' : 'NOT YOUR LAND',
+            color: '#ff8a65', life: 1.4,
+        });
+        return;
+    }
     const crop = CROPS.find(c => c.key === key);
     if (!crop || !(p.seeds[key] > 0)) {
         state.pops.push({ x:p.x, y:p.y-34, text:`NO ${key.toUpperCase()} SEED`, color:'#ff8a65', life:1.2 });
@@ -1578,6 +1606,38 @@ function drawFloor() {
     }
 }
 
+function drawFields() {
+    for (let t = 0; t < state.total; t++) {
+        const f = fieldOf(t);
+        const me = state.players[0];
+        const mine = me && (t === me.team || (me.extraPlots || []).indexOf(t) >= 0);
+
+        ctx.fillStyle = '#6b4f30';
+        ctx.fillRect(f.x, f.y, f.w, f.h);
+        ctx.fillStyle = 'rgba(48,34,18,0.55)';
+        for (let y = f.y + 12; y < f.y + f.h - 6; y += 22) ctx.fillRect(f.x + 8, y, f.w - 16, 8);
+
+        ctx.strokeStyle = mine ? hexA(TEAMS[t].color, 0.95) : 'rgba(150,120,80,0.7)';
+        ctx.lineWidth = mine ? 4 : 3;
+        ctx.setLineDash([13, 9]);
+        ctx.lineDashOffset = -state.elapsed * 16;
+        ctx.strokeRect(f.x, f.y, f.w, f.h);
+        ctx.setLineDash([]);
+
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 14px Segoe UI';
+        ctx.fillStyle = mine ? '#ffd24a' : 'rgba(240,220,174,0.6)';
+        const owner = state.players.find(q => q.team === t);
+        ctx.fillText(mine ? 'YOUR FIELD' : `${owner ? owner.name : TEAMS[t].name}'S FIELD`,
+                     f.x + f.w / 2, f.y - 12);
+        if (mine) {
+            ctx.font = 'bold 11px Segoe UI';
+            ctx.fillStyle = 'rgba(255,210,74,0.85)';
+            ctx.fillText('stand here and press 1  2  3 to sow', f.x + f.w / 2, f.y + f.h + 18);
+        }
+    }
+}
+
 function drawCrops() {
     for (const c of state.crops) {
         const p = Math.min(1, c.t / c.crop.grow);
@@ -2120,9 +2180,32 @@ function drawHUD() {
     const bits = CROPS.map((c, i) =>
         `${i + 1} ${c.emoji}${(me.seeds && me.seeds[c.key]) || 0}`);
     const growing = state.crops.filter(c => c.team === me.team).length;
-    ctx.fillStyle = seedInHand(me) ? '#b6e34a' : '#8ea3b5';
-    ctx.fillText(`seed: ${bits.join('  ')}` + (growing ? `   ·   ${growing} in the ground` : ''),
-                 W / 2, H - 44);
+    const fieldNow = myFieldAt(me) >= 0;
+    ctx.fillStyle = fieldNow && seedInHand(me) ? '#b6e34a' : seedInHand(me) ? '#ffd24a' : '#8ea3b5';
+    ctx.fillText(
+        seedInHand(me)
+            ? (fieldNow ? `in your field — press 1 2 3 to sow    ${bits.join('  ')}`
+                        : `seed: ${bits.join('  ')}   ·   go to your field to sow`)
+            : 'no seed — buy some at the feed store between days',
+        W / 2, H - 44);
+    if (growing) {
+        ctx.fillStyle = '#8fd46a'; ctx.font = 'bold 12px Segoe UI';
+        ctx.fillText(`${growing} in the ground`, W / 2, H - 62);
+    }
+    // a pointer towards your field when you are carrying seed and not in it
+    if (seedInHand(me) && !fieldNow) {
+        const f = fieldOf(me.team);
+        const fx = f.x + f.w / 2 - cam.x, fy = f.y + f.h / 2;
+        const ang = Math.atan2(fy - me.y, (f.x + f.w / 2) - me.x);
+        ctx.save();
+        ctx.translate(Math.max(40, Math.min(W - 40, fx)), Math.max(70, Math.min(H - 90, fy)));
+        ctx.rotate(ang);
+        ctx.fillStyle = 'rgba(255,210,74,0.75)';
+        ctx.beginPath();
+        ctx.moveTo(16, 0); ctx.lineTo(-8, -10); ctx.lineTo(-8, 10);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+    }
 
     // your tools
     ctx.textAlign = 'left'; ctx.font = 'bold 13px Segoe UI';
@@ -2174,6 +2257,7 @@ function render() {
     ctx.translate(-Math.round(cam.x), 0);
     drawFloor();
     drawPads();
+    drawFields();
     drawCrops();
     drawMarket();
     drawWagons();
