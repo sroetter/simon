@@ -61,6 +61,24 @@
     .btn.team { min-width:78px; font-weight:bold; color:#141b25; }
     .btn.team.sel { box-shadow:0 0 12px rgba(255,255,255,0.5); border-color:#fff; }
     .final { font-size:17px; color:#ffa63d; margin:8px 0; }
+    .purse { font-size:16px; color:#ffd24a; margin:6px 0 12px; }
+    .purse b { font-size:20px; }
+    .item {
+        display:flex; align-items:center; gap:12px; text-align:left;
+        background:rgba(0,0,0,0.26); border:1px solid rgba(255,166,61,0.25);
+        border-radius:10px; padding:10px 12px; margin:7px 0;
+    }
+    .item .txt { flex:1; }
+    .item .name { font-weight:bold; font-size:14.5px; color:#eef3f8; }
+    .item .desc { font-size:12.5px; color:#9fb3c8; line-height:1.45; }
+    .item .lvl { font-size:11.5px; color:#8fd46a; letter-spacing:0.5px; }
+    .item button {
+        background:linear-gradient(135deg,#ffa63d,#c96a0b); color:#22160a; border:2px solid #ffd9a6;
+        border-radius:9px; cursor:pointer; padding:8px 13px; font-size:13px; font-weight:bold;
+        white-space:nowrap; min-width:92px;
+    }
+    .item button[disabled] { background:#2a3a46; border-color:#44586a; color:#7e93a3; cursor:default; }
+    .item.maxed { border-color:rgba(143,212,106,0.45); }
     .standing { font-size:14px; margin:3px 0; }
 </style>
 </head>
@@ -92,6 +110,14 @@
       Everyone has <b>their own part of the farm</b>, and <b>on your own land nobody can barge
       you</b>. Step over the fence and you are fair game — and <b>every five seconds over there
       costs you a point</b>.<br><br>
+      Everything you bank at the end of a day goes in the tin, and the <b>feed store</b> will sell
+      you <b>seed</b>, a <b>scarecrow</b>, a <b>farm dog of your own</b>, and eventually <b>the next
+      plot of land</b>. Sow seed on your own ground with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>,
+      leave it to come up, then pick it and put it on a wagon like anything else — wheat sells for
+      6, corn 14, a pumpkin 30.<br><br>
+      And watch for <b>deer</b> 🦌. They walk in, pick the crop nobody is standing near, and take a
+      few seconds over it — two crops each and they wander off satisfied. Get close and they bolt;
+      a <b>scarecrow</b> keeps them off everything around it for good.<br><br>
       <b>Barge</b> a rival with <kbd>Space</kbd> and <b>one animal breaks loose</b> — the last one
       they picked up — not the whole herd. <b>Lasso</b> with
       <kbd>E</kbd> to reel in an animal from across the field instead of chasing it. Drop the
@@ -110,7 +136,7 @@
     <div class="keys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — run</div>
       <div><kbd>Space</kbd> — barge · <kbd>E</kbd> — lasso</div>
-      <div><kbd>Q</kbd> — drop the feed bucket</div>
+      <div><kbd>Q</kbd> — feed bucket · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> — sow seed</div>
       <div><kbd>Esc</kbd> — pause</div>
     </div>
     <div class="label">RIVAL FARMHANDS</div>
@@ -140,6 +166,24 @@
     </div>
     <div class="row" style="margin-top:14px;">
       <button class="btn" id="start">ROUND THEM UP</button>
+      <button class="btn small" id="shopBtn">🪙 FEED STORE</button>
+    </div>
+    <div style="color:#8ea3b5; font-size:12px; margin-top:8px;" id="purseHint"></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="shopOv">
+  <div class="panel">
+    <h1>🪙 THE FEED STORE</h1>
+    <h2>What you made yesterday, spent on doing better today</h2>
+    <div class="purse">You have <b id="purse">0</b> in the tin</div>
+    <div id="shopList"></div>
+    <div style="color:#8ea3b5; font-size:12px; margin-top:8px;">
+      Everything you bank in a day goes in the tin, and what you buy stays bought.
+      Seed is used up when you sow it — press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> on your own land.
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="shopBack">BACK</button>
     </div>
   </div>
 </div>
@@ -151,6 +195,7 @@
     <div id="standings" style="margin:10px 0;"></div>
     <div class="row" style="margin-top:12px;">
       <button class="btn" id="again">ANOTHER DAY</button>
+      <button class="btn small" id="shopFromOver">🪙 FEED STORE</button>
       <button class="btn small" id="menu">MENU</button>
     </div>
   </div>
@@ -210,6 +255,25 @@ const FOX_ALONE = 260;           // an animal is only fair game if nobody is thi
 // The market moves every 75 seconds.
 const MARKET_EVERY = 75;
 
+// ---------------------------------------------------------------- crops --
+// Buy seed between days, plant it on your own land, and sell what comes up.
+const CROPS = [
+    { key:'wheat',   name:'wheat',    emoji:'🌾', seed:4,  value:6,  grow:16, sprout:'🌱' },
+    { key:'corn',    name:'corn',     emoji:'🌽', seed:8,  value:14, grow:24, sprout:'🌱' },
+    { key:'pumpkin', name:'pumpkin',  emoji:'🎃', seed:15, value:30, grow:36, sprout:'🌱' },
+];
+const PLANT_R = 22;
+const PLANT_GAP = 62;            // how far apart you can sow them
+
+// Deer come for whatever is growing.
+const DEER_FROM = 20;
+const DEER_EVERY = 26;
+const DEER_MAX = 2;              // never more than a couple in the field
+const DEER_FULL = 2;             // it wanders off once it has had this many
+const DEER_SPEED = 132;
+const DEER_EAT = 3.2;            // seconds nibbling before a crop is gone
+const SCARE_R = 250;             // how far a scarecrow keeps them off
+
 // Standing on somebody else's land costs you. Every five seconds over the
 // fence is a point off your day's takings.
 const TRESPASS_EVERY = 5;
@@ -258,6 +322,85 @@ const NAMES = ['Vex','Rook','Juno','Pike','Cass','Nim','Bo','Sol','Wren','Tao','
 let nBots = 2, myTeam = 0, matchSecs = 120, skill = 'normal';
 let ordersOn = true;
 
+// ------------------------------------------------------------------ shop --
+// What you make in a day is yours to keep and spend before the next one.
+let coins = 0;
+let owned = { plots: 1, scarecrow: 0, dog: 0, seeds: { wheat: 0, corn: 0, pumpkin: 0 } };
+
+const SHOP = [
+    { key:'wheat',   kind:'seed', name:'Wheat seed',   cost:4,
+      desc:'Up in 16 seconds and sells for 6. Cheap, quick, small.' },
+    { key:'corn',    kind:'seed', name:'Corn seed',    cost:8,
+      desc:'24 seconds in the ground, sells for 14.' },
+    { key:'pumpkin', kind:'seed', name:'Pumpkin seed', cost:15,
+      desc:'A slow 36 seconds and the deer love it — but it sells for 30.' },
+    { key:'scarecrow', kind:'up', name:'Scarecrow', max:2, cost:[40, 90],
+      desc:'Stands on your land and keeps deer off everything within reach.' },
+    { key:'dog', kind:'up', name:'Farm dog of your own', max:1, cost:[70],
+      desc:'Starts every day at your heel — a fifth animal, no waiting for the stray.' },
+    { key:'plots', kind:'plot', name:'Buy the next farm', max:3, cost:[150, 400],
+      desc:'A second, then a third plot of land: more wagons, more room, and safe on all of it.' },
+];
+
+function shopLoad() {
+    try {
+        const raw = localStorage.getItem('farmRoundUp.shop');
+        if (raw) {
+            const d = JSON.parse(raw);
+            coins = d.coins || 0;
+            owned = Object.assign({ plots: 1, scarecrow: 0, dog: 0, seeds: {} }, d.owned || {});
+            owned.seeds = Object.assign({ wheat: 0, corn: 0, pumpkin: 0 }, owned.seeds || {});
+        }
+    } catch (e) {}
+}
+function shopSave() {
+    try { localStorage.setItem('farmRoundUp.shop', JSON.stringify({ coins, owned })); } catch (e) {}
+}
+function seedCount() { return CROPS.reduce((a, c) => a + (owned.seeds[c.key] || 0), 0); }
+
+function buildShop() {
+    const list = document.getElementById('shopList');
+    document.getElementById('purse').textContent = coins;
+    if (!list) return;
+    list.innerHTML = '';
+    SHOP.forEach(it => {
+        const isSeed = it.kind === 'seed';
+        const have = isSeed ? (owned.seeds[it.key] || 0) : (owned[it.key] || (it.kind === 'plot' ? 1 : 0));
+        const lvl = it.kind === 'plot' ? have - 1 : have;
+        const maxed = !isSeed && lvl >= it.max;
+        const price = isSeed ? it.cost : (maxed ? null : it.cost[lvl]);
+        const row = document.createElement('div');
+        row.className = 'item' + (maxed ? ' maxed' : '');
+        const crop = CROPS.find(c => c.key === it.key);
+        row.innerHTML =
+            `<div class="txt"><div class="name">${crop ? crop.emoji + ' ' : ''}${it.name}</div>` +
+            `<div class="desc">${it.desc}</div>` +
+            `<div class="lvl">${isSeed ? `${have} in the barn`
+                : maxed ? 'NOTHING MORE TO BUY' : `owned ${lvl} of ${it.max}`}</div></div>`;
+        const b = document.createElement('button');
+        b.textContent = maxed ? 'OWNED' : `🪙 ${price}`;
+        b.disabled = maxed || coins < price;
+        b.onclick = () => {
+            if (coins < price) return;
+            coins -= price;
+            if (isSeed) owned.seeds[it.key] = have + 1;
+            else if (it.kind === 'plot') owned.plots = have + 1;
+            else owned[it.key] = have + 1;
+            shopSave(); buildShop(); refreshPurseHint();
+        };
+        row.appendChild(b);
+        list.appendChild(row);
+    });
+}
+function refreshPurseHint() {
+    const el = document.getElementById('purseHint');
+    if (!el) return;
+    el.innerHTML = `🪙 <b style="color:#ffd24a">${coins}</b> in the tin` +
+        `  ·  ${owned.plots} plot${owned.plots === 1 ? '' : 's'}` +
+        `  ·  ${seedCount()} seed packet${seedCount() === 1 ? '' : 's'}` +
+        (owned.scarecrow ? `  ·  ${owned.scarecrow} scarecrow${owned.scarecrow === 1 ? '' : 's'}` : '');
+}
+
 /* ==================================================================
    SOUND
    ================================================================== */
@@ -292,6 +435,11 @@ addEventListener('keydown', e => {
     if (e.code === 'Space' && state && !state.paused) ram(state.players[0]);
     if (e.code === 'KeyE' && state && !state.paused) throwLasso(state.players[0]);
     if (e.code === 'KeyQ' && state && !state.paused) dropBucket(state.players[0]);
+    if (state && !state.paused) {
+        if (e.code === 'Digit1') plantSeed(state.players[0], 'wheat');
+        if (e.code === 'Digit2') plantSeed(state.players[0], 'corn');
+        if (e.code === 'Digit3') plantSeed(state.players[0], 'pumpkin');
+    }
     keys[e.code] = true;
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -307,6 +455,7 @@ function makeHauler(idx, isBot, name) {
         ramT: 0, coolT: 0, stun: 0, raidT: 0, onPlat: null,
         dog: 0, lassoT: 0, bucketT: 0, lasso: null, orders: 0, safeBanked: 0,
         trespassT: TRESPASS_EVERY, fined: 0,
+        extraPlots: [], seeds: null, planted: 0, harvested: 0, eaten: 0,
         step: 0, moving: false,
         padT: 0,
     };
@@ -341,6 +490,7 @@ function newGame() {
     state = {
         players, depots, wagons: plats, terrW, total,
         wagonT: [], wagonN: 0, sold: [],
+        crops: [], deer: [], deerT: DEER_FROM, scarecrows: [],
         crates: [], crateT: 0.5,
         pads: [],
         dog: null, dogT: 10,
@@ -351,7 +501,7 @@ function newGame() {
         order: null,
         time: matchSecs, elapsed: 0,
         pops: [], shake: 0,
-        paused: false, over: false,
+        paused: false, over: false, paid: false,
         message: '', messageT: 0,
     };
     CRATE_KINDS.forEach(k => { state.market[k.name] = 1; });
@@ -377,6 +527,23 @@ function newGame() {
         p.x = d.x; p.y = d.y + 60;
         p.face = Math.PI / 2;
     });
+    // whatever you bought is yours from the off
+    const me = players[0];
+    me.seeds = Object.assign({}, owned.seeds);
+    if (owned.dog) me.dog = 1e9;                  // your own dog, all day
+    me.extraPlots = [];
+    for (let i = 1; i < owned.plots && total > 1; i++) {
+        const t = (me.team + i) % total;
+        if (t !== me.team) me.extraPlots.push(t);
+    }
+    for (let i = 0; i < owned.scarecrow; i++) {
+        const t = i === 0 ? me.team : (me.extraPlots[0] !== undefined ? me.extraPlots[0] : me.team);
+        state.scarecrows.push({
+            x: terrW * t + terrW * (0.35 + i * 0.3),
+            y: H * 0.5, wob: Math.random() * 6,
+        });
+    }
+
     cam.x = Math.max(0, Math.min(WORLD_W - W, players[0].x - W / 2));
 
     for (let t = 0; t < total; t++) {
@@ -414,6 +581,137 @@ function spawnWagon(plot, atX) {
 
 // the market on the line at the far side of a plot
 function marketX(plot) { return state.terrW * (plot + 1) - MARKET_W; }
+
+// Sow a seed on your own land.
+function plantSeed(p, key) {
+    if (!p || state.over || !p.seeds) return;
+    if (!onOwnLand(p)) { state.pops.push({ x:p.x, y:p.y-34, text:'NOT YOUR LAND', color:'#ff8a65', life:1.2 }); return; }
+    const crop = CROPS.find(c => c.key === key);
+    if (!crop || !(p.seeds[key] > 0)) {
+        state.pops.push({ x:p.x, y:p.y-34, text:`NO ${key.toUpperCase()} SEED`, color:'#ff8a65', life:1.2 });
+        return;
+    }
+    if (state.crops.some(c => Math.hypot(c.x - p.x, c.y - p.y) < PLANT_GAP)) {
+        state.pops.push({ x:p.x, y:p.y-34, text:'TOO CLOSE', color:'#ff8a65', life:1.0 });
+        return;
+    }
+    p.seeds[key]--;
+    p.planted++;
+    state.crops.push({
+        crop, team: p.team, x: p.x, y: p.y,
+        t: 0, ripe: false, eaten: 0, wob: Math.random() * 6,
+    });
+    tone(520, 0.09, 'triangle', 0.05);
+    state.pops.push({ x:p.x, y:p.y-34, text:`SOWED ${crop.emoji}`, color:'#b6e34a', life:1.2 });
+}
+
+function updateCrops(dt) {
+    for (let i = state.crops.length - 1; i >= 0; i--) {
+        const c = state.crops[i];
+        if (!c.ripe) {
+            c.t += dt;
+            if (c.t >= c.crop.grow) {
+                c.ripe = true;
+                const owner = state.players.find(q => q.team === c.team);
+                if (owner && !owner.isBot) {
+                    state.pops.push({ x:c.x, y:c.y-30, text:`${c.crop.emoji} READY`, color:'#b6e34a', life:1.6 });
+                    tone(760, 0.09, 'sine', 0.045);
+                }
+            }
+        }
+        // anyone can pull a ripe crop — it is yours once it is in your arms
+        if (!c.ripe) continue;
+        for (const p of state.players) {
+            if (p.carry.length >= carryCap(p)) continue;
+            if (Math.hypot(p.x - c.x, p.y - c.y) > R + PLANT_R) continue;
+            p.carry.push({
+                v: c.crop.value, name: c.crop.name, emoji: c.crop.emoji,
+                body:'#e8d9a8', edge:'#6b5a2a', top:'#fff6d0', speed: 0, isCrop: true,
+            });
+            p.harvested++;
+            state.crops.splice(i, 1);
+            if (!p.isBot) grab();
+            break;
+        }
+    }
+}
+
+// Deer eat what is growing, and a scarecrow keeps them off.
+function scaredOff(x, y) {
+    return state.scarecrows.some(sc => Math.hypot(sc.x - x, sc.y - y) < SCARE_R);
+}
+
+function updateDeer(dt) {
+    state.deerT -= dt;
+    if (state.deerT <= 0 && state.crops.length && state.deer.length < DEER_MAX) {
+        state.deerT = DEER_EVERY;
+        const edge = Math.random() < 0.5;
+        state.deer.push({
+            x: edge ? -30 : WORLD_W + 30,
+            y: 60 + Math.random() * (H - 120),
+            face: edge ? 1 : -1, wob: 0, eating: null, chew: 0, ate: 0,
+        });
+        say('DEER IN THE CROPS 🦌', 2.2);
+        crack();
+    }
+
+    for (let i = state.deer.length - 1; i >= 0; i--) {
+        const d = state.deer[i];
+        d.wob += dt * 7;
+
+        // a farmhand close by sends it running
+        let spooked = null;
+        for (const p of state.players) {
+            if (Math.hypot(p.x - d.x, p.y - d.y) < 120) { spooked = p; break; }
+        }
+        if (spooked) {
+            d.eating = null; d.chew = 0;
+            const dx = d.x - spooked.x, dy = d.y - spooked.y, m = Math.hypot(dx, dy) || 1;
+            d.x += (dx / m) * DEER_SPEED * 1.5 * dt;
+            d.y += (dy / m) * DEER_SPEED * 1.5 * dt;
+            d.face = dx > 0 ? 1 : -1;
+        } else if (d.eating && state.crops.indexOf(d.eating) >= 0) {
+            d.chew += dt;
+            if (d.chew >= DEER_EAT) {
+                const c = d.eating;
+                const owner = state.players.find(q => q.team === c.team);
+                if (owner) owner.eaten++;
+                state.pops.push({
+                    x: c.x, y: c.y - 28, text: `DEER ATE THE ${c.crop.name.toUpperCase()}!`,
+                    color: '#ff8a4a', life: 1.8,
+                });
+                state.crops.splice(state.crops.indexOf(c), 1);
+                d.eating = null; d.chew = 0; d.ate++;
+                crack();
+                // it has had its fill and heads for the trees
+                if (d.ate >= DEER_FULL) d.leaving = true;
+            }
+        } else if (d.leaving) {
+            d.x += d.face * DEER_SPEED * 1.1 * dt;
+            if (d.x < -70 || d.x > WORLD_W + 70) { state.deer.splice(i, 1); continue; }
+        } else {
+            // find something to eat that isn't guarded by a scarecrow
+            let best = null, bd = Infinity;
+            for (const c of state.crops) {
+                if (scaredOff(c.x, c.y)) continue;
+                const dd = Math.hypot(c.x - d.x, c.y - d.y);
+                if (dd < bd) { bd = dd; best = c; }
+            }
+            if (!best) {
+                d.x += d.face * DEER_SPEED * 0.6 * dt;
+                if (d.x < -60 || d.x > WORLD_W + 60) { state.deer.splice(i, 1); continue; }
+            } else {
+                const dx = best.x - d.x, dy = best.y - d.y, m = Math.hypot(dx, dy) || 1;
+                d.x += (dx / m) * DEER_SPEED * dt;
+                d.y += (dy / m) * DEER_SPEED * dt;
+                d.face = dx > 0 ? 1 : -1;
+                if (m < PLANT_R + 14) { d.eating = best; d.chew = 0; }
+            }
+        }
+        d.x = Math.max(-60, Math.min(WORLD_W + 60, d.x));
+        d.y = Math.max(30, Math.min(H - 30, d.y));
+    }
+}
 
 function wagonValue(w) { return w.held.reduce((a, h) => a + worthOf(h.kind), 0); }
 function wagonSealed(w) { return wagonValue(w) >= WAGON_QUOTA; }
@@ -748,7 +1046,12 @@ function carriedValue(p) { return p.carry.reduce((a, k) => a + worthOf(k), 0); }
 function territoryAt(x) {
     return Math.max(0, Math.min(state.total - 1, Math.floor(x / state.terrW)));
 }
-function onOwnLand(p) { return territoryAt(p.x) === p.team; }
+// You may have bought the plot next door, in which case both are yours.
+function ownsPlot(p, t) {
+    if (t === p.team) return true;
+    return !!(p.extraPlots && p.extraPlots.indexOf(t) >= 0);
+}
+function onOwnLand(p) { return ownsPlot(p, territoryAt(p.x)); }
 
 // How many you can drive at once — the dog is worth one extra pair of hands.
 function carryCap(p) { return CARRY_MAX + (p.dog > 0 ? 1 : 0); }
@@ -884,6 +1187,8 @@ function update(dt) {
     if (state.marketT <= 0) { state.marketT = MARKET_EVERY; moveMarket(); }
 
     updateWagons(dt);
+    updateCrops(dt);
+    updateDeer(dt);
     updateFarmKit(dt);
     updateAnimals(dt);
     updateLassos(dt);
@@ -1273,6 +1578,76 @@ function drawFloor() {
     }
 }
 
+function drawCrops() {
+    for (const c of state.crops) {
+        const p = Math.min(1, c.t / c.crop.grow);
+        const sway = Math.sin(state.elapsed * 1.8 + c.wob) * 3;
+        // tilled earth
+        ctx.fillStyle = 'rgba(96,72,44,0.55)';
+        ctx.beginPath(); ctx.ellipse(c.x, c.y + 8, PLANT_R, PLANT_R * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+
+        if (c.ripe) {
+            ctx.fillStyle = 'rgba(182,227,74,0.28)';
+            ctx.beginPath(); ctx.arc(c.x, c.y - 4, PLANT_R + 6, 0, Math.PI * 2); ctx.fill();
+            ctx.font = '30px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(c.crop.emoji, c.x + sway, c.y - 6);
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillStyle = '#b6e34a'; ctx.font = 'bold 11px Segoe UI';
+            ctx.fillText('READY ' + c.crop.value, c.x, c.y + 24);
+        } else {
+            ctx.font = Math.round(12 + p * 16) + 'px Segoe UI';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('🌱', c.x + sway, c.y - 2);
+            ctx.textBaseline = 'alphabetic';
+            // how far along
+            const bw = 34, bx = c.x - bw / 2, by = c.y + 16;
+            ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(bx - 1, by - 1, bw + 2, 6);
+            ctx.fillStyle = '#8fd46a'; ctx.fillRect(bx, by, bw * p, 4);
+        }
+        // whose it is
+        ctx.fillStyle = hexA(TEAMS[c.team].color, 0.9);
+        ctx.fillRect(c.x - 7, c.y + 26, 14, 2.5);
+    }
+}
+
+function drawDeerAndScarecrows() {
+    for (const sc of state.scarecrows) {
+        ctx.strokeStyle = 'rgba(255,210,74,0.18)'; ctx.lineWidth = 2;
+        ctx.setLineDash([10, 9]); ctx.lineDashOffset = -state.elapsed * 12;
+        ctx.beginPath(); ctx.arc(sc.x, sc.y, SCARE_R, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.strokeStyle = '#8a6a3f'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(sc.x, sc.y + 22); ctx.lineTo(sc.x, sc.y - 18);
+        ctx.moveTo(sc.x - 18, sc.y - 8); ctx.lineTo(sc.x + 18, sc.y - 8);
+        ctx.stroke();
+        ctx.font = '22px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('🎃', sc.x, sc.y - 26);
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = 'rgba(255,210,74,0.8)'; ctx.font = 'bold 10px Segoe UI';
+        ctx.fillText('SCARECROW', sc.x, sc.y + 38);
+    }
+    for (const d of state.deer) {
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath(); ctx.ellipse(d.x, d.y + 15, 17, 6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.save();
+        ctx.translate(d.x, d.y + Math.sin(d.wob) * 2);
+        if (d.face < 0) ctx.scale(-1, 1);
+        ctx.font = '34px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('🦌', 0, 0);
+        ctx.restore();
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = '#ff8a4a'; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText(d.leaving ? 'OFF IT GOES' : d.eating ? 'EATING!'
+                     : (d.ate ? `DEER — ATE ${d.ate}` : 'DEER'), d.x, d.y - 26);
+        if (d.eating) {
+            const p2 = Math.min(1, d.chew / DEER_EAT);
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(d.x - 18, d.y + 20, 36, 6);
+            ctx.fillStyle = '#ff8a4a'; ctx.fillRect(d.x - 18, d.y + 20, 36 * p2, 6);
+        }
+    }
+}
+
 function drawFarmKit() {
     // feed buckets
     for (const b of state.buckets) {
@@ -1623,7 +1998,7 @@ function drawHauler(p) {
     p.carry.forEach((kind, i) => {
         const ox = -Math.cos(p.face) * (R * 0.9 + i * 15);
         const oy = -Math.sin(p.face) * (R * 0.9 + i * 15);
-        const wob = Math.sin(state.elapsed * 9 + i) * 4;
+        const wob = kind.isCrop ? 0 : Math.sin(state.elapsed * 9 + i) * 4;
         ctx.font = '21px Segoe UI';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(kind.emoji, x + ox + wob, y + oy);
@@ -1656,6 +2031,8 @@ function drawHauler(p) {
         ctx.fillText('YOU', x, y + R * 1.9);
     }
 }
+
+function seedInHand(p) { return p.seeds && CROPS.some(c => p.seeds[c.key] > 0); }
 
 function drawHUD() {
     const rank = state.players.slice().sort((a, b) => b.banked - a.banked);
@@ -1738,6 +2115,15 @@ function drawHUD() {
                      ` — -${TRESPASS_COST} in ${me.trespassT.toFixed(1)}s`, W / 2, 86);
     }
 
+    // seed in the barn, and what you have in the ground
+    ctx.textAlign = 'center'; ctx.font = 'bold 12px Segoe UI';
+    const bits = CROPS.map((c, i) =>
+        `${i + 1} ${c.emoji}${(me.seeds && me.seeds[c.key]) || 0}`);
+    const growing = state.crops.filter(c => c.team === me.team).length;
+    ctx.fillStyle = seedInHand(me) ? '#b6e34a' : '#8ea3b5';
+    ctx.fillText(`seed: ${bits.join('  ')}` + (growing ? `   ·   ${growing} in the ground` : ''),
+                 W / 2, H - 44);
+
     // your tools
     ctx.textAlign = 'left'; ctx.font = 'bold 13px Segoe UI';
     const tools = [];
@@ -1788,8 +2174,10 @@ function render() {
     ctx.translate(-Math.round(cam.x), 0);
     drawFloor();
     drawPads();
+    drawCrops();
     drawMarket();
     drawWagons();
+    drawDeerAndScarecrows();
     drawFarmKit();
     for (const c of state.crates) {
         // shadow so they sit on the grass
@@ -1814,6 +2202,12 @@ function render() {
    ================================================================== */
 function showOver() {
     horn();
+    // pay into the tin once and once only — a second call must not double it
+    if (!state.paid) {
+        state.paid = true;
+        coins += state.players[0].banked;
+        shopSave();
+    }
     const rank = state.players.slice().sort((a, b) => b.banked - a.banked);
     const win = rank[0];
     const me = state.players[0];
@@ -1826,7 +2220,10 @@ function showOver() {
         `<br><span style="font-size:14px;color:#9fb3c8">You penned <b>${me.banked}</b>, barged rivals <b>${me.rammed}</b> time${me.rammed === 1 ? '' : 's'}, ` +
         `and lost <b>${me.dropped}</b> animal${me.dropped === 1 ? '' : 's'}` +
         `${me.raided ? `, while rustling from a pen <b>${me.raided}</b> time${me.raided === 1 ? '' : 's'}` : ''}.</span>` +
-        `<br><span style="font-size:13px;color:#7d8fa0">${state.sold.length} wagon${state.sold.length === 1 ? '' : 's'} reached the market.</span>`;
+        `<br><span style="font-size:13px;color:#7d8fa0">${state.sold.length} wagon${state.sold.length === 1 ? '' : 's'} reached the market` +
+        (me.planted ? ` · you sowed ${me.planted} and picked ${me.harvested}` : '') +
+        (me.eaten ? ` · deer had ${me.eaten}` : '') + `.</span>` +
+        `<br><span style="font-size:14px;color:#ffd24a">🪙 <b>+${me.banked}</b> into the tin — ${coins} saved</span>`;
     document.getElementById('standings').innerHTML = rank.map((p, i) => {
         const bits = [];
         const safe = p.safeBanked || 0;
@@ -1891,6 +2288,24 @@ pick('#skill', 'k', v => { skill = v; });
 pick('#orders', 'o', v => { ordersOn = (v === 'on'); });
 buildTeamPick();
 
+shopLoad();
+refreshPurseHint();
+let shopReturn = 'titleOv';
+function openShop(fromOver) {
+    shopReturn = fromOver ? 'overOv' : 'titleOv';
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('overOv').classList.add('hidden');
+    document.getElementById('shopOv').classList.remove('hidden');
+    buildShop();
+}
+document.getElementById('shopBtn').onclick = () => { actx(); openShop(false); };
+document.getElementById('shopFromOver').onclick = () => openShop(true);
+document.getElementById('shopBack').onclick = () => {
+    document.getElementById('shopOv').classList.add('hidden');
+    document.getElementById(shopReturn).classList.remove('hidden');
+    refreshPurseHint();
+};
+
 document.getElementById('start').onclick = () => {
     actx();
     document.getElementById('titleOv').classList.add('hidden');
@@ -1904,6 +2319,7 @@ document.getElementById('again').onclick = () => {
 document.getElementById('menu').onclick = () => {
     document.getElementById('overOv').classList.add('hidden');
     document.getElementById('titleOv').classList.remove('hidden');
+    refreshPurseHint();
     state = null;
 };
 })();
