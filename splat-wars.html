@@ -88,25 +88,30 @@
     <h2>Nobody wins the fight. Whoever painted the most floor wins.</h2>
     <div class="rules">
       Hold <kbd>SPACE</kbd> and you fire paint. Everywhere it lands turns <b>your colour</b>, and
-      when the clock runs out <b>whoever covers the most floor wins</b> — not whoever got the most
-      splats. You can lose every fight and still take it.<br><br>
-      Your <b>ink tank</b> runs down as you shoot, and here is the catch: <b>it only refills fast on
-      your own colour</b>. Standing on bare floor trickles it back, and on an enemy's colour it does
-      not come back at all — <b>and their paint drags you to a crawl</b>. Paint yourself a road, or
-      you get stuck out there dry and slow.<br><br>
-      While <kbd>SPACE</kbd> is down <b>your aim locks</b>, so you can back away from someone and
-      keep painting them at the same time.<br><br>
-      Hit a rival enough and they <b>burst</b> — which drops a big blob of <b>your</b> colour where
-      they stood and puts them out for a couple of seconds. That is what fighting is actually for.<br><br>
-      Grab a <b>💣 ink bomb</b>, <b>⚡ turbo</b> or a <b>🎨 roller</b> when they drop, and press
-      <kbd>SHIFT</kbd> to use it.<br><br>
-      Once a round, at a random moment, <b>one player is handed a 💥 MEGA BOOM</b> — a drone in their
-      colour that tears round the arena for <b>30 seconds</b> laying a wide stripe and going off as it
-      goes. It might be you and it might not. It <b>cannot hurt anybody</b>; it only paints, and you
-      can walk straight through it. You can paint back over everything it lays down.<br><br>
+      the round is won by <b>whoever covers the most floor</b> — not whoever got the most splats.
+      You can lose every fight and still take it.<br><br>
+      Your <b>ink tank</b> only refills fast on <b>your own colour</b>. Bare floor trickles it back,
+      an enemy's colour gives you nothing <b>and drags you to a crawl</b>. Paint yourself a road, or
+      you get stuck out there dry and slow. While <kbd>SPACE</kbd> is down <b>your aim locks</b>, so
+      you can back away from someone and keep painting them. Hit a rival enough and they
+      <b>burst</b>, dropping a big blob of <b>your</b> colour where they stood.<br><br>
+      <b>A turret sits in each corner.</b> Stand in its ring and it sets you a job — hold the ring,
+      paint the core, or splat the targets it puts out. Finish it and the turret is <b>yours</b>, and
+      it sprays that corner in your colour for the rest of the round. Two sides stood in the same
+      ring and <b>nobody gains</b>. Rivals can take it back off you the same way.<br><br>
+      Pickups drop all round: <b>💣 ink bomb</b>, <b>⚡ turbo</b>, <b>🎨 roller</b>,
+      <b>🚿 sprinkler</b> — set it down and it paints a spreading circle until someone knocks it
+      over — and <b>🧨 ink mines</b>, which sit quietly in your colour and burst into a wide splat
+      when a rival treads on one. <kbd>SHIFT</kbd> uses whatever you are holding.<br><br>
+      Once a round a <b>💥 MEGA BOOM</b> crate drops in the middle and <b>the first one to it keeps
+      it</b> — a drone in their colour that tears across the arena for <b>30 seconds</b> laying a
+      stripe. Rounds of 3 minutes or more get <b>two</b> drops. Neither the drone nor the mines can
+      hurt anybody; they only paint, and you can paint back over everything they lay down.<br><br>
+      The <b>last 30 seconds count double</b>: any floor you take in that time and <b>still hold at
+      the whistle</b> is worth twice as much. Rounds are won and lost right at the end.<br><br>
       Put <b>more than one player on a team</b> and you get <b>team-mates in your colour</b>. Their
-      paint counts as yours, you cannot splat each other, and you both refill on the same floor — so
-      spread out and take two corners at once instead of painting the same road twice.
+      paint counts as yours and you cannot splat each other. On the <b>big arena</b> the floor is
+      twice the window each way — the map in the corner shows the whole fight.
     </div>
     <div class="keys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> — run</div>
@@ -122,6 +127,8 @@
     <div class="row" id="sizeRow"></div>
     <div class="label">HOW GOOD THEY ARE</div>
     <div class="row" id="skillRow"></div>
+    <div class="label">HOW BIG</div>
+    <div class="row" id="arenaRow"></div>
     <div class="label">HOW LONG</div>
     <div class="row" id="timeRow"></div>
     <div class="row" style="margin-top:16px;"><button class="btn" id="startBtn">START</button></div>
@@ -158,7 +165,10 @@
    ================================================================== */
 const cv  = document.getElementById('game');
 const ctx = cv.getContext('2d');
-let W = 0, H = 0;
+let W = 0, H = 0;          // the arena
+let VW = 0, VH = 0;        // the window you see it through
+const cam = { x: 0, y: 0 };
+let arena = 1;             // 1 = one screenful, 2 = big
 
 // the paint itself lives on its own canvas, and a coarse grid alongside it
 // keeps the score. Both are written by the same call so they never disagree.
@@ -167,6 +177,10 @@ const pctx    = paintCv.getContext('2d');
 const CELL = 14;
 let gw = 0, gh = 0, grid = null, paintable = 0;
 let counts = [0, 0, 0, 0];
+// which cells were claimed during double time, and by whom. A cell only pays
+// the second helping if whoever claimed it late still holds it at the whistle,
+// so painting one square back and forth does not farm points.
+let lateGrid = null, lateCounts = [0, 0, 0, 0];
 
 const HUES = [
     { name:'PINK',   ink:'#ff3fa4', deep:'#a8004f' },
@@ -194,9 +208,26 @@ const TURBO_T = 7, TURBO_MULT = 1.42, ROLLER_T = 8;
 const PU_EVERY = 7.5, PU_MAX = 3, PU_R = 17;
 // the MEGA BOOM: one player a game, at random, gets a drone let loose in their
 // colour. It tears round the arena laying a wide stripe and going off as it goes.
-const MEGA_TIME = 30, MEGA_SPD = 320, MEGA_R = 12, MEGA_TURN = 3.4, MEGA_DRAW = 16;
+const MEGA_TIME = 30, MEGA_SPD = 320, MEGA_R = 12, MEGA_TURN = 6.5, MEGA_DRAW = 16;
+const MEGA_CRATE_WAIT = 26, MEGA_CRATE_R = 24;
+const DOUBLE_T = 30;                                    // the last half-minute counts twice
+const SPRINK_T = 15, SPRINK_EVERY = 0.7, SPRINK_HP = 3, SPRINK_R = 20;
+const MINE_ARM = 0.7, MINE_TRIP = 30, MINE_R = 72;
 const MEGA_BOOM_EVERY = 4.2, MEGA_BOOM_R = 52;
 const CORNERS = [[0.12, 0.22], [0.88, 0.78], [0.88, 0.22], [0.12, 0.78]];
+
+// A turret sits in each corner of the arena. It is nobody's until somebody
+// does the little job it sets them, and then it paints that corner for them.
+const TURRET_SPOTS = [[0.24, 0.27], [0.76, 0.73], [0.76, 0.27], [0.24, 0.73]];
+const TURRET_R = 25, TURRET_RING = 84, TURRET_FIRE = 0.5, TURRET_RANGE = 200;
+const TASK_HOLD = 4.5, TASK_SHOTS = 8, TASK_TARGETS = 3, TARGET_R = 15;
+const TASKS = ['hold', 'shoot', 'targets'];
+const TASK_GOAL = { hold: TASK_HOLD, shoot: TASK_SHOTS, targets: TASK_TARGETS };
+const TASK_TEXT = {
+    hold:    'STAND IN THE RING',
+    shoot:   'PAINT THE CORE ' + TASK_SHOTS + ' TIMES',
+    targets: 'SPLAT ALL ' + TASK_TARGETS + ' TARGETS',
+};
 
 const SKILL = {
     easy:   { err:0.42, aggr:0.45, react:0.72, useT:0.9 },
@@ -224,6 +255,10 @@ function beep(freq, len, type, vol) {
 }
 
 /* ----------------------------------------------------------- the floor -- */
+function hexA(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
 function hueOf(team) { return state ? state.hues[team] : team; }
 function inkOf(team) { return HUES[hueOf(team)].ink; }
 function deepOf(team) { return HUES[hueOf(team)].deep; }
@@ -264,6 +299,10 @@ function recount() {
 }
 
 function pct(team) { return (counts[team] / paintable) * 100; }
+// what actually decides it: floor held, plus a second helping of anything
+// claimed in the last thirty seconds
+function bonusPct(team) { return (lateCounts[team] / paintable) * 100; }
+function score(team) { return pct(team) + bonusPct(team); }
 
 function cellAt(x, y) {
     const gx = Math.floor(x / CELL), gy = Math.floor(y / CELL);
@@ -287,6 +326,13 @@ function blob(x, y, r, team) {
             if (v === -2 || v === team) continue;
             if (v >= 0) counts[v]--;
             grid[i] = team; counts[team]++;
+            if (state && state.doubling && lateGrid) {
+                const was = lateGrid[i];
+                if (was !== team) {
+                    if (was >= 0) lateCounts[was]--;
+                    lateGrid[i] = team; lateCounts[team]++;
+                }
+            }
         }
     }
 }
@@ -304,8 +350,10 @@ function splat(x, y, r, team) {
 /* ------------------------------------------------------------- layout -- */
 function resize() {
     const oldGrid = grid, oldGw = gw, oldGh = gh;
-    W = cv.width = window.innerWidth;
-    H = cv.height = window.innerHeight;
+    VW = cv.width = window.innerWidth;
+    VH = cv.height = window.innerHeight;
+    W = Math.round(VW * arena);
+    H = Math.round(VH * arena);
     gw = Math.max(1, Math.ceil(W / CELL));
     gh = Math.max(1, Math.ceil(H / CELL));
 
@@ -319,6 +367,9 @@ function resize() {
 
     const ng = new Int8Array(gw * gh);
     ng.fill(-1);
+    lateGrid = new Int8Array(gw * gh);
+    lateGrid.fill(-1);
+    lateCounts = [0, 0, 0, 0];
     if (oldGrid) {
         const cw = Math.min(gw, oldGw), ch = Math.min(gh, oldGh);
         for (let y = 0; y < ch; y++)
@@ -358,16 +409,25 @@ function newGame() {
 
     state = {
         players: [], shots: [], bombs: [], pops: [], drips: [],
-        walls: [], pickups: [], total,
+        walls: [], pickups: [], turrets: [], kit: [], total,
         t: matchSecs, puT: 3, over: false, message: '', messageT: 0,
-        // somewhere in the middle of the round, one of them gets lucky
-        drone: null, megaAt: matchSecs * (0.45 + Math.random() * 0.28), megaDone: false,
+        // the mega boom is not handed out — it is dropped, and raced for
+        drone: null, megaCrate: null, megaTimes: [], megaWinners: [],
+        // the last half-minute is worth double
+        doubling: false,
         hues,
     };
     state.walls = makeWalls();
+    state.turrets = makeTurrets();
+    // long rounds get a second drop, and never to the same player twice
+    state.megaTimes = matchSecs >= 180
+        ? [matchSecs * (0.62 + Math.random() * 0.1), matchSecs * (0.26 + Math.random() * 0.1)]
+        : [matchSecs * (0.45 + Math.random() * 0.28)];
 
     pctx.clearRect(0, 0, W, H);
     grid.fill(-1);
+    lateGrid.fill(-1);
+    lateCounts = [0, 0, 0, 0];
     markWalls();
     recount();
 
@@ -449,6 +509,8 @@ function usePower(p) {
     } else if (p.pu === 'roller') {
         p.roller = ROLLER_T;
         beep(240, 0.16, 'sawtooth', 0.05);
+    } else if (p.pu === 'sprinkler' || p.pu === 'mine') {
+        placeKit(p, p.pu);
     }
     p.pu = null;
 }
@@ -480,23 +542,304 @@ function damage(p, amount, from) {
     if (p.hp <= 0) burst(p, from);
 }
 
-/* ---------------------------------------------------------- mega boom -- */
-function launchMega() {
-    state.megaDone = true;
-    const lucky = state.players[Math.floor(Math.random() * state.players.length)];
-    let x = lucky.x, y = lucky.y;
-    for (let i = 0; i < 40; i++) {
-        const tx = 70 + Math.random() * (W - 140), ty = 70 + Math.random() * (H - 140);
-        if (!hitsWall(tx, ty, MEGA_DRAW + 6)) { x = tx; y = ty; break; }
+/* --------------------------------------------------- sprinklers, mines -- */
+function placeKit(p, kind) {
+    if (kind === 'sprinkler') {
+        state.kit.push({ kind, x: p.x, y: p.y, team: p.team, t: SPRINK_T,
+                         hp: SPRINK_HP, pulse: 0.3, arm: 0, ring: 0, spin: 0 });
+        beep(560, 0.12, 'sine', 0.05);
+    } else {
+        state.kit.push({ kind: 'mine', x: p.x, y: p.y, team: p.team, t: 999,
+                         hp: 1, arm: MINE_ARM, pulse: 0, ring: 0, spin: 0 });
+        beep(200, 0.1, 'triangle', 0.04);
     }
+}
+
+function updateKit(dt) {
+    for (let i = state.kit.length - 1; i >= 0; i--) {
+        const k = state.kit[i];
+        k.spin += dt * 3;
+        if (k.arm > 0) k.arm -= dt;
+
+        if (k.kind === 'sprinkler') {
+            k.t -= dt;
+            k.pulse -= dt;
+            if (k.pulse <= 0) {
+                k.pulse = SPRINK_EVERY;
+                // works its way outwards in a spiral, so the circle grows
+                k.ring += 1;
+                const d = 26 + (k.ring % 4) * 30;
+                const a = k.ring * 1.9;
+                splat(k.x + Math.cos(a) * d, k.y + Math.sin(a) * d, SPRINK_R, k.team);
+                splat(k.x + Math.cos(a + Math.PI) * d, k.y + Math.sin(a + Math.PI) * d, SPRINK_R, k.team);
+            }
+            // a rival's paint knocks it over
+            for (let j = state.shots.length - 1; j >= 0; j--) {
+                const sh = state.shots[j];
+                if (sh.team === k.team) continue;
+                if (Math.hypot(sh.x - k.x, sh.y - k.y) > 20) continue;
+                state.shots.splice(j, 1);
+                k.hp--;
+                break;
+            }
+            if (k.t <= 0 || k.hp <= 0) {
+                state.pops.push({ x: k.x, y: k.y, text: k.hp <= 0 ? 'KNOCKED OVER' : 'DRY', color: '#ffffff', life: 0.9 });
+                state.kit.splice(i, 1);
+            }
+        } else {
+            if (k.arm > 0) continue;
+            let tripped = null;
+            for (const q of state.players) {
+                if (q.team === k.team || q.down > 0) continue;
+                if (Math.hypot(q.x - k.x, q.y - k.y) < MINE_TRIP) { tripped = q; break; }
+            }
+            if (tripped) {
+                splat(k.x, k.y, MINE_R, k.team);        // paint only — it cannot hurt them
+                state.pops.push({ x: k.x, y: k.y, text: '💥', color: '#ffffff', life: 0.8 });
+                beep(110, 0.2, 'sawtooth', 0.06);
+                state.kit.splice(i, 1);
+            }
+        }
+    }
+}
+
+function drawKit() {
+    for (const k of state.kit) {
+        if (k.kind === 'sprinkler') {
+            ctx.fillStyle = 'rgba(0,0,0,0.18)';
+            ctx.beginPath(); ctx.ellipse(k.x, k.y + 12, 14, 5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = hexA(HUES[hueOf(k.team)].ink, 0.5); ctx.lineWidth = 2;
+            ctx.setLineDash([5, 6]);
+            ctx.beginPath(); ctx.arc(k.x, k.y, 26 + (k.ring % 4) * 30, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.save();
+            ctx.translate(k.x, k.y); ctx.rotate(k.spin);
+            ctx.strokeStyle = deepOf(k.team); ctx.lineWidth = 4; ctx.lineCap = 'round';
+            for (let i = 0; i < 3; i++) {
+                const a = (i / 3) * Math.PI * 2;
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 15, Math.sin(a) * 15); ctx.stroke();
+            }
+            ctx.lineCap = 'butt';
+            ctx.restore();
+            ctx.fillStyle = inkOf(k.team);
+            ctx.beginPath(); ctx.arc(k.x, k.y, 9, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.arc(k.x, k.y, 9, 0, Math.PI * 2); ctx.stroke();
+            ctx.fillStyle = deepOf(k.team); ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
+            ctx.fillText(k.hp + '♥ ' + k.t.toFixed(0) + 's', k.x, k.y + 26);
+        } else {
+            // a mine barely shows — a lump of your colour with a blinking eye
+            ctx.fillStyle = hexA(HUES[hueOf(k.team)].ink, 0.85);
+            ctx.beginPath(); ctx.ellipse(k.x, k.y, 11, 7, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = hexA(HUES[hueOf(k.team)].deep, 0.7); ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.ellipse(k.x, k.y, 11, 7, 0, 0, Math.PI * 2); ctx.stroke();
+            if (Math.sin(k.spin * 2) > 0.3) {
+                ctx.fillStyle = k.arm > 0 ? '#ffd21a' : '#ff3b30';
+                ctx.beginPath(); ctx.arc(k.x, k.y, 3, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+    }
+}
+
+/* ------------------------------------------------------------ turrets -- */
+function makeTurrets() {
+    return TURRET_SPOTS.map((c, i) => {
+        const t = { i, x: c[0] * W, y: c[1] * H, team: -1, task: null, taskBy: -1,
+                    prog: 0, targets: [], fireT: 0, sweep: Math.random() * Math.PI * 2, flash: 0 };
+        // nudge it out of a crate if the layout put one there
+        for (let n = 0; n < 24 && hitsWall(t.x, t.y, TURRET_R + 8); n++) {
+            t.x += (t.x < W / 2 ? 1 : -1) * 22;
+            t.y += (t.y < H / 2 ? 1 : -1) * 14;
+        }
+        return t;
+    });
+}
+
+function setTask(t, team) {
+    t.task = TASKS[Math.floor(Math.random() * TASKS.length)];
+    t.taskBy = team;
+    t.prog = 0;
+    t.targets = [];
+    if (t.task === 'targets') {
+        for (let i = 0; i < TASK_TARGETS; i++) {
+            for (let n = 0; n < 30; n++) {
+                const a = Math.random() * Math.PI * 2, d = 70 + Math.random() * 110;
+                const x = t.x + Math.cos(a) * d, y = t.y + Math.sin(a) * d;
+                if (x < 30 || y < 30 || x > W - 30 || y > H - 30) continue;
+                if (hitsWall(x, y, TARGET_R + 4)) continue;
+                t.targets.push({ x, y, hit: false, spin: Math.random() * 6 });
+                break;
+            }
+        }
+    }
+}
+
+function takeTurret(t, team) {
+    t.team = team;
+    t.task = null; t.taskBy = -1; t.prog = 0; t.targets = [];
+    t.flash = 1;
+    splat(t.x, t.y, 92, team);
+    state.pops.push({ x: t.x, y: t.y - 40, text: 'TURRET TAKEN', color: '#ffffff', life: 1.4 });
+    if (team === 0) say('Turret taken — it paints this corner for you now');
+    beep(520, 0.2, 'square', 0.06);
+}
+
+function updateTurrets(dt) {
+    for (const t of state.turrets) {
+        if (t.flash > 0) t.flash -= dt;
+
+        // who is standing in the ring
+        const inside = state.players.filter(p => p.down <= 0 &&
+            Math.hypot(p.x - t.x, p.y - t.y) < TURRET_RING);
+        const sides = [];
+        for (const p of inside) if (sides.indexOf(p.team) < 0) sides.push(p.team);
+        const claimants = sides.filter(team => team !== t.team);
+        t.contested = sides.length > 1;
+
+        if (!t.task && claimants.length === 1) setTask(t, claimants[0]);
+
+        if (t.task) {
+            const holding = inside.some(p => p.team === t.taskBy);
+            if (t.contested) {
+                // nobody makes headway while two sides are stood in it
+            } else if (t.task === 'hold') {
+                if (holding) t.prog += dt; else t.prog = Math.max(0, t.prog - dt * 0.8);
+            } else if (!holding) {
+                t.prog = Math.max(0, t.prog - dt * 0.5);
+            }
+            if (t.prog >= TASK_GOAL[t.task]) takeTurret(t, t.taskBy);
+            else if (t.prog <= 0 && !holding && !inside.length) { t.task = null; t.taskBy = -1; t.targets = []; }
+        }
+
+        // an owned turret sprays its corner, sweeping round as it goes
+        if (t.team >= 0) {
+            t.fireT -= dt;
+            if (t.fireT <= 0) {
+                t.fireT = TURRET_FIRE;
+                t.sweep += 0.72;
+                const a = t.sweep;
+                state.shots.push({
+                    x: t.x + Math.cos(a) * (TURRET_R + 4), y: t.y + Math.sin(a) * (TURRET_R + 4),
+                    vx: Math.cos(a) * 460, vy: Math.sin(a) * 460,
+                    t: TURRET_RANGE / 460, r: 22, dmg: 0, team: t.team, from: null, harmless: true,
+                });
+            }
+        }
+    }
+}
+
+function drawTurrets() {
+    for (const t of state.turrets) {
+        const own = t.team >= 0;
+        // the ring you have to be stood in
+        ctx.strokeStyle = own ? hexA(HUES[hueOf(t.team)].ink, 0.55) : 'rgba(42,35,24,0.3)';
+        ctx.lineWidth = 3; ctx.setLineDash([9, 8]);
+        ctx.beginPath(); ctx.arc(t.x, t.y, TURRET_RING, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+
+        for (const g of t.targets) {
+            if (g.hit) continue;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(g.x, g.y, TARGET_R, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#d32f2f';
+            ctx.beginPath(); ctx.arc(g.x, g.y, TARGET_R * 0.62, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(g.x, g.y, TARGET_R * 0.26, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#2a2318'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(g.x, g.y, TARGET_R, 0, Math.PI * 2); ctx.stroke();
+        }
+
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath(); ctx.ellipse(t.x, t.y + TURRET_R * 0.8, TURRET_R, TURRET_R * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+
+        // base
+        ctx.fillStyle = own ? inkOf(t.team) : '#cfc6b4';
+        ctx.beginPath(); ctx.arc(t.x, t.y, TURRET_R, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = own ? deepOf(t.team) : '#8d8371'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(t.x, t.y, TURRET_R, 0, Math.PI * 2); ctx.stroke();
+
+        // barrel, pointing wherever it last sprayed
+        const a = t.sweep;
+        ctx.strokeStyle = own ? deepOf(t.team) : '#8d8371';
+        ctx.lineWidth = 9; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(t.x, t.y); ctx.lineTo(t.x + Math.cos(a) * (TURRET_R + 14), t.y + Math.sin(a) * (TURRET_R + 14)); ctx.stroke();
+        ctx.lineCap = 'butt';
+
+        ctx.fillStyle = own ? '#ffffff' : '#6d6151';
+        ctx.font = 'bold 15px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(own ? '★' : '?', t.x, t.y + 1);
+        ctx.textBaseline = 'alphabetic';
+
+        // the job it has set, and how far along it is
+        if (t.task) {
+            const w = 150, bx = t.x - w / 2, by = t.y - TURRET_R - 34;
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.beginPath(); ctx.roundRect(bx - 4, by - 16, w + 8, 32, 7); ctx.fill();
+            ctx.strokeStyle = t.contested ? '#d32f2f' : inkOf(t.taskBy); ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.roundRect(bx - 4, by - 16, w + 8, 32, 7); ctx.stroke();
+            ctx.fillStyle = '#2a2318'; ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
+            ctx.fillText(t.contested ? 'CONTESTED — NOBODY GAINS' : TASK_TEXT[t.task], t.x, by - 4);
+            ctx.fillStyle = 'rgba(0,0,0,0.12)';
+            ctx.fillRect(bx, by + 2, w, 8);
+            ctx.fillStyle = inkOf(t.taskBy);
+            ctx.fillRect(bx, by + 2, w * Math.min(1, t.prog / TASK_GOAL[t.task]), 8);
+        }
+    }
+}
+
+/* ---------------------------------------------------------- mega boom -- */
+// It is not handed to anybody. It falls in the middle of the arena and
+// whoever gets there first keeps it.
+function dropMega() {
+    state.megaTimes.shift();
+    let x = W / 2, y = H / 2;
+    for (let i = 0; i < 60; i++) {
+        const tx = W * (0.32 + Math.random() * 0.36), ty = H * (0.32 + Math.random() * 0.36);
+        if (!hitsWall(tx, ty, MEGA_CRATE_R + 8)) { x = tx; y = ty; break; }
+    }
+    state.megaCrate = { x, y, t: MEGA_CRATE_WAIT, spin: 0 };
+    say('💥 MEGA BOOM DROPPED — first one to it keeps it');
+    beep(120, 0.5, 'sawtooth', 0.08);
+}
+
+function updateMegaCrate(dt) {
+    const c = state.megaCrate;
+    c.spin += dt * 2.4;
+    c.t -= dt;
+    if (c.t <= 0) {          // nobody wanted it — it goes off on its own and is wasted
+        state.pops.push({ x: c.x, y: c.y, text: 'GONE', color: '#ffffff', life: 1.2 });
+        state.megaCrate = null;
+    }
+}
+
+function launchMega(owner) {
+    state.megaWinners.push(owner);
     state.drone = {
-        x, y, team: lucky.team, owner: lucky, goal: null,
+        x: owner.x, y: owner.y, team: owner.team, owner, goal: null,
         face: Math.random() * Math.PI * 2,
         t: Math.min(MEGA_TIME, state.t), boomT: 1.2, spin: 0, trail: [],
     };
-    say('💥 MEGA BOOM — ' + (lucky.isBot ? lucky.name + '\u2019s' : 'YOURS!') + ' drone is loose for ' +
+    say('💥 MEGA BOOM — ' + (owner.isBot ? owner.name + ' got it' : 'YOU GOT IT!') + ', loose for ' +
         Math.round(state.drone.t) + 's');
-    beep(120, 0.5, 'sawtooth', 0.08);
+    beep(150, 0.5, 'sawtooth', 0.08);
+}
+
+// somewhere far off that its owner does not hold, so it crosses the arena
+// instead of grinding round in a circle
+function megaGoal(d) {
+    let best = null, bs = -1;
+    for (let i = 0; i < 70; i++) {
+        const gx = Math.floor(Math.random() * gw), gy = Math.floor(Math.random() * gh);
+        const v = grid[gy * gw + gx];
+        if (v === -2 || v === d.team) continue;
+        const x = gx * CELL + CELL / 2, y = gy * CELL + CELL / 2;
+        if (hitsWall(x, y, MEGA_DRAW + 4)) continue;
+        const dist = Math.hypot(x - d.x, y - d.y);
+        if (dist < 260) continue;                 // never a target it would just orbit
+        const sc = dist * (0.7 + Math.random() * 0.6);
+        if (sc > bs) { bs = sc; best = { x, y }; }
+    }
+    return best || findCell(d, false);
 }
 
 function updateMega(dt) {
@@ -504,7 +847,7 @@ function updateMega(dt) {
     d.t -= dt; d.spin += dt * 9;
 
     // head for floor that is not its owner's yet, and turn hard when it gets there
-    if (!d.goal || Math.hypot(d.goal.x - d.x, d.goal.y - d.y) < 60) d.goal = findCell(d, false);
+    if (!d.goal || Math.hypot(d.goal.x - d.x, d.goal.y - d.y) < 70) d.goal = megaGoal(d);
     if (d.goal) {
         let da = Math.atan2(d.goal.y - d.y, d.goal.x - d.x) - d.face;
         while (da > Math.PI) da -= Math.PI * 2;
@@ -600,12 +943,47 @@ function botThink(p, dt) {
 
     let aimX = tx, aimY = ty;
     let wantFire = !thirsty && p.ink > 8;
+    let onJob = false;
+
+    // a turret worth taking — either free, or one their side is already on
+    let tur = null, td = 1e9;
+    for (const tu of state.turrets) {
+        if (tu.team === p.team) continue;
+        if (tu.task && tu.taskBy !== p.team) continue;
+        const d = Math.hypot(tu.x - p.x, tu.y - p.y);
+        if (d < 520 && d < td) { td = d; tur = tu; }
+    }
+    if (tur && !thirsty) {
+        onJob = true;
+        tx = tur.x; ty = tur.y;
+        const inRing = td < TURRET_RING - 12;
+        if (tur.task === 'shoot' && inRing) {
+            aimX = tur.x; aimY = tur.y; wantFire = p.ink > 4;
+            tx = p.x + (p.x - tur.x) * 0.2; ty = p.y + (p.y - tur.y) * 0.2;   // stand off a little
+        } else if (tur.task === 'targets') {
+            let g = null, gd = 1e9;
+            for (const q of tur.targets) {
+                if (q.hit) continue;
+                const d = Math.hypot(q.x - p.x, q.y - p.y);
+                if (d < gd) { gd = d; g = q; }
+            }
+            if (g) { aimX = g.x; aimY = g.y; wantFire = p.ink > 4; if (gd > 170) { tx = g.x; ty = g.y; } }
+        } else if (inRing) {
+            tx = tur.x; ty = tur.y;                 // hold: just be there
+        }
+    }
+
+    // the drop beats everything
+    if (state.megaCrate) {
+        tx = state.megaCrate.x; ty = state.megaCrate.y;
+        onJob = true;
+    }
     if (foe && fd < 320 && Math.random() < cfg.aggr) {
         aimX = foe.x; aimY = foe.y;
         if (fd < 120) { tx = p.x * 2 - foe.x; ty = p.y * 2 - foe.y; }   // keep some distance
         wantFire = p.ink > 6;
     }
-    if (thirsty && cellAt(p.x, p.y) !== p.team) wantFire = false;
+    if (thirsty && cellAt(p.x, p.y) !== p.team && !onJob) wantFire = false;
 
     // aim, with a wobble that shrinks as the bots get better
     const want = Math.atan2(aimY - p.y, aimX - p.x) + (Math.random() - 0.5) * cfg.err;
@@ -625,9 +1003,11 @@ function botThink(p, dt) {
     if (p.jink > 0) { p.jink -= dt; const t2 = mx; mx = -my; my = t2; }
 
     if (p.pu && (
-        (p.pu === 'bomb'   && foe && fd < 240 && Math.random() < cfg.useT) ||
-        (p.pu === 'turbo'  && Math.random() < dt * 0.9) ||
-        (p.pu === 'roller' && Math.random() < dt * 1.2)
+        (p.pu === 'bomb'      && foe && fd < 240 && Math.random() < cfg.useT) ||
+        (p.pu === 'turbo'     && Math.random() < dt * 0.9) ||
+        (p.pu === 'roller'    && Math.random() < dt * 1.2) ||
+        (p.pu === 'sprinkler' && cellAt(p.x, p.y) === p.team && Math.random() < dt * 1.4) ||
+        (p.pu === 'mine'      && (!foe || fd > 200) && Math.random() < dt * 1.1)
     )) usePower(p);
 
     const m = Math.hypot(mx, my) || 1;
@@ -642,7 +1022,15 @@ function update(dt) {
     if (state.messageT > 0) state.messageT -= dt;
     if (state.t <= 0) { state.t = 0; return showOver(); }
 
-    if (!state.megaDone && state.t <= state.megaAt) launchMega();
+    if (!state.doubling && state.t <= DOUBLE_T) {
+        state.doubling = true;
+        say('⏱ DOUBLE TIME — every square you take now counts twice');
+        beep(880, 0.3, 'sine', 0.06);
+    }
+    updateTurrets(dt);
+    updateKit(dt);
+    if (state.megaTimes.length && state.t <= state.megaTimes[0]) dropMega();
+    if (state.megaCrate) updateMegaCrate(dt);
     if (state.drone) updateMega(dt);
 
     // pickups drop into open floor now and then
@@ -652,8 +1040,8 @@ function update(dt) {
         for (let i = 0; i < 40; i++) {
             const x = 60 + Math.random() * (W - 120), y = 60 + Math.random() * (H - 120);
             if (hitsWall(x, y, 26)) continue;
-            const kinds = ['bomb', 'turbo', 'roller'];
-            state.pickups.push({ x, y, kind: kinds[Math.floor(Math.random() * 3)], spin: 0 });
+            const kinds = ['bomb', 'turbo', 'roller', 'sprinkler', 'mine'];
+            state.pickups.push({ x, y, kind: kinds[Math.floor(Math.random() * kinds.length)], spin: 0 });
             break;
         }
     }
@@ -717,6 +1105,13 @@ function update(dt) {
         }
         p.firing = wantFire;
 
+        // first one to the mega boom crate takes it
+        if (state.megaCrate && Math.hypot(state.megaCrate.x - p.x, state.megaCrate.y - p.y) < R + 24) {
+            const crate = state.megaCrate;
+            state.megaCrate = null;
+            launchMega(p);
+        }
+
         // walk over a pickup and it is yours
         for (let i = state.pickups.length - 1; i >= 0; i--) {
             const u = state.pickups[i];
@@ -736,7 +1131,7 @@ function update(dt) {
         if (!hitsWall(s.x, s.y, 2)) blob(s.x, s.y, s.r * 0.42, s.team);
         let done = false, hitAnyone = false;
         if (hitsWall(s.x, s.y, 3)) done = true;
-        if (!done) {
+        if (!done && !s.harmless) {
             for (const q of state.players) {
                 if (q.team === s.team || q.down > 0) continue;
                 if (Math.hypot(q.x - s.x, q.y - s.y) < R + 4) {
@@ -744,6 +1139,29 @@ function update(dt) {
                     splat(s.x, s.y, s.r * 0.8, s.team);
                     done = true; hitAnyone = true;
                     break;
+                }
+            }
+        }
+        // turret jobs: paint the core, or splat the targets it put out
+        if (!done) {
+            for (const tu of state.turrets) {
+                if (tu.task === 'shoot' && tu.taskBy === s.team && tu.team !== s.team &&
+                    Math.hypot(tu.x - s.x, tu.y - s.y) < TURRET_R + 5) {
+                    tu.prog++; tu.flash = 0.25;
+                    splat(s.x, s.y, s.r * 0.7, s.team);
+                    beep(600, 0.05, 'square', 0.03);
+                    done = true; break;
+                }
+                if (tu.task === 'targets' && tu.taskBy === s.team) {
+                    let got = false;
+                    for (const g of tu.targets) {
+                        if (g.hit || Math.hypot(g.x - s.x, g.y - s.y) > TARGET_R + 4) continue;
+                        g.hit = true; tu.prog++;
+                        splat(g.x, g.y, 26, s.team);
+                        beep(760, 0.07, 'square', 0.04);
+                        got = true; break;
+                    }
+                    if (got) { done = true; break; }
                 }
             }
         }
@@ -813,7 +1231,7 @@ function drawWalls() {
     }
 }
 
-const PU_FACE = { bomb:'💣', turbo:'⚡', roller:'🎨' };
+const PU_FACE = { bomb:'💣', turbo:'⚡', roller:'🎨', sprinkler:'🚿', mine:'🧨' };
 function drawPickups() {
     for (const u of state.pickups) {
         const bob = Math.sin(u.spin * 2) * 3;
@@ -852,6 +1270,32 @@ function drawShots() {
         ctx.fillText('💣', b.x, b.y - lift + 1);
         ctx.textBaseline = 'alphabetic';
     }
+}
+
+function drawMegaCrate() {
+    const c = state.megaCrate;
+    if (!c) return;
+    const bob = Math.sin(c.spin * 2) * 4;
+    const pulse = 1 + Math.sin(c.spin * 4) * 0.06;
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 4;
+    ctx.setLineDash([10, 9]);
+    ctx.beginPath(); ctx.arc(c.x, c.y, 54 * pulse, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath(); ctx.ellipse(c.x, c.y + 20, 22, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.save();
+    ctx.translate(c.x, c.y + bob);
+    ctx.rotate(Math.sin(c.spin) * 0.18);
+    ctx.fillStyle = '#ffd21a';
+    ctx.beginPath(); ctx.roundRect(-MEGA_CRATE_R, -MEGA_CRATE_R, MEGA_CRATE_R * 2, MEGA_CRATE_R * 2, 6); ctx.fill();
+    ctx.strokeStyle = '#2a2318'; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.roundRect(-MEGA_CRATE_R, -MEGA_CRATE_R, MEGA_CRATE_R * 2, MEGA_CRATE_R * 2, 6); ctx.stroke();
+    ctx.font = '24px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('💥', 0, 1);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+    ctx.fillStyle = '#2a2318'; ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillText('MEGA BOOM — ' + c.t.toFixed(0) + 's', c.x, c.y + 44);
 }
 
 function drawDrone() {
@@ -967,7 +1411,7 @@ function drawHUD() {
     const me = state.players[0];
 
     // the whole point of the game, across the top: who owns how much floor
-    const bx = 172, by = 18, bw = W - bx - 18, bh = 24;
+    const bx = 172, by = 18, bw = VW - bx - 18, bh = 24;
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     ctx.beginPath(); ctx.roundRect(bx - 4, by - 4, bw + 8, bh + 8, 8); ctx.fill();
     ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = 2;
@@ -999,14 +1443,14 @@ function drawHUD() {
     const low = state.t <= 10;
     ctx.font = 'bold 26px Segoe UI';
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.beginPath(); ctx.roundRect(W / 2 - 46, by + bh + 10, 92, 30, 8); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(VW / 2 - 46, by + bh + 10, 92, 30, 8); ctx.fill();
     ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(W / 2 - 46, by + bh + 10, 92, 30, 8); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(VW / 2 - 46, by + bh + 10, 92, 30, 8); ctx.stroke();
     ctx.fillStyle = low ? '#d32f2f' : '#2a2318';
-    ctx.fillText(Math.ceil(state.t) + 's', W / 2, by + bh + 32);
+    ctx.fillText(Math.ceil(state.t) + 's', VW / 2, by + bh + 32);
 
     // ink tank
-    const tw = 260, tx = W / 2 - tw / 2, ty = H - 52;
+    const tw = 260, tx = VW / 2 - tw / 2, ty = VH - 52;
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.beginPath(); ctx.roundRect(tx - 6, ty - 6, tw + 12, 34, 9); ctx.fill();
     ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = 2;
@@ -1040,24 +1484,70 @@ function drawHUD() {
     if (me.roller > 0) {
         ctx.textAlign = 'center';
         ctx.fillStyle = '#2a2318'; ctx.font = 'bold 13px Segoe UI';
-        ctx.fillText('🎨 ROLLER ' + me.roller.toFixed(1) + 's', W / 2, ty - 16);
+        ctx.fillText('🎨 ROLLER ' + me.roller.toFixed(1) + 's', VW / 2, ty - 16);
     } else if (me.turbo > 0) {
         ctx.textAlign = 'center';
         ctx.fillStyle = '#2a2318'; ctx.font = 'bold 13px Segoe UI';
-        ctx.fillText('⚡ TURBO ' + me.turbo.toFixed(1) + 's', W / 2, ty - 16);
+        ctx.fillText('⚡ TURBO ' + me.turbo.toFixed(1) + 's', VW / 2, ty - 16);
+    }
+
+    // who holds the four corners
+    const tsz = 22, trow = state.turrets.length * (tsz + 6) - 6;
+    let txx = VW / 2 - trow / 2;
+    for (const tu of state.turrets) {
+        ctx.fillStyle = tu.team < 0 ? 'rgba(255,255,255,0.85)' : inkOf(tu.team);
+        ctx.beginPath(); ctx.roundRect(txx, by + bh + 46, tsz, tsz, 5); ctx.fill();
+        ctx.strokeStyle = tu.flash > 0 ? '#ffffff' : 'rgba(42,35,24,0.45)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(txx, by + bh + 46, tsz, tsz, 5); ctx.stroke();
+        ctx.fillStyle = tu.team < 0 ? '#8d8371' : '#ffffff';
+        ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(tu.team < 0 ? '?' : '★', txx + tsz / 2, by + bh + 46 + tsz / 2);
+        ctx.textBaseline = 'alphabetic';
+        txx += tsz + 6;
+    }
+
+    if (state.doubling) {
+        ctx.textAlign = 'center'; ctx.font = 'bold 15px Segoe UI';
+        const dw = 320, dx = VW / 2 - dw / 2, dy = by + bh + 78;
+        ctx.fillStyle = '#ffcc00';
+        ctx.beginPath(); ctx.roundRect(dx, dy, dw, 26, 8); ctx.fill();
+        ctx.strokeStyle = '#2a2318'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.roundRect(dx, dy, dw, 26, 8); ctx.stroke();
+        ctx.fillStyle = '#2a2318';
+        ctx.fillText('⏱ DOUBLE TIME — every square counts twice', VW / 2, dy + 18);
+    }
+
+    // an arrow to the drop when it is off the edge of the window
+    if (state.megaCrate) {
+        const c = state.megaCrate;
+        const sx = c.x - cam.x, sy = c.y - cam.y;
+        if (sx < 40 || sy < 40 || sx > VW - 40 || sy > VH - 40) {
+            const ax = Math.max(46, Math.min(VW - 46, sx));
+            const ay = Math.max(70, Math.min(VH - 90, sy));
+            const a = Math.atan2(sy - VH / 2, sx - VW / 2);
+            ctx.save();
+            ctx.translate(ax, ay); ctx.rotate(a);
+            ctx.fillStyle = '#ffd21a'; ctx.strokeStyle = '#2a2318'; ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(20, 0); ctx.lineTo(-12, -13); ctx.lineTo(-12, 13);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.restore();
+            ctx.fillStyle = '#2a2318'; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+            ctx.fillText('💥 ' + c.t.toFixed(0) + 's', ax, ay + 30);
+        }
     }
 
     if (state.drone) {
         const d = state.drone;
         const label = '💥 MEGA BOOM — ' + (d.owner.isBot ? d.owner.name : 'YOURS') + '  ' + d.t.toFixed(1) + 's';
         ctx.textAlign = 'center'; ctx.font = 'bold 15px Segoe UI';
-        const bw2 = 300, bx2 = W / 2 - bw2 / 2, by2 = H * 0.09;
+        const bw2 = 300, bx2 = VW / 2 - bw2 / 2, by2 = VH * 0.09;
         ctx.fillStyle = inkOf(d.team);
         ctx.beginPath(); ctx.roundRect(bx2, by2, bw2, 28, 9); ctx.fill();
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.roundRect(bx2, by2, bw2, 28, 9); ctx.stroke();
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(label, W / 2, by2 + 19);
+        ctx.fillText(label, VW / 2, by2 + 19);
     }
 
     for (const q of state.pops) {
@@ -1075,22 +1565,87 @@ function drawHUD() {
         ctx.textAlign = 'center'; ctx.font = 'bold 20px Segoe UI';
         ctx.fillStyle = 'rgba(255,255,255,0.92)';
         const tw2 = 380;
-        ctx.beginPath(); ctx.roundRect(W / 2 - tw2 / 2, H * 0.16, tw2, 36, 10); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(VW / 2 - tw2 / 2, VH * 0.16, tw2, 36, 10); ctx.fill();
         ctx.fillStyle = '#2a2318';
-        ctx.fillText(state.message, W / 2, H * 0.16 + 25);
+        ctx.fillText(state.message, VW / 2, VH * 0.16 + 25);
         ctx.globalAlpha = 1;
     }
 }
 
+function trackCamera(dt) {
+    const me = state.players[0];
+    const tx = Math.max(0, Math.min(W - VW, me.x - VW / 2));
+    const ty = Math.max(0, Math.min(H - VH, me.y - VH / 2));
+    const k = Math.min(1, dt * 9);
+    cam.x += (tx - cam.x) * k;
+    cam.y += (ty - cam.y) * k;
+    if (W <= VW) cam.x = 0;
+    if (H <= VH) cam.y = 0;
+}
+
+// a small picture of the whole arena, which is the only way to read the fight
+// once the floor is bigger than the window
+function drawMinimap() {
+    if (W <= VW && H <= VH) return;
+    const mw = 168, mh = Math.round(mw * (H / W));
+    const mx = VW - mw - 16, my = VH - mh - 16;
+    const sx = mw / W, sy = mh / H;
+
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.roundRect(mx - 5, my - 5, mw + 10, mh + 10, 8); ctx.fill();
+    ctx.strokeStyle = 'rgba(42,35,24,0.4)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(mx - 5, my - 5, mw + 10, mh + 10, 8); ctx.stroke();
+
+    ctx.fillStyle = '#f4ecd9';
+    ctx.fillRect(mx, my, mw, mh);
+    ctx.drawImage(paintCv, 0, 0, W, H, mx, my, mw, mh);
+
+    ctx.fillStyle = 'rgba(140,110,70,0.75)';
+    for (const b of state.walls) ctx.fillRect(mx + b.x * sx, my + b.y * sy, Math.max(1, b.w * sx), Math.max(1, b.h * sy));
+
+    for (const t of state.turrets) {
+        ctx.fillStyle = t.team < 0 ? '#ffffff' : inkOf(t.team);
+        ctx.strokeStyle = '#2a2318'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.rect(mx + t.x * sx - 3, my + t.y * sy - 3, 6, 6); ctx.fill(); ctx.stroke();
+    }
+    if (state.megaCrate) {
+        const c = state.megaCrate;
+        ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#2a2318'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(mx + c.x * sx, my + c.y * sy, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    if (state.drone) {
+        ctx.fillStyle = inkOf(state.drone.team);
+        ctx.beginPath(); ctx.arc(mx + state.drone.x * sx, my + state.drone.y * sy, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    for (const p of state.players) {
+        if (p.down > 0) continue;
+        ctx.fillStyle = inkOf(p.team);
+        ctx.beginPath(); ctx.arc(mx + p.x * sx, my + p.y * sy, p.isBot ? 2.6 : 4, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = p.isBot ? 'rgba(0,0,0,0.5)' : '#ffffff'; ctx.lineWidth = p.isBot ? 1 : 2;
+        ctx.stroke();
+    }
+
+    ctx.strokeStyle = 'rgba(42,35,24,0.7)'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(mx + cam.x * sx, my + cam.y * sy, VW * sx, VH * sy);
+}
+
 function render() {
+    ctx.clearRect(0, 0, VW, VH);
+    ctx.save();
+    ctx.translate(-Math.round(cam.x), -Math.round(cam.y));
     drawFloor();
     drawWalls();
+    drawTurrets();
+    drawKit();
     drawPickups();
+    drawMegaCrate();
     drawShots();
     const order = state.players.slice().sort((a, b) => a.y - b.y);
     for (const p of order) drawPlayer(p);
     drawDrone();
+    ctx.restore();
     drawHUD();
+    drawMinimap();
 }
 
 /* ---------------------------------------------------------- the finish -- */
@@ -1101,7 +1656,7 @@ function showOver() {
 
     const teams = [];
     for (let t = 0; t < state.total; t++) teams.push(t);
-    teams.sort((a, b) => counts[b] - counts[a]);
+    teams.sort((a, b) => score(b) - score(a));
     const win = teams[0];
     const iWon = win === 0;
     const me = state.players[0];
@@ -1110,17 +1665,21 @@ function showOver() {
         iWon ? (teamSize > 1 ? 'YOUR TEAM PAINTED THE MOST' : 'YOU PAINTED THE MOST') : 'OUT-PAINTED';
     document.getElementById('overTitle').style.color = iWon ? '#2f7d16' : '#c0392b';
     document.getElementById('overLine').innerHTML =
-        `<span style="color:${inkOf(win)}">${teamName(win)}</span> took ` +
-        `<b>${pct(win).toFixed(1)}%</b> of the floor`;
+        `<span style="color:${inkOf(win)}">${teamName(win)}</span> finished on ` +
+        `<b>${score(win).toFixed(1)}</b>` +
+        (bonusPct(win) > 0.05 ? ` — ${pct(win).toFixed(1)}% of the floor plus ${bonusPct(win).toFixed(1)} double time` : '');
 
     document.getElementById('overBars').innerHTML = teams.map(t => {
         const roster = mates(t).map(p => (p.isBot ? p.name : 'you') + ' ' + p.splats).join(' · ');
+        const turr = state.turrets.filter(u => u.team === t).length;
+        const sub = `${pct(t).toFixed(1)}% floor` + (bonusPct(t) > 0.05 ? ` + ${bonusPct(t).toFixed(1)} double` : '') +
+                    (turr ? ` · ${turr} turret${turr === 1 ? '' : 's'}` : '') +
+                    (teamSize > 1 ? ` · ${roster}` : '');
         return `<div class="barrow">` +
-            `<div class="who" style="color:${deepOf(t)}">${teamName(t)}` +
-            (teamSize > 1 ? `<div class="mem">${roster}</div>` : '') + `</div>` +
-            `<div class="track"><div class="fill" style="width:${Math.max(1, pct(t)).toFixed(1)}%;` +
+            `<div class="who" style="color:${deepOf(t)}">${teamName(t)}<div class="mem">${sub}</div></div>` +
+            `<div class="track"><div class="fill" style="width:${Math.max(1, Math.min(100, score(t))).toFixed(1)}%;` +
             `background:${inkOf(t)}"></div></div>` +
-            `<div class="pc">${pct(t).toFixed(1)}%</div></div>`;
+            `<div class="pc">${score(t).toFixed(1)}</div></div>`;
     }).join('');
 
     let bare = 100;
@@ -1128,7 +1687,10 @@ function showOver() {
     document.getElementById('overNote').innerHTML =
         `You burst rivals <b>${me.splats}</b> time${me.splats === 1 ? '' : 's'} and burst <b>${me.bursts}</b> time${me.bursts === 1 ? '' : 's'}.` +
         (teamSize > 1 ? `  ·  Your side burst <b>${mates(0).reduce((a, p) => a + p.splats, 0)}</b> between you.` : '') +
-        `  ·  <b>${Math.max(0, bare).toFixed(1)}%</b> of the floor never got painted at all.`;
+        `  ·  <b>${Math.max(0, bare).toFixed(1)}%</b> of the floor never got painted at all.` +
+        (state.megaWinners.length
+            ? `  ·  Mega boom: ${state.megaWinners.map(p => p.isBot ? p.name : 'you').join(' and ')}.`
+            : '  ·  Nobody claimed the mega boom.');
 
     document.getElementById('overOv').classList.remove('hidden');
     beep(iWon ? 660 : 200, 0.4, 'sine', 0.06);
@@ -1141,6 +1703,7 @@ function loop(now) {
     const dt = Math.min((now - last) / 1000, 0.033);
     last = now;
     update(dt);
+    trackCamera(dt);
     render();
 }
 
@@ -1171,6 +1734,7 @@ function paintRows() {
     optionRow('teamRow', [2, 3, 4], ['2', '3', '4'], () => nTeams, v => nTeams = v);
     optionRow('sizeRow', [1, 2, 3], ['1 (solo)', '2', '3'], () => teamSize, v => teamSize = v);
     optionRow('skillRow', ['easy', 'normal', 'hard'], ['EASY', 'NORMAL', 'HARD'], () => skill, v => skill = v);
+    optionRow('arenaRow', [1, 2], ['ONE SCREEN', 'BIG (x2)'], () => arena, v => { arena = v; resize(); });
     optionRow('timeRow', [60, 90, 120, 180, 300], ['60s', '90s', '2 min', '3 min', '5 min'],
               () => matchSecs, v => matchSecs = v);
 }
@@ -1179,7 +1743,10 @@ function start() {
     document.getElementById('titleOv').classList.add('hidden');
     document.getElementById('overOv').classList.add('hidden');
     document.getElementById('pauseOv').classList.add('hidden');
+    resize();                 // the arena size may have changed on the menu
     newGame();
+    cam.x = Math.max(0, Math.min(W - VW, state.players[0].x - VW / 2));
+    cam.y = Math.max(0, Math.min(H - VH, state.players[0].y - VH / 2));
     paused = false;
     running = true;
     last = performance.now();

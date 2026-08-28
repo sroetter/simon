@@ -56,7 +56,7 @@
         .game-card {
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             border-radius: 12px;
-            padding: 24px 18px;
+            padding: 15px 16px;
             text-decoration: none;
             color: #333;
             transition: all 0.3s;
@@ -105,9 +105,14 @@
         .game-description {
             font-size: 13px;
             color: #666;
-            line-height: 1.5;
+            line-height: 1.45;
             position: relative;
             z-index: 1;
+            /* a card is a label, not an essay — three lines, then it stops */
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         .game-card.tictactoe {
@@ -460,14 +465,14 @@
                 <div class="game-icon">🏃🔥</div>
                 <div class="game-title">Infection Tag</div>
                 <div class="game-description">
-                    Ten kinds of tag in one: Infection, Freeze, Classic, Blob, Hot Potato, Jail, Rabbit, Line, Double and King of the Hill. Five backdrops, powerups, and a speed tank only runners carry. 1-2 humans + up to 11 bots, 3 CPU difficulties.
+                    Fifteen kinds of tag in one — freeze, blob, hot potato, jail, ball, ghost and more. Speed tanks, backdrops, up to 11 bots.
                 </div>
             </a>
             <a href="lava-floor.html" class="game-card lavafloor">
                 <div class="game-icon">🌋🪜</div>
                 <div class="game-title">Lava Racer</div>
                 <div class="game-description">
-                    The floor IS lava — and it's rising. Climb platforms and ladders, parkour your way up. Survival or Race mode, 1P or 2P split-screen, up to 7 bots, 3 difficulties. Trampolines, pressure plates, coins!
+                    The floor IS lava, and it's rising. Climb, parkour, survive. Survival or Race, 1P or 2P split-screen, up to 7 bots.
                 </div>
             </a>
             <a href="lava-trails.html" class="game-card lavatrails">
@@ -495,51 +500,49 @@
                 <div class="game-icon">🔫🌈</div>
                 <div class="game-title">Color Cannon</div>
                 <div class="game-description">
-                    Tubes on the ceiling spit colored blocks at your bar. Slide your cannon left and right — your shot takes the color of the segment you're on. Match colors for chain blasts. Every 3 levels adds a new tube!
+                    Tubes spit coloured blocks at your bar. Your shot takes the colour you're standing on — match them for chain blasts.
                 </div>
             </a>
             <a href="gravity-faller.html" class="game-card gravityfaller">
                 <div class="game-icon">⬇️🌍⬇️</div>
                 <div class="game-title">Gravity Faller</div>
                 <div class="game-description">
-                    Drop down an endless stack of tubes and land in the little pool of water at the bottom of each one.
-                    Sliding bridges, doors that slam shut and wall cannons all want you dead — touch anything and you're
-                    knocked back a tube. Bank gravicoins and spend them on suits and upgrades.
+                    Drop through an endless stack of tubes into the pool at the bottom of each. Bank gravicoins, buy better suits.
                 </div>
             </a>
             <a href="shark-crossing.html" class="game-card sharkcrossing">
                 <div class="game-icon">🐟🦈</div>
                 <div class="game-title">Shark Crossing</div>
                 <div class="game-description">
-                    You're a fish. Swim to the far reef, turn round, do it again — and the water gets worse every crossing. Sharks patrol the open water; drop one of your 16 blocks in their path and they turn away. From crossing three the sea floor throws up rock, and you're handed a pickaxe to break through it. 3 difficulties.
+                    Swim to the far reef and back while the water gets worse. Drop blocks to turn the sharks away, mine through rock.
                 </div>
             </a>
             <a href="king-of-the-hill.html" class="game-card koth">
                 <div class="game-icon">👑🏏</div>
                 <div class="game-title">King of the Hill</div>
                 <div class="game-description">
-                    Whichever team has more players standing on the hill owns it, and every second they hold it is a point — equal numbers and nobody scores. Sticks wash up around the edges: swing one and whoever you hit goes flying right off the hill. The hill moves every twenty seconds. 2-6 teams, 2-5 players each.
+                    Whoever has more players on the hill owns it, and every second scores. Swing a stick to knock rivals clean off.
                 </div>
             </a>
             <a href="farm-round-up.html" class="game-card cargorun">
                 <div class="game-icon">🚜🐄</div>
                 <div class="game-title">Farm Round-Up</div>
                 <div class="game-description">
-                    The livestock is loose and every farmhand wants it. A chicken is worth 1, a sheep 3, a pig 5, a cow 10 — the animals are where the day is won. Wagons roll through every plot to the market, and whoever puts on the animal that fills one to 20 takes the entire load plus 5, everyone else's animals included. What you bank goes in the tin, and the feed store sells seed, more ploughed ground, a scarecrow, a farm dog, the next plot of land. Sow wheat, corn and pumpkins for a quiet trickle while you are off chasing cows — and mind the deer. 1-3 rivals, 3 skill levels.
+                    Round up loose livestock and load it onto the wagons — fill one to 20 and you take the whole load. Buy the next farm.
                 </div>
             </a>
             <a href="deep-shaft.html" class="game-card deepshaft">
                 <div class="game-icon">⛏️💎</div>
                 <div class="game-title">Deep Shaft</div>
                 <div class="game-description">
-                    Dig down and take what you find — coal 2, iron 6, gold 15, a gem 40, and the deeper you go the better the seams. Your lamp is the clock and it burns faster the deeper you are. Propped rock brings the roof down, gas eats your light, and the lift only runs from the shaft you came down. What you bank buys a better pick, a bigger sack, a brighter lamp and a canary. 3 pit conditions, 3 shift lengths.
+                    Dig for coal, iron, gold and gems while your lamp burns down. Cave-ins, gas, and a lift only at the shaft you came down.
                 </div>
             </a>
             <a href="splat-wars.html" class="game-card splatwars">
                 <div class="game-icon">🎨💥</div>
                 <div class="game-title">Splat Wars</div>
                 <div class="game-description">
-                    Hold fire and paint the floor — whoever covers the most of it when the clock runs out wins, not whoever got the most splats. Your ink only refills fast on your own colour, bare floor trickles it back, and an enemy's colour gives you nothing and drags you to a crawl, so you have to paint yourself a road. Your aim locks while you shoot, so you can back off and keep painting. Burst a rival and a big blob of your colour lands where they stood. Ink bombs, turbo and rollers drop through the round, and once a round one player at random is handed a <b>💥 Mega Boom</b> — a drone in their colour that tears round the arena for 30 seconds laying a stripe. It cannot hurt anybody and you can paint straight back over it. Play it solo or put <b>2 or 3 players on each team</b> — team-mates share your colour and your ink, cannot splat you, and split up to take two corners at once. 6 colours, 2-4 teams, 1-3 players a side, 3 skill levels, 60 seconds to 5 minutes.
+                    Paint the floor — most colour wins, not most splats. Corner turrets, mega booms, and a last 30 seconds worth double.
                 </div>
             </a>
 
