@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gravity Faller — Zones</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#05060f; color:#e8ecff; font-family:'Courier New',monospace; padding:22px; }
+  h1 { color:#4fd6ff; text-shadow:0 0 16px #4fd6ff; letter-spacing:3px; font-size:26px; margin-bottom:4px; }
+  .sub { color:#7f8ab0; font-size:13px; margin-bottom:18px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
+  .card { background:#0b0e1c; border:2px solid #2a3352; border-radius:12px; overflow:hidden; }
+  .card canvas { display:block; width:100%; height:340px; }
+  .cap { padding:9px 12px; }
+  .nm { font-size:14px; font-weight:bold; letter-spacing:2px; }
+  .tb { font-size:11px; color:#7f8ab0; margin-top:3px; }
+  .sw { display:flex; gap:5px; margin-top:7px; }
+  .sw div { width:20px; height:12px; border-radius:3px; border:1px solid rgba(255,255,255,0.25); }
+</style>
+</head>
+<body>
+<h1>GRAVITY FALLER — ALL EIGHT ZONES</h1>
+<div class="sub">Rendered with the game's own scenery code. Zones rotate every 3 tubes, then loop.</div>
+<div class="grid" id="grid"></div>
+<script>
+const SHAFT_W = 470, WALL = 26;
+const ZONES = [
+    { name:'DOWNTOWN',    sky:['#2b3f8f','#6f8fe0'], glass:'#5a72c8', accent:'#ffd54f', beam:'#6d7bb5', kind:'towers', prop:'#141b3a', lit:'#ffe9a0' },
+    { name:'THE CANOPY',  sky:['#0f4a26','#57c96f'], glass:'#3f9e5c', accent:'#eaff7a', beam:'#4f8f5c', kind:'trees',  prop:'#0b2c17', lit:'#9dff7a' },
+    { name:'THE DEEP',    sky:['#03304f','#1596c8'], glass:'#2f8fc0', accent:'#4fd6ff', beam:'#3f7fa5', kind:'reef',   prop:'#01202f', lit:'#7ff0ff' },
+    { name:'RED CANYON',  sky:['#6b2a12','#f0a14a'], glass:'#c46a30', accent:'#ffd27a', beam:'#a05a2c', kind:'mesas',  prop:'#3d1608', lit:'#ffcf8a' },
+    { name:'GLACIER',     sky:['#164a63','#9fe8ff'], glass:'#6fc4e0', accent:'#eaffff', beam:'#5f9ab5', kind:'peaks',  prop:'#0d2f42', lit:'#d8fbff' },
+    { name:'MAGMA WORKS', sky:['#3d0a06','#ff5a1f'], glass:'#c2401a', accent:'#ffb03a', beam:'#93361a', kind:'lava',   prop:'#1c0503', lit:'#ff9b3a' },
+    { name:'NEON SPRAWL', sky:['#2a0a4a','#ff4fd0'], glass:'#a03fd0', accent:'#4ffff0', beam:'#7a3fa5', kind:'neon',   prop:'#12042a', lit:'#4ffff0' },
+    { name:'ORBIT',       sky:['#050318','#2a2a7a'], glass:'#4a4aa0', accent:'#ffffff', beam:'#5a5ab0', kind:'space',  prop:'#0a0820', lit:'#ffffff' },
+  ];
+function hash(i) { const s = Math.sin(i * 12.9898) * 43758.5453; return s - Math.floor(s); }
+function drawScenery(z, layer, yOff, scale, W, H) {
+    const seed = layer * 97;
+    if (z.kind === 'towers' || z.kind === 'neon') {
+      for (let i = 0; i < 14; i++) {
+        const x = hash(seed + i) * W;
+        const w = (36 + hash(seed + i + 40) * 70) * scale;
+        const h = (120 + hash(seed + i + 80) * 320) * scale;
+        const y = yOff + hash(seed + i + 120) * 400;
+        ctx.fillStyle = z.prop;
+        ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = z.lit;
+        for (let wy = y + 10; wy < y + h - 8; wy += 18) {
+          for (let wx = x + 7; wx < x + w - 9; wx += 15) {
+            if (hash(wx * 3.1 + wy * 0.7 + seed) > 0.55) ctx.fillRect(wx, wy, 5, 7);
+          }
+        }
+        if (z.kind === 'neon') {
+          ctx.fillStyle = z.accent;
+          ctx.fillRect(x + 4, y + 8, w - 8, 3);
+          ctx.fillRect(x + 4, y + h * 0.5, w - 8, 3);
+        }
+      }
+    } else if (z.kind === 'trees') {
+      for (let i = 0; i < 16; i++) {
+        const x = hash(seed + i) * W;
+        const y = yOff + hash(seed + i + 33) * 560;
+        const r = (34 + hash(seed + i + 66) * 58) * scale;
+        ctx.fillStyle = z.prop;
+        ctx.beginPath();
+        for (let b = 0; b < 4; b++) {
+          const a = b * 1.7 + hash(i + b) * 2;
+          ctx.arc(x + Math.cos(a) * r * 0.5, y + Math.sin(a) * r * 0.4, r * 0.6, 0, Math.PI*2);
+        }
+        ctx.fill();
+        ctx.strokeStyle = z.lit; ctx.lineWidth = 2 * scale;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (hash(i) - 0.5) * 40, y + 150 * scale); ctx.stroke();
+      }
+    } else if (z.kind === 'reef') {
+      for (let i = 0; i < 20; i++) {
+        const x = hash(seed + i) * W;
+        const y = yOff + hash(seed + i + 21) * 600;
+        const r = (10 + hash(seed + i + 42) * 26) * scale;
+        ctx.fillStyle = i % 3 === 0 ? z.lit : z.prop;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+        if (i % 4 === 0) {   // a fish, roughly
+          ctx.fillStyle = z.accent;
+          ctx.beginPath();
+          ctx.ellipse(x + 40, y + 20, 11 * scale, 6 * scale, 0, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(x + 29 * scale, y + 20);
+          ctx.lineTo(x + 20 * scale, y + 14); ctx.lineTo(x + 20 * scale, y + 26);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+    } else if (z.kind === 'mesas') {
+      for (let i = 0; i < 9; i++) {
+        const x = hash(seed + i) * W;
+        const w = (90 + hash(seed + i + 12) * 150) * scale;
+        const h = (140 + hash(seed + i + 24) * 240) * scale;
+        const y = yOff + hash(seed + i + 36) * 460;
+        ctx.fillStyle = z.prop;
+        ctx.beginPath();
+        ctx.moveTo(x, y + h); ctx.lineTo(x + w * 0.13, y);
+        ctx.lineTo(x + w * 0.87, y); ctx.lineTo(x + w, y + h);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = z.lit;
+        ctx.fillRect(x + w * 0.13, y, w * 0.74, 4 * scale);
+      }
+    } else if (z.kind === 'peaks') {
+      for (let i = 0; i < 11; i++) {
+        const x = hash(seed + i) * W;
+        const w = (110 + hash(seed + i + 15) * 170) * scale;
+        const h = (150 + hash(seed + i + 30) * 260) * scale;
+        const y = yOff + hash(seed + i + 45) * 500;
+        ctx.fillStyle = z.prop;
+        ctx.beginPath();
+        ctx.moveTo(x, y + h); ctx.lineTo(x + w / 2, y); ctx.lineTo(x + w, y + h);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = z.lit;
+        ctx.beginPath();
+        ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w * 0.66, y + h * 0.3);
+        ctx.lineTo(x + w * 0.34, y + h * 0.3);
+        ctx.closePath(); ctx.fill();
+      }
+    } else if (z.kind === 'lava') {
+      for (let i = 0; i < 13; i++) {
+        const x = hash(seed + i) * W;
+        const y = yOff + hash(seed + i + 17) * 580;
+        const w = (60 + hash(seed + i + 34) * 160) * scale;
+        ctx.fillStyle = z.prop;
+        ctx.fillRect(x, y, w, 60 * scale);
+        const glow = ctx.createLinearGradient(0, y, 0, y + 60 * scale);
+        glow.addColorStop(0, z.lit);
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(x, y, w, 22 * scale);
+      }
+    } else {   // space
+      for (let i = 0; i < 46; i++) {
+        const x = hash(seed + i) * W;
+        const y = yOff + hash(seed + i + 60) * 620;
+        const r = (0.8 + hash(seed + i + 120) * 1.9) * scale;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(x, y, r * 2, r * 2);
+      }
+      const px = hash(seed + 5) * W, py = yOff + 260;
+      const pr = 54 * scale;
+      const pg = ctx.createRadialGradient(px - pr*0.3, py - pr*0.3, pr*0.2, px, py, pr);
+      pg.addColorStop(0, '#7a9cff');
+      pg.addColorStop(1, '#1a2260');
+      ctx.fillStyle = pg;
+      ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+const grid = document.getElementById('grid');
+ZONES.forEach((z, i) => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  const cv = document.createElement('canvas');
+  cv.width = 520; cv.height = 680;
+  card.appendChild(cv);
+  const cap = document.createElement('div');
+  cap.className = 'cap';
+  cap.innerHTML = `<div class="nm" style="color:${z.accent}">${z.name}</div>` +
+    `<div class="tb">tubes ${i*3+1}–${i*3+3} &nbsp;·&nbsp; then again from tube ${ZONES.length*3 + i*3 + 1}</div>` +
+    `<div class="sw"><div style="background:${z.sky[0]}"></div><div style="background:${z.sky[1]}"></div>` +
+    `<div style="background:${z.glass}"></div><div style="background:${z.accent}"></div>` +
+    `<div style="background:${z.prop}"></div><div style="background:${z.lit}"></div></div>`;
+  card.appendChild(cap);
+  grid.appendChild(card);
+  paint(cv, z);
+});
+
+function paint(cv, z) {
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height, camY = 400;
+  const sky = ctx.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0, z.sky[0]); sky.addColorStop(1, z.sky[1]);
+  ctx.fillStyle = sky; ctx.fillRect(0,0,W,H);
+
+  for (let layer = 0; layer < 3; layer++) {
+    const par = 0.10 + layer * 0.14;
+    const off = -(camY * par) % 620;
+    const scale = 0.55 + layer * 0.28;
+    ctx.globalAlpha = 0.42 + layer * 0.24;
+    for (let rep = -1; rep <= Math.ceil(H/620)+1; rep++) drawScenery(z, layer, off + rep*620, scale, W, H);
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(2,3,10,0.2)'; ctx.fillRect(0,0,W,H);
+
+  const L = Math.round((W - SHAFT_W)/2), Rr = L + SHAFT_W;
+  const vg = ctx.createLinearGradient(0,0,W,0);
+  vg.addColorStop(0,'rgba(2,3,10,0.66)');
+  vg.addColorStop(Math.max(0,(L-110)/W),'rgba(2,3,10,0.05)');
+  vg.addColorStop(Math.min(1,(Rr+110)/W),'rgba(2,3,10,0.05)');
+  vg.addColorStop(1,'rgba(2,3,10,0.66)');
+  ctx.fillStyle = vg; ctx.fillRect(0,0,W,H);
+  ctx.globalCompositeOperation = 'screen';
+  const cg = ctx.createLinearGradient(0,0,W,0);
+  cg.addColorStop(0, hexA(z.accent,0.16));
+  cg.addColorStop(Math.max(0,(L-40)/W),'rgba(0,0,0,0)');
+  cg.addColorStop(Math.min(1,(Rr+40)/W),'rgba(0,0,0,0)');
+  cg.addColorStop(1, hexA(z.accent,0.16));
+  ctx.fillStyle = cg; ctx.fillRect(0,0,W,H);
+  ctx.globalCompositeOperation = 'source-over';
+
+  // the tube, drawn the same way the game draws it
+  ctx.save();
+  ctx.translate(L, 0);
+  ctx.fillStyle = 'rgba(4,6,16,0.5)'; ctx.fillRect(0,0,SHAFT_W,H);
+  const g = ctx.createLinearGradient(0,0,SHAFT_W,0);
+  g.addColorStop(0, hexA(z.glass,0.85)); g.addColorStop(0.34, hexA(z.glass,0.16));
+  g.addColorStop(0.66, hexA(z.glass,0.16)); g.addColorStop(1, hexA(z.glass,0.85));
+  ctx.fillStyle = g; ctx.fillRect(0,0,SHAFT_W,H);
+  for (const sx of [0, SHAFT_W-5]) {
+    const lg = ctx.createLinearGradient(sx,0,sx+(sx?-60:60),0);
+    lg.addColorStop(0, hexA(z.accent,0.5)); lg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = lg; ctx.fillRect(sx?sx-55:0, 0, 60, H);
+    ctx.fillStyle = hexA(z.accent,0.9); ctx.fillRect(sx,0,5,H);
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fillRect(SHAFT_W*0.16,0,26,H);
+  for (let y = 0; y < H; y += 120) {
+    ctx.fillStyle = hexA(z.beam,0.85); ctx.fillRect(-WALL,y,SHAFT_W+WALL*2,7);
+    ctx.fillStyle = hexA(z.accent,0.5); ctx.fillRect(-WALL,y,SHAFT_W+WALL*2,2);
+  }
+  for (const wx of [-WALL, SHAFT_W]) {
+    const wg = ctx.createLinearGradient(wx,0,wx+WALL,0);
+    wg.addColorStop(0, hexA(z.prop,0.95)); wg.addColorStop(0.5, hexA(z.beam,0.95));
+    wg.addColorStop(1, hexA(z.prop,0.95));
+    ctx.fillStyle = wg; ctx.fillRect(wx,0,WALL,H);
+  }
+  // a sample hazard + the pool, so the contrast is visible
+  const r = {x:60,y:250,w:250,h:22};
+  ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(r.x+3,r.y+4,r.w,r.h);
+  ctx.fillStyle='#ff3b4e'; ctx.fillRect(r.x,r.y,r.w,r.h);
+  ctx.fillStyle='#141414';
+  for (let x=r.x+4;x<r.x+r.w-10;x+=17) {
+    ctx.beginPath(); ctx.moveTo(x,r.y+r.h-4); ctx.lineTo(x+7,r.y+4);
+    ctx.lineTo(x+12,r.y+4); ctx.lineTo(x+5,r.y+r.h-4); ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.fillRect(r.x,r.y,r.w,3);
+  ctx.fillStyle=hexA(z.accent,0.85); ctx.fillRect(r.x,r.y+r.h-3,r.w,3);
+  ctx.strokeStyle='#05060f'; ctx.lineWidth=3; ctx.strokeRect(r.x+1.5,r.y+1.5,r.w-3,r.h-3);
+
+  ctx.fillStyle = '#2b3150'; ctx.fillRect(0,600,170,80); ctx.fillRect(320,600,SHAFT_W-320,80);
+  ctx.fillStyle = '#0d3f66'; ctx.fillRect(170,600,150,80);
+  ctx.save(); ctx.shadowColor='#4fd6ff'; ctx.shadowBlur=18;
+  ctx.fillStyle='#2aa9e6'; ctx.fillRect(170,600,150,20); ctx.restore();
+  ctx.restore();
+}
+</script>
+</body>
+</html>

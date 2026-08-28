@@ -113,17 +113,16 @@
       Everything you bank at the end of a day goes in the tin, and the <b>feed store</b> will sell
       you <b>seed</b>, a <b>scarecrow</b>, a <b>farm dog of your own</b>, and eventually <b>the next
       plot of land</b>.<br><br>
-      It will also let you <b>take on hands</b>, and they work your land all day for nothing more.
-      A <b>farmer</b> 🧑‍🌾 sows your seed and picks it when it is ready. A <b>feeder</b> 🧑‍🍼 rounds up
-      livestock. A <b>seller</b> 🧑‍💼 grabs whatever is loose and tries to be the one who fills a
-      wagon. A <b>defender</b> 🧑‍🚒 sees off the fox and the deer and barges rivals off your land.
-      Everything they bring in is banked as yours.<br><br>
+
       Every plot has a <b>ploughed field</b> in the bottom corner — that is the only ground that
       takes seed, and yours is marked in your own colour. The store will <b>plough you more
-      ground</b> when you can afford it, which is the only way to get more than a handful in at
-      once. Stand in it and press <kbd>1</kbd>
-      <kbd>2</kbd> <kbd>3</kbd> to sow, leave it to come up, then pick it and load it onto a wagon
-      like anything else — wheat sells for 6, corn 14, a pumpkin 30.<br><br>
+      ground</b> when you can afford it. Stand in it and press <kbd>1</kbd> <kbd>2</kbd>
+      <kbd>3</kbd> to sow, leave it to come up, then pick it and load it onto a wagon like anything
+      else.<br><br>
+      Crops are <b>small money</b> — wheat 2, corn 4, a pumpkin 8, so even a pumpkin is less than a
+      cow. What they are good for is <b>growing while you are off doing something else</b>: sow a
+      field, go and round up livestock, come back to a row of ready crops. <b>The animals are where
+      the day is won.</b><br><br>
       And watch for <b>deer</b> 🦌. They walk in, pick the crop nobody is standing near, and take a
       few seconds over it — two crops each and they wander off satisfied. Get close and they bolt;
       a <b>scarecrow</b> keeps them off everything around it for good.<br><br>
@@ -267,9 +266,9 @@ const MARKET_EVERY = 75;
 // ---------------------------------------------------------------- crops --
 // Buy seed between days, plant it on your own land, and sell what comes up.
 const CROPS = [
-    { key:'wheat',   name:'wheat',    emoji:'🌾', seed:4,  value:6,  grow:16, sprout:'🌱' },
-    { key:'corn',    name:'corn',     emoji:'🌽', seed:8,  value:14, grow:24, sprout:'🌱' },
-    { key:'pumpkin', name:'pumpkin',  emoji:'🎃', seed:15, value:30, grow:36, sprout:'🌱' },
+    { key:'wheat',   name:'wheat',    emoji:'🌾', seed:1, value:2, grow:16, sprout:'🌱' },
+    { key:'corn',    name:'corn',     emoji:'🌽', seed:2, value:4, grow:24, sprout:'🌱' },
+    { key:'pumpkin', name:'pumpkin',  emoji:'🎃', seed:4, value:8, grow:36, sprout:'🌱' },
 ];
 const PLANT_R = 22;
 const PLANT_GAP = 62;            // how far apart you can sow them
@@ -336,37 +335,21 @@ const NAMES = ['Vex','Rook','Juno','Pike','Cass','Nim','Bo','Sol','Wren','Tao','
 let nBots = 2, myTeam = 0, matchSecs = 120, skill = 'normal';
 let ordersOn = true;
 
-// ------------------------------------------------------------------ hire --
-// Hands you take on at the store. They work your land all day for nothing
-// more, and everything they bring in is yours.
-const JOBS = {
-    farmer:   { name:'Farmer',   emoji:'🧑‍🌾', hat:'#8fd46a',
-                desc:'Sows your seed and picks it when it is ready, then runs it to a wagon.' },
-    feeder:   { name:'Feeder',   emoji:'🧑‍🍼', hat:'#7fc7e8',
-                desc:'Rounds up livestock all day and walks it onto your wagons.' },
-    seller:   { name:'Seller',   emoji:'🧑‍💼', hat:'#ffd24a',
-                desc:'Picks up whatever is loose and aims to be the one who fills a wagon to 20.' },
-    defender: { name:'Defender', emoji:'🧑‍🚒', hat:'#ff8a65',
-                desc:'Sees off the fox and the deer, and barges rivals who set foot on your land.' },
-};
-const HAND_SPEED = 0.88;         // a shade slower than you
-
 // ------------------------------------------------------------------ shop --
 // What you make in a day is yours to keep and spend before the next one.
 let coins = 0;
 let owned = {
     plots: 1, scarecrow: 0, dog: 0, field: 0,
     seeds: { wheat: 0, corn: 0, pumpkin: 0 },
-    hires: { farmer: 0, feeder: 0, seller: 0, defender: 0 },
 };
 
 const SHOP = [
-    { key:'wheat',   kind:'seed', name:'Wheat seed',   cost:4,
-      desc:'Up in 16 seconds and sells for 6. Cheap, quick, small.' },
-    { key:'corn',    kind:'seed', name:'Corn seed',    cost:8,
-      desc:'24 seconds in the ground, sells for 14.' },
-    { key:'pumpkin', kind:'seed', name:'Pumpkin seed', cost:15,
-      desc:'A slow 36 seconds and the deer love it — but it sells for 30.' },
+    { key:'wheat',   kind:'seed', name:'Wheat seed',   cost:1,
+      desc:'Up in 16 seconds and sells for 2. Pennies, but it grows while you are elsewhere.' },
+    { key:'corn',    kind:'seed', name:'Corn seed',    cost:2,
+      desc:'24 seconds in the ground, sells for 4.' },
+    { key:'pumpkin', kind:'seed', name:'Pumpkin seed', cost:4,
+      desc:'A slow 36 seconds and the deer love it — sells for 8, the best of the three.' },
     { key:'field', kind:'up', name:'Plough more ground', max:3, cost:[35, 80, 170],
       desc:'Your field gets a quarter bigger each time — room for more in the ground at once.' },
     { key:'scarecrow', kind:'up', name:'Scarecrow', max:2, cost:[40, 90],
@@ -375,16 +358,7 @@ const SHOP = [
       desc:'Starts every day at your heel — a fifth animal, no waiting for the stray.' },
     { key:'plots', kind:'plot', name:'Buy the next farm', max:3, cost:[150, 400],
       desc:'A second, then a third plot of land: more wagons, more room, and safe on all of it.' },
-    { key:'farmer',   kind:'hire', name:'Hire a farmer',   max:2, cost:[60, 140],
-      desc:JOBS.farmer.desc },
-    { key:'feeder',   kind:'hire', name:'Hire a feeder',   max:2, cost:[70, 160],
-      desc:JOBS.feeder.desc },
-    { key:'seller',   kind:'hire', name:'Hire a seller',   max:2, cost:[90, 200],
-      desc:JOBS.seller.desc },
-    { key:'defender', kind:'hire', name:'Hire a defender', max:2, cost:[80, 180],
-      desc:JOBS.defender.desc },
 ];
-function hiredCount() { return Object.keys(owned.hires).reduce((a, k) => a + owned.hires[k], 0); }
 
 function shopLoad() {
     try {
@@ -392,9 +366,8 @@ function shopLoad() {
         if (raw) {
             const d = JSON.parse(raw);
             coins = d.coins || 0;
-            owned = Object.assign({ plots: 1, scarecrow: 0, dog: 0, field: 0, seeds: {}, hires: {} }, d.owned || {});
+            owned = Object.assign({ plots: 1, scarecrow: 0, dog: 0, field: 0, seeds: {} }, d.owned || {});
             owned.seeds = Object.assign({ wheat: 0, corn: 0, pumpkin: 0 }, owned.seeds || {});
-            owned.hires = Object.assign({ farmer: 0, feeder: 0, seller: 0, defender: 0 }, owned.hires || {});
         }
     } catch (e) {}
 }
@@ -410,9 +383,7 @@ function buildShop() {
     list.innerHTML = '';
     SHOP.forEach(it => {
         const isSeed = it.kind === 'seed';
-        const isHire = it.kind === 'hire';
         const have = isSeed ? (owned.seeds[it.key] || 0)
-                   : isHire ? (owned.hires[it.key] || 0)
                    : (owned[it.key] || (it.kind === 'plot' ? 1 : 0));
         const lvl = it.kind === 'plot' ? have - 1 : have;
         const maxed = !isSeed && lvl >= it.max;
@@ -420,13 +391,11 @@ function buildShop() {
         const row = document.createElement('div');
         row.className = 'item' + (maxed ? ' maxed' : '');
         const crop = CROPS.find(c => c.key === it.key);
-        const job = JOBS[it.key];
         row.innerHTML =
-            `<div class="txt"><div class="name">${crop ? crop.emoji + ' ' : job ? job.emoji + ' ' : ''}${it.name}</div>` +
+            `<div class="txt"><div class="name">${crop ? crop.emoji + ' ' : ''}${it.name}</div>` +
             `<div class="desc">${it.desc}</div>` +
             `<div class="lvl">${isSeed ? `${have} in the barn`
-                : maxed ? (isHire ? 'ALL HIRED' : 'NOTHING MORE TO BUY')
-                : isHire ? `${have} on the books` : `owned ${lvl} of ${it.max}`}</div></div>`;
+                : maxed ? 'NOTHING MORE TO BUY' : `owned ${lvl} of ${it.max}`}</div></div>`;
         const b = document.createElement('button');
         b.textContent = maxed ? 'OWNED' : `🪙 ${price}`;
         b.disabled = maxed || coins < price;
@@ -434,7 +403,6 @@ function buildShop() {
             if (coins < price) return;
             coins -= price;
             if (isSeed) owned.seeds[it.key] = have + 1;
-            else if (isHire) owned.hires[it.key] = have + 1;
             else if (it.kind === 'plot') owned.plots = have + 1;
             else owned[it.key] = have + 1;
             shopSave(); buildShop(); refreshPurseHint();
@@ -450,8 +418,7 @@ function refreshPurseHint() {
         `  ·  ${owned.plots} plot${owned.plots === 1 ? '' : 's'}` +
         `  ·  ${seedCount()} seed packet${seedCount() === 1 ? '' : 's'}` +
         (owned.field ? `  ·  field ploughed out ${owned.field}×` : '') +
-        (owned.scarecrow ? `  ·  ${owned.scarecrow} scarecrow${owned.scarecrow === 1 ? '' : 's'}` : '') +
-        (hiredCount() ? `  ·  ${hiredCount()} hired hand${hiredCount() === 1 ? '' : 's'}` : '');
+        (owned.scarecrow ? `  ·  ${owned.scarecrow} scarecrow${owned.scarecrow === 1 ? '' : 's'}` : '');
 }
 
 /* ==================================================================
@@ -597,22 +564,6 @@ function newGame() {
             y: H * 0.5, wob: Math.random() * 6,
         });
     }
-
-    // your hired hands. They line up on your team, so everything they bring
-    // in is yours and every rule that applies to you applies to them.
-    Object.keys(owned.hires).forEach(job => {
-        for (let i = 0; i < owned.hires[job]; i++) {
-            const hand = makeHauler(players.length, true, JOBS[job].name);
-            hand.team = me.team;
-            hand.isHand = true;
-            hand.job = job;
-            hand.seeds = me.seeds;                 // they sow out of your barn
-            hand.extraPlots = me.extraPlots;
-            hand.x = me.x + (Math.random() - 0.5) * 140;
-            hand.y = me.y + 40 + Math.random() * 60;
-            players.push(hand);
-        }
-    });
 
     cam.x = Math.max(0, Math.min(WORLD_W - W, players[0].x - W / 2));
 
@@ -813,7 +764,7 @@ function updateDeer(dt) {
 
 // A team may be several bodies — you and your hands — so the money goes to
 // whoever leads it, once.
-function teamLead(team) { return state.players.find(q => q.team === team && !q.isHand); }
+function teamLead(team) { return state.players.find(q => q.team === team); }
 
 function wagonValue(w) { return w.held.reduce((a, h) => a + worthOf(h.kind), 0); }
 function wagonSealed(w) { return wagonValue(w) >= WAGON_QUOTA; }
@@ -868,7 +819,6 @@ function updateWagons(dt) {
             }
         } else {
             for (const q of state.players) {
-                if (q.isHand) continue;                 // paid through their boss
                 const got = share[q.team] || 0;
                 if (!got) continue;
                 q.banked += got;
@@ -1475,121 +1425,7 @@ function update(dt) {
 /* ==================================================================
    RIVALS
    ================================================================== */
-// What a hired hand does with its day.
-function handThink(p, dt) {
-    const out = { ix: 0, iy: 0 };
-    const cfg = SKILL[skill];
-    const goTo = (x, y) => {
-        const dx = x - p.x, dy = y - p.y, m = Math.hypot(dx, dy) || 1;
-        out.ix = (dx / m) * HAND_SPEED; out.iy = (dy / m) * HAND_SPEED;
-        return out;
-    };
-    const myPlots = [p.team].concat(p.extraPlots || []);
-    const onMine = (x) => myPlots.indexOf(territoryAt(x)) >= 0;
-
-    // a wagon of yours that is worth walking to
-    const bestWagon = () => {
-        let w = null, bs = -Infinity;
-        for (const q of state.wagons) {
-            if (wagonSealed(q) || q.held.length >= WAGON_HOLD) continue;
-            if (q.x > marketX(q.plot) - 40) continue;
-            if (!onMine(q.x)) continue;
-            const room = WAGON_QUOTA - wagonValue(q);
-            const finishes = carriedValue(p) >= room ? 300 : 0;
-            const sc = finishes + (WAGON_QUOTA - room) * 4 - Math.hypot(q.x - p.x, q.y - p.y) * 0.35;
-            if (sc > bs) { bs = sc; w = q; }
-        }
-        return w;
-    };
-
-    if (p.job === 'defender') {
-        // the fox first, then deer, then anybody trespassing on your land
-        let target = null, bd = Infinity;
-        if (state.fox && onMine(state.fox.x)) { target = state.fox; bd = Math.hypot(state.fox.x - p.x, state.fox.y - p.y); }
-        for (const d of state.deer) {
-            if (!onMine(d.x)) continue;
-            const dd = Math.hypot(d.x - p.x, d.y - p.y);
-            if (dd < bd) { bd = dd; target = d; }
-        }
-        if (!target) {
-            for (const q of state.players) {
-                if (q.team === p.team) continue;
-                if (!onMine(q.x)) continue;
-                const dd = Math.hypot(q.x - p.x, q.y - p.y);
-                if (dd < bd) { bd = dd; target = q; }
-            }
-        }
-        if (target) {
-            if (target.carry !== undefined && bd < RAM_REACH && p.coolT <= 0) {
-                p.face = Math.atan2(target.y - p.y, target.x - p.x);
-                ram(p);
-            }
-            return goTo(target.x, target.y);
-        }
-        // nothing to see off — walk the fence line
-        const f = fieldOf(p.team);
-        return goTo(f.x + f.w / 2 + Math.cos(state.elapsed * 0.5) * 220,
-                    f.y + f.h / 2 + Math.sin(state.elapsed * 0.6) * 140);
-    }
-
-    // everyone else fills their arms then walks it to a wagon
-    if (p.carry.length >= carryCap(p)) {
-        const w = bestWagon();
-        if (w) return goTo(w.x, w.y);
-    }
-
-    if (p.job === 'farmer') {
-        // pick anything ripe on your land
-        let ripe = null, rd = Infinity;
-        for (const c of state.crops) {
-            if (!c.ripe || !onMine(c.x)) continue;
-            const d = Math.hypot(c.x - p.x, c.y - p.y);
-            if (d < rd) { rd = d; ripe = c; }
-        }
-        if (ripe && p.carry.length < carryCap(p)) return goTo(ripe.x, ripe.y);
-
-        // else sow, if there is seed and room
-        const key = ['pumpkin', 'corn', 'wheat'].find(k => (p.seeds && p.seeds[k] > 0));
-        if (key) {
-            const f = fieldOf(p.team);
-            if (myFieldAt(p) >= 0) {
-                p.sowT = (p.sowT || 0) - dt;
-                if (p.sowT <= 0) { plantSeed(p, key); p.sowT = 1.2; }
-                // shuffle about so they don't stack seed in one spot
-                return goTo(f.x + 30 + ((p.idx * 97 + state.elapsed * 40) % (f.w - 60)),
-                            f.y + 30 + ((p.idx * 53 + state.elapsed * 25) % (f.h - 60)));
-            }
-            return goTo(f.x + f.w / 2, f.y + f.h / 2);
-        }
-    }
-
-    if (p.job === 'seller' && p.carry.length) {
-        const w = bestWagon();
-        if (w) return goTo(w.x, w.y);
-    }
-
-    // feeder, and anyone with nothing better on: go and get livestock
-    let animal = null, ad = Infinity;
-    for (const c of state.crates) {
-        const d = Math.hypot(c.x - p.x, c.y - p.y);
-        const sc = d - worthOf(c.kind) * 14 - (onMine(c.x) ? 120 : 0);
-        if (sc < ad) { ad = sc; animal = c; }
-    }
-    if (animal && p.carry.length < carryCap(p)) {
-        if (p.lassoT <= 0 && Math.hypot(animal.x - p.x, animal.y - p.y) < LASSO_RANGE) {
-            p.face = Math.atan2(animal.y - p.y, animal.x - p.x);
-            throwLasso(p);
-        }
-        return goTo(animal.x, animal.y);
-    }
-    const w = bestWagon();
-    if (w) return goTo(w.x, w.y);
-    const f = fieldOf(p.team);
-    return goTo(f.x + f.w / 2, f.y + f.h / 2);
-}
-
 function botThink(p, dt) {
-    if (p.isHand) return handThink(p, dt);
     const cfg = SKILL[skill];
     const out = { ix: 0, iy: 0 };
     const home = state.depots[p.team];
@@ -2217,11 +2053,6 @@ function drawHauler(p) {
     ctx.stroke();
 
     // head and straw hat
-    if (p.isHand) {
-        const j = JOBS[p.job];
-        ctx.fillStyle = hexA(j.hat, 0.9);
-        ctx.beginPath(); ctx.arc(x, y - R * 0.62, R * 0.58, 0, Math.PI * 2); ctx.fill();
-    }
     ctx.fillStyle = '#f0c9a4';
     ctx.beginPath(); ctx.arc(x, y - R * 0.62, R * 0.4, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1.5; ctx.stroke();
@@ -2279,15 +2110,7 @@ function drawHauler(p) {
         ctx.arc(x, y, R * 1.35, -Math.PI / 2, -Math.PI / 2 + (1 - p.coolT / RAM_COOL) * Math.PI * 2);
         ctx.stroke();
     }
-    if (p.isHand) {
-        const j = JOBS[p.job];
-        ctx.font = '15px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(j.emoji, x, y - R * 1.55);
-        ctx.textBaseline = 'alphabetic';
-        ctx.fillStyle = hexA(j.hat, 0.95);
-        ctx.font = 'bold 10px Segoe UI';
-        ctx.fillText(j.name.toUpperCase(), x, y + R * 1.9);
-    } else if (p.isBot) {
+    if (p.isBot) {
         ctx.fillStyle = hexA(t.color, 0.9);
         ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
         ctx.fillText(p.name, x, y + R * 1.9);
@@ -2300,7 +2123,7 @@ function drawHauler(p) {
 function seedInHand(p) { return p.seeds && CROPS.some(c => p.seeds[c.key] > 0); }
 
 function drawHUD() {
-    const rank = state.players.filter(p => !p.isHand).sort((a, b) => b.banked - a.banked);
+    const rank = state.players.slice().sort((a, b) => b.banked - a.banked);
     ctx.textAlign = 'left';
     rank.forEach((p, i) => {
         const y = 26 + i * 24;
@@ -2412,21 +2235,6 @@ function drawHUD() {
         ctx.restore();
     }
 
-    // your crew
-    const crew = state.players.filter(q => q.isHand && q.team === me.team);
-    if (crew.length) {
-        ctx.textAlign = 'right'; ctx.font = 'bold 12px Segoe UI';
-        let cy = 26;
-        crew.forEach(h => {
-            const j = JOBS[h.job];
-            ctx.fillStyle = hexA(j.hat, 0.95);
-            ctx.fillText(`${j.emoji} ${j.name}` + (h.carry.length ? ` — carrying ${carriedValue(h)}` : ''),
-                         W - 18, cy);
-            cy += 18;
-        });
-        ctx.textAlign = 'center';
-    }
-
     // your tools
     ctx.textAlign = 'left'; ctx.font = 'bold 13px Segoe UI';
     const tools = [];
@@ -2512,7 +2320,7 @@ function showOver() {
         coins += state.players[0].banked;
         shopSave();
     }
-    const rank = state.players.filter(p => !p.isHand).sort((a, b) => b.banked - a.banked);
+    const rank = state.players.slice().sort((a, b) => b.banked - a.banked);
     const win = rank[0];
     const me = state.players[0];
     const iWon = win === me;
