@@ -56,7 +56,11 @@
         .game-card {
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             border-radius: 12px;
-            padding: 15px 16px;
+            padding: 14px 16px;
+            /* one fixed box for every game, so the grid stays even */
+            height: 186px;
+            display: flex;
+            flex-direction: column;
             text-decoration: none;
             color: #333;
             transition: all 0.3s;
@@ -87,17 +91,19 @@
         }
 
         .game-icon {
-            font-size: 50px;
-            margin-bottom: 10px;
+            font-size: 38px;
+            line-height: 1.1;
+            margin-bottom: 6px;
             position: relative;
             z-index: 1;
         }
 
         .game-title {
-            font-size: 22px;
+            font-size: 19px;
+            line-height: 1.2;
             font-weight: bold;
             color: #1e3c72;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             position: relative;
             z-index: 1;
         }
@@ -109,6 +115,7 @@
             position: relative;
             z-index: 1;
             /* a card is a label, not an essay — three lines, then it stops */
+            flex: 1;
             display: -webkit-box;
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
@@ -458,7 +465,7 @@
                 <div class="game-icon">❄️🤾</div>
                 <div class="game-title">Snowball Fight</div>
                 <div class="game-description">
-                    Pelt your rival with snowballs, scoop fresh ammo from snow piles, and build ice forts for cover. 1P vs CPU (3 difficulties) or local 2P. First to KO wins!
+                    Pelt your rival with snowballs, scoop fresh ammo from the piles, and build ice forts for cover. 1P vs CPU or local 2P.
                 </div>
             </a>
             <a href="tag.html" class="game-card tag">
@@ -479,14 +486,14 @@
                 <div class="game-icon">🔥👣</div>
                 <div class="game-title">Lava Trails</div>
                 <div class="game-description">
-                    Tag with a twist — "It" leaves a glowing lava trail behind them. Touch the trail and you're out! Last runner standing wins. 1P + bots, 3 difficulties.
+                    Tag with a twist — "It" leaves a glowing lava trail behind them. Touch the trail and you're out. 1P + bots, 3 difficulties.
                 </div>
             </a>
             <a href="laser-tag.html" class="game-card lasertag">
                 <div class="game-icon">🔫✨</div>
                 <div class="game-title">Laser Tag Arena</div>
                 <div class="game-description">
-                    Top-down FFA laser tag. Take cover behind crates, peek-shoot bots, grab heal / rapid / overcharge power-ups. Last shooter standing wins. 1P + bots, 3 difficulties.
+                    Top-down laser tag. Take cover, peek-shoot, grab heal and overcharge power-ups. 2-10 teams, takeover mode, pick your colour.
                 </div>
             </a>
             <a href="protect-president.html" class="game-card president">
