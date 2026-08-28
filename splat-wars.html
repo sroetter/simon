@@ -69,7 +69,8 @@
     .final { font-size:18px; margin:8px 0; font-weight:bold; }
     .bars { margin:12px 0; }
     .barrow { display:flex; align-items:center; gap:9px; margin:6px 0; font-size:14px; }
-    .barrow .who { width:112px; text-align:right; font-weight:bold; }
+    .barrow .who { width:132px; text-align:right; font-weight:bold; }
+    .barrow .mem { font-size:10.5px; font-weight:normal; color:#7b6a70; letter-spacing:0.2px; }
     .barrow .track { flex:1; height:20px; background:rgba(0,0,0,0.09); border-radius:6px; overflow:hidden; }
     .barrow .fill { height:100%; border-radius:6px; }
     .barrow .pc { width:56px; text-align:left; font-variant-numeric:tabular-nums; font-weight:bold; }
@@ -98,7 +99,10 @@
       Hit a rival enough and they <b>burst</b> — which drops a big blob of <b>your</b> colour where
       they stood and puts them out for a couple of seconds. That is what fighting is actually for.<br><br>
       Grab a <b>💣 ink bomb</b>, <b>⚡ turbo</b> or a <b>🎨 roller</b> when they drop, and press
-      <kbd>SHIFT</kbd> to use it.
+      <kbd>SHIFT</kbd> to use it.<br><br>
+      Put <b>more than one player on a team</b> and you get <b>team-mates in your colour</b>. Their
+      paint counts as yours, you cannot splat each other, and you both refill on the same floor — so
+      spread out and take two corners at once instead of painting the same road twice.
     </div>
     <div class="keys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> — run</div>
@@ -108,8 +112,10 @@
     </div>
     <div class="label">YOUR COLOUR</div>
     <div class="row" id="hueRow"></div>
-    <div class="label">RIVALS</div>
-    <div class="row" id="rivalRow"></div>
+    <div class="label">HOW MANY TEAMS</div>
+    <div class="row" id="teamRow"></div>
+    <div class="label">PLAYERS ON EACH TEAM</div>
+    <div class="row" id="sizeRow"></div>
     <div class="label">HOW GOOD THEY ARE</div>
     <div class="row" id="skillRow"></div>
     <div class="label">HOW LONG</div>
@@ -166,7 +172,10 @@ const HUES = [
     { name:'VIOLET', ink:'#9a6bff', deep:'#452291' },
     { name:'GOLD',   ink:'#ffcc00', deep:'#8a6c00' },
 ];
-const BOT_NAMES = ['Blot', 'Smudge', 'Dribble', 'Blotch', 'Splotch'];
+const BOT_NAMES = ['Blot', 'Smudge', 'Dribble', 'Blotch', 'Splotch', 'Drip', 'Streak',
+                   'Speckle', 'Daub', 'Spatter', 'Slick', 'Dab'];
+// where a team's players stand relative to their corner
+const SPOTS = [[0, 0], [-42, 30], [42, -30]];
 
 const R = 15;
 const SPD_BARE = 208, SPD_OWN = 240, SPD_ENEMY = 116, SPD_FIRING = 0.66;
@@ -187,7 +196,7 @@ const SKILL = {
     hard:   { err:0.07, aggr:0.9,  react:1.0,  useT:0.2 },
 };
 
-let myHue = 0, nRivals = 2, skill = 'normal', matchSecs = 90;
+let myHue = 0, nTeams = 2, teamSize = 2, skill = 'normal', matchSecs = 90;
 let state = null, running = false, paused = false, last = 0;
 const keys = {};
 
@@ -335,7 +344,7 @@ function hitsWall(x, y, r) {
 
 /* --------------------------------------------------------- a new round -- */
 function newGame() {
-    const total = nRivals + 1;
+    const total = nTeams;                      // teams, not players
     const hues = [myHue];
     for (let i = 0; hues.length < total; i++) if (HUES[i] && hues.indexOf(i) < 0) hues.push(i);
 
@@ -353,20 +362,36 @@ function newGame() {
     recount();
 
     const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
+    let nextName = 0;
     for (let t = 0; t < total; t++) {
-        const hx = CORNERS[t][0] * W, hy = CORNERS[t][1] * H;
-        state.players.push({
-            team: t, isBot: t > 0, name: t ? names[t - 1] : 'You',
-            x: hx, y: hy, home: { x: hx, y: hy },
-            face: Math.atan2(H / 2 - hy, W / 2 - hx),
-            hp: HP, ink: TANK, hurtT: 0, fireCd: 0, down: 0,
-            splats: 0, bursts: 0, pu: null, turbo: 0, roller: 0,
-            goal: null, aiT: 0, sampT: 0.35, jink: 0, lastX: hx, lastY: hy,
-        });
-        // everyone starts standing in a puddle of their own
-        splat(hx, hy, SPAWN_R, t);
+        const cx = CORNERS[t][0] * W, cy = CORNERS[t][1] * H;
+        for (let m = 0; m < teamSize; m++) {
+            const hx = Math.max(R + 6, Math.min(W - R - 6, cx + SPOTS[m][0]));
+            const hy = Math.max(R + 6, Math.min(H - R - 6, cy + SPOTS[m][1]));
+            const isMe = (t === 0 && m === 0);      // you always lead the first team
+            state.players.push({
+                team: t, isBot: !isMe, name: isMe ? 'You' : names[nextName++ % names.length],
+                x: hx, y: hy, home: { x: hx, y: hy },
+                face: Math.atan2(H / 2 - hy, W / 2 - hx),
+                hp: HP, ink: TANK, hurtT: 0, fireCd: 0, down: 0,
+                splats: 0, bursts: 0, pu: null, turbo: 0, roller: 0,
+                goal: null, aiT: 0, sampT: 0.35, jink: 0, lastX: hx, lastY: hy,
+            });
+        }
+        // every team starts standing in a puddle of its own
+        splat(cx, cy, SPAWN_R + (teamSize - 1) * 16, t);
     }
-    say('Most colour on the floor at the end wins — not most splats');
+    say(teamSize > 1 ? 'Your team shares one colour — cover the most floor between you'
+                     : 'Most colour on the floor at the end wins — not most splats');
+}
+
+function mates(t) { return state.players.filter(p => p.team === t); }
+function teamName(t) {
+    const mem = mates(t);
+    if (t === 0) return mem.length > 1 ? 'Your team' : 'You';
+    if (mem.length === 1) return mem[0].name;
+    const n = HUES[hueOf(t)].name;
+    return n.charAt(0) + n.slice(1).toLowerCase();
 }
 
 function popup(x, y, text, color) {
@@ -449,7 +474,8 @@ function damage(p, amount, from) {
 // pick somewhere worth walking to: `mine` looks for your own paint (to drink),
 // otherwise anything that is not yours yet (to take)
 function findCell(p, mine) {
-    let best = null, bd = 1e9;
+    let best = null, bd = 1e9;          // somewhere no team-mate is already headed
+    let any = null, ad = 1e9;           // failing that, anywhere at all
     for (let i = 0; i < 46; i++) {
         const gx = Math.floor(Math.random() * gw), gy = Math.floor(Math.random() * gh);
         const v = grid[gy * gw + gx];
@@ -458,16 +484,23 @@ function findCell(p, mine) {
         const x = gx * CELL + CELL / 2, y = gy * CELL + CELL / 2;
         if (hitsWall(x, y, R + 2)) continue;
         const d = Math.hypot(x - p.x, y - p.y);
+        if (d < ad) { ad = d; any = { x, y }; }
+        let taken = false;
+        for (const q of state.players) {
+            if (q === p || q.team !== p.team || !q.goal) continue;
+            if (Math.hypot(q.goal.x - x, q.goal.y - y) < 150) { taken = true; break; }
+        }
+        if (taken) continue;
         if (d < bd) { bd = d; best = { x, y }; }
     }
-    return best;
+    return best || any;
 }
 
 function botThink(p, dt) {
     const cfg = SKILL[skill];
     let foe = null, fd = 1e9;
     for (const q of state.players) {
-        if (q === p || q.down > 0) continue;
+        if (q.team === p.team || q.down > 0) continue;
         const d = Math.hypot(q.x - p.x, q.y - p.y);
         if (d < fd) { fd = d; foe = q; }
     }
@@ -935,29 +968,36 @@ function showOver() {
     state.over = true;
     running = false;
 
-    const rank = state.players.slice().sort((a, b) => counts[b.team] - counts[a.team]);
-    const win = rank[0];
-    const iWon = win === state.players[0];
+    const teams = [];
+    for (let t = 0; t < state.total; t++) teams.push(t);
+    teams.sort((a, b) => counts[b] - counts[a]);
+    const win = teams[0];
+    const iWon = win === 0;
     const me = state.players[0];
 
-    document.getElementById('overTitle').textContent = iWon ? 'YOU PAINTED THE MOST' : 'OUT-PAINTED';
+    document.getElementById('overTitle').textContent =
+        iWon ? (teamSize > 1 ? 'YOUR TEAM PAINTED THE MOST' : 'YOU PAINTED THE MOST') : 'OUT-PAINTED';
     document.getElementById('overTitle').style.color = iWon ? '#2f7d16' : '#c0392b';
     document.getElementById('overLine').innerHTML =
-        `<span style="color:${inkOf(win.team)}">${win.isBot ? win.name : 'You'}</span> took ` +
-        `<b>${pct(win.team).toFixed(1)}%</b> of the floor`;
+        `<span style="color:${inkOf(win)}">${teamName(win)}</span> took ` +
+        `<b>${pct(win).toFixed(1)}%</b> of the floor`;
 
-    document.getElementById('overBars').innerHTML = rank.map(p =>
-        `<div class="barrow">` +
-        `<div class="who" style="color:${deepOf(p.team)}">${p.isBot ? p.name : 'YOU'}</div>` +
-        `<div class="track"><div class="fill" style="width:${Math.max(1, pct(p.team)).toFixed(1)}%;` +
-        `background:${inkOf(p.team)}"></div></div>` +
-        `<div class="pc">${pct(p.team).toFixed(1)}%</div></div>`
-    ).join('');
+    document.getElementById('overBars').innerHTML = teams.map(t => {
+        const roster = mates(t).map(p => (p.isBot ? p.name : 'you') + ' ' + p.splats).join(' · ');
+        return `<div class="barrow">` +
+            `<div class="who" style="color:${deepOf(t)}">${teamName(t)}` +
+            (teamSize > 1 ? `<div class="mem">${roster}</div>` : '') + `</div>` +
+            `<div class="track"><div class="fill" style="width:${Math.max(1, pct(t)).toFixed(1)}%;` +
+            `background:${inkOf(t)}"></div></div>` +
+            `<div class="pc">${pct(t).toFixed(1)}%</div></div>`;
+    }).join('');
 
-    const bare = 100 - state.players.reduce((a, p) => a + pct(p.team), 0);
+    let bare = 100;
+    for (let t = 0; t < state.total; t++) bare -= pct(t);
     document.getElementById('overNote').innerHTML =
         `You burst rivals <b>${me.splats}</b> time${me.splats === 1 ? '' : 's'} and burst <b>${me.bursts}</b> time${me.bursts === 1 ? '' : 's'}.` +
-        `  ·  <b>${bare.toFixed(1)}%</b> of the floor never got painted at all.`;
+        (teamSize > 1 ? `  ·  Your side burst <b>${mates(0).reduce((a, p) => a + p.splats, 0)}</b> between you.` : '') +
+        `  ·  <b>${Math.max(0, bare).toFixed(1)}%</b> of the floor never got painted at all.`;
 
     document.getElementById('overOv').classList.remove('hidden');
     beep(iWon ? 660 : 200, 0.4, 'sine', 0.06);
@@ -997,7 +1037,8 @@ function paintRows() {
         b.addEventListener('click', () => { myHue = i; paintRows(); });
         hueRow.appendChild(b);
     });
-    optionRow('rivalRow', [1, 2, 3], ['1', '2', '3'], () => nRivals, v => nRivals = v);
+    optionRow('teamRow', [2, 3, 4], ['2', '3', '4'], () => nTeams, v => nTeams = v);
+    optionRow('sizeRow', [1, 2, 3], ['1 (solo)', '2', '3'], () => teamSize, v => teamSize = v);
     optionRow('skillRow', ['easy', 'normal', 'hard'], ['EASY', 'NORMAL', 'HARD'], () => skill, v => skill = v);
     optionRow('timeRow', [60, 90, 120], ['60s', '90s', '2 min'], () => matchSecs, v => matchSecs = v);
 }
