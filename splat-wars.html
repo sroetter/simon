@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Splat Wars - Simon's Game Gallery</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+        font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background:#eaf4ff; color:#2a2318; overflow:hidden;
+        -webkit-user-select:none; user-select:none;
+    }
+    canvas { display:block; }
+    .back-btn {
+        position:fixed; top:14px; left:14px; z-index:99999; text-decoration:none;
+        color:#2a2318; background:rgba(255,255,255,0.92); border:1px solid rgba(90,70,40,0.35);
+        padding:8px 16px; border-radius:8px; font-size:14px; line-height:1.2;
+    }
+    .back-btn:hover { background:#fff; }
+    .footer-link {
+        position:fixed; bottom:8px; left:0; right:0; text-align:center;
+        font-size:12px; color:rgba(255,255,255,0.8); z-index:20; pointer-events:none;
+        text-shadow:0 1px 3px rgba(0,0,0,0.45);
+    }
+    .footer-link a { color:#fff; pointer-events:auto; }
+
+    .overlay {
+        position:fixed; inset:0; z-index:40; display:flex; align-items:center;
+        justify-content:center; padding:16px; overflow-y:auto;
+        background:linear-gradient(160deg, rgba(255,196,120,0.92), rgba(120,214,255,0.92));
+    }
+    .overlay.hidden { display:none; }
+    .panel {
+        background:linear-gradient(150deg,#fffef8,#ffeef8);
+        border:3px solid #ff3fa4; border-radius:20px; padding:20px 26px;
+        max-width:680px; width:94%; text-align:center; color:#2a2318;
+        max-height:calc(100vh - 32px); overflow-y:auto;
+        box-shadow:0 18px 50px rgba(80,20,60,0.3), 0 0 0 6px rgba(255,255,255,0.55);
+    }
+    h1 { font-size:clamp(26px,5.5vw,44px); letter-spacing:2px; margin-bottom:4px; color:#c2137a;
+         text-shadow:0 2px 0 #ffd0e8; }
+    h2 { font-size:15px; font-weight:normal; color:#7b6a70; margin-bottom:10px; }
+    .rules { text-align:left; font-size:13.5px; line-height:1.6; color:#3b3222;
+             background:rgba(255,255,255,0.75); border:1px solid rgba(200,120,170,0.35);
+             border-radius:10px; padding:12px 14px; margin:10px 0; }
+    .rules b { color:#c2137a; }
+    .keys { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0; font-size:13px; }
+    .keys div { background:rgba(255,255,255,0.75); border:1px solid rgba(200,120,170,0.35);
+                border-radius:8px; padding:8px 10px; text-align:left; }
+    kbd { background:#fff2fa; border:1px solid #d98cbb; border-bottom-width:2px;
+          border-radius:5px; padding:1px 6px; font-size:12px; color:#5a2143; }
+    .label { font-size:12px; color:#7b6a70; margin:10px 0 3px; letter-spacing:1px; }
+    .row { display:flex; gap:7px; justify-content:center; flex-wrap:wrap; }
+    .btn {
+        background:linear-gradient(135deg,#ff67b6,#c2137a); color:#fff;
+        border:2px solid #ffd0e8; border-radius:11px; cursor:pointer;
+        padding:11px 26px; font-size:16px; font-weight:bold; box-shadow:0 4px 0 #8d0d59;
+    }
+    .btn:hover { filter:brightness(1.08); }
+    .btn:active { transform:translateY(2px); box-shadow:0 2px 0 #8d0d59; }
+    .btn.small { padding:6px 12px; font-size:13px; min-width:56px; color:#3b3222;
+                 background:linear-gradient(135deg,#ffffff,#f0e2ea); border-color:#d3b3c4;
+                 box-shadow:0 3px 0 #c3a5b5; }
+    .btn.small.sel { background:linear-gradient(135deg,#ff8ac6,#c2137a); color:#fff;
+                     border-color:#8d0d59; box-shadow:0 3px 0 #8d0d59; }
+    .btn.hue { min-width:70px; font-weight:bold; color:#241c0c; border:3px solid #fff; }
+    .btn.hue.sel { box-shadow:0 0 0 3px #2a2318; }
+    .final { font-size:18px; margin:8px 0; font-weight:bold; }
+    .bars { margin:12px 0; }
+    .barrow { display:flex; align-items:center; gap:9px; margin:6px 0; font-size:14px; }
+    .barrow .who { width:112px; text-align:right; font-weight:bold; }
+    .barrow .track { flex:1; height:20px; background:rgba(0,0,0,0.09); border-radius:6px; overflow:hidden; }
+    .barrow .fill { height:100%; border-radius:6px; }
+    .barrow .pc { width:56px; text-align:left; font-variant-numeric:tabular-nums; font-weight:bold; }
+    .note { font-size:12.5px; color:#7b6a70; margin-top:8px; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<div class="overlay" id="titleOv">
+  <div class="panel">
+    <h1>🎨 SPLAT WARS</h1>
+    <h2>Nobody wins the fight. Whoever painted the most floor wins.</h2>
+    <div class="rules">
+      Hold <kbd>SPACE</kbd> and you fire paint. Everywhere it lands turns <b>your colour</b>, and
+      when the clock runs out <b>whoever covers the most floor wins</b> — not whoever got the most
+      splats. You can lose every fight and still take it.<br><br>
+      Your <b>ink tank</b> runs down as you shoot, and here is the catch: <b>it only refills fast on
+      your own colour</b>. Standing on bare floor trickles it back, and on an enemy's colour it does
+      not come back at all — <b>and their paint drags you to a crawl</b>. Paint yourself a road, or
+      you get stuck out there dry and slow.<br><br>
+      While <kbd>SPACE</kbd> is down <b>your aim locks</b>, so you can back away from someone and
+      keep painting them at the same time.<br><br>
+      Hit a rival enough and they <b>burst</b> — which drops a big blob of <b>your</b> colour where
+      they stood and puts them out for a couple of seconds. That is what fighting is actually for.<br><br>
+      Grab a <b>💣 ink bomb</b>, <b>⚡ turbo</b> or a <b>🎨 roller</b> when they drop, and press
+      <kbd>SHIFT</kbd> to use it.
+    </div>
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> — run</div>
+      <div><kbd>SPACE</kbd> hold — fire, and lock your aim</div>
+      <div><kbd>SHIFT</kbd> — use what you picked up</div>
+      <div><kbd>P</kbd> — pause</div>
+    </div>
+    <div class="label">YOUR COLOUR</div>
+    <div class="row" id="hueRow"></div>
+    <div class="label">RIVALS</div>
+    <div class="row" id="rivalRow"></div>
+    <div class="label">HOW GOOD THEY ARE</div>
+    <div class="row" id="skillRow"></div>
+    <div class="label">HOW LONG</div>
+    <div class="row" id="timeRow"></div>
+    <div class="row" style="margin-top:16px;"><button class="btn" id="startBtn">START</button></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="pauseOv">
+  <div class="panel">
+    <h1>PAUSED</h1>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="resumeBtn">KEEP PAINTING</button>
+      <button class="btn" id="quitBtn">GIVE UP</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overOv">
+  <div class="panel">
+    <h1 id="overTitle">TIME</h1>
+    <div class="final" id="overLine"></div>
+    <div class="bars" id="overBars"></div>
+    <div class="note" id="overNote"></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="againBtn">PAINT IT AGAIN</button>
+      <button class="btn" id="menuBtn">MENU</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+/* ==================================================================
+   SPLAT WARS — the floor is the scoreboard
+   ================================================================== */
+const cv  = document.getElementById('game');
+const ctx = cv.getContext('2d');
+let W = 0, H = 0;
+
+// the paint itself lives on its own canvas, and a coarse grid alongside it
+// keeps the score. Both are written by the same call so they never disagree.
+const paintCv = document.createElement('canvas');
+const pctx    = paintCv.getContext('2d');
+const CELL = 14;
+let gw = 0, gh = 0, grid = null, paintable = 0;
+let counts = [0, 0, 0, 0];
+
+const HUES = [
+    { name:'PINK',   ink:'#ff3fa4', deep:'#a8004f' },
+    { name:'ORANGE', ink:'#ff8a1a', deep:'#a34c00' },
+    { name:'CYAN',   ink:'#17c8f0', deep:'#06617a' },
+    { name:'LIME',   ink:'#8bd91f', deep:'#3c6b00' },
+    { name:'VIOLET', ink:'#9a6bff', deep:'#452291' },
+    { name:'GOLD',   ink:'#ffcc00', deep:'#8a6c00' },
+];
+const BOT_NAMES = ['Blot', 'Smudge', 'Dribble', 'Blotch', 'Splotch'];
+
+const R = 15;
+const SPD_BARE = 208, SPD_OWN = 240, SPD_ENEMY = 116, SPD_FIRING = 0.66;
+const TANK = 100, INK_SHOT = 1.5;
+const FILL_OWN = 42, FILL_BARE = 12, FILL_ENEMY = 0;
+const FIRE_CD = 0.085, SHOT_SPD = 560, SHOT_LIFE = 0.4, SHOT_R = 26, SHOT_DMG = 24;
+const ROLL_CD = 0.19, ROLL_INK = 3.6, ROLL_LIFE = 0.19, ROLL_R = 42, ROLL_DMG = 17;
+const HP = 100, REGEN_WAIT = 2.0, REGEN = 20;
+const DEATH_R = 54, RESPAWN = 2.4, SPAWN_R = 74;
+const BOMB_FLY = 0.55, BOMB_REACH = 250, BOMB_R = 84, BOMB_DMG = 62, BOMB_HURT = 96;
+const TURBO_T = 7, TURBO_MULT = 1.42, ROLLER_T = 8;
+const PU_EVERY = 7.5, PU_MAX = 3, PU_R = 17;
+const CORNERS = [[0.12, 0.22], [0.88, 0.78], [0.88, 0.22], [0.12, 0.78]];
+
+const SKILL = {
+    easy:   { err:0.42, aggr:0.45, react:0.72, useT:0.9 },
+    normal: { err:0.20, aggr:0.7,  react:0.92, useT:0.5 },
+    hard:   { err:0.07, aggr:0.9,  react:1.0,  useT:0.2 },
+};
+
+let myHue = 0, nRivals = 2, skill = 'normal', matchSecs = 90;
+let state = null, running = false, paused = false, last = 0;
+const keys = {};
+
+/* ---------------------------------------------------------------- audio -- */
+let actx = null;
+function beep(freq, len, type, vol) {
+    try {
+        if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = actx.createOscillator(), g = actx.createGain();
+        o.type = type || 'square';
+        o.frequency.setValueAtTime(freq, actx.currentTime);
+        g.gain.setValueAtTime(vol || 0.05, actx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + len);
+        o.connect(g); g.connect(actx.destination);
+        o.start(); o.stop(actx.currentTime + len);
+    } catch (e) { /* no sound, no problem */ }
+}
+
+/* ----------------------------------------------------------- the floor -- */
+function hueOf(team) { return state ? state.hues[team] : team; }
+function inkOf(team) { return HUES[hueOf(team)].ink; }
+function deepOf(team) { return HUES[hueOf(team)].deep; }
+
+function makeWalls() {
+    const w = [];
+    // every piece is mirrored through the middle, so no corner has better cover
+    const pair = (x, y, ww, hh) => {
+        w.push({ x, y, w:ww, h:hh });
+        w.push({ x: W - x - ww, y: H - y - hh, w:ww, h:hh });
+    };
+    pair(W * 0.28, H * 0.10, Math.max(26, W * 0.035), H * 0.26);
+    pair(W * 0.10, H * 0.52, W * 0.15, Math.max(24, H * 0.05));
+    pair(W * 0.42, H * 0.30, W * 0.16, Math.max(24, H * 0.045));
+    pair(W * 0.62, H * 0.62, Math.max(26, W * 0.03), H * 0.20);
+    return w;
+}
+
+function markWalls() {
+    for (const b of state.walls) {
+        const x0 = Math.max(0, Math.floor(b.x / CELL)), x1 = Math.min(gw - 1, Math.floor((b.x + b.w) / CELL));
+        const y0 = Math.max(0, Math.floor(b.y / CELL)), y1 = Math.min(gh - 1, Math.floor((b.y + b.h) / CELL));
+        for (let gy = y0; gy <= y1; gy++)
+            for (let gx = x0; gx <= x1; gx++) grid[gy * gw + gx] = -2;
+    }
+}
+
+function recount() {
+    counts = [0, 0, 0, 0];
+    paintable = 0;
+    for (let i = 0; i < grid.length; i++) {
+        const v = grid[i];
+        if (v === -2) continue;
+        paintable++;
+        if (v >= 0) counts[v]++;
+    }
+    if (!paintable) paintable = 1;
+}
+
+function pct(team) { return (counts[team] / paintable) * 100; }
+
+function cellAt(x, y) {
+    const gx = Math.floor(x / CELL), gy = Math.floor(y / CELL);
+    if (gx < 0 || gy < 0 || gx >= gw || gy >= gh) return -2;
+    return grid[gy * gw + gx];
+}
+
+function blob(x, y, r, team) {
+    if (!isFinite(x) || !isFinite(y) || r <= 0) return;
+    pctx.fillStyle = inkOf(team);
+    pctx.beginPath(); pctx.arc(x, y, r, 0, Math.PI * 2); pctx.fill();
+    const x0 = Math.max(0, Math.floor((x - r) / CELL)), x1 = Math.min(gw - 1, Math.floor((x + r) / CELL));
+    const y0 = Math.max(0, Math.floor((y - r) / CELL)), y1 = Math.min(gh - 1, Math.floor((y + r) / CELL));
+    const rr = r * r;
+    for (let gy = y0; gy <= y1; gy++) {
+        for (let gx = x0; gx <= x1; gx++) {
+            const cx = gx * CELL + CELL / 2, cy = gy * CELL + CELL / 2;
+            const dx = cx - x, dy = cy - y;
+            if (dx * dx + dy * dy > rr) continue;
+            const i = gy * gw + gx, v = grid[i];
+            if (v === -2 || v === team) continue;
+            if (v >= 0) counts[v]--;
+            grid[i] = team; counts[team]++;
+        }
+    }
+}
+
+// a splat is never a clean circle — a main blot with a few flecks thrown off it
+function splat(x, y, r, team) {
+    blob(x, y, r, team);
+    const n = 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2, d = r * (0.5 + Math.random() * 0.65);
+        blob(x + Math.cos(a) * d, y + Math.sin(a) * d, r * (0.24 + Math.random() * 0.32), team);
+    }
+}
+
+/* ------------------------------------------------------------- layout -- */
+function resize() {
+    const oldGrid = grid, oldGw = gw, oldGh = gh;
+    W = cv.width = window.innerWidth;
+    H = cv.height = window.innerHeight;
+    gw = Math.max(1, Math.ceil(W / CELL));
+    gh = Math.max(1, Math.ceil(H / CELL));
+
+    const keep = document.createElement('canvas');
+    if (paintCv.width > 0 && paintCv.height > 0) {
+        keep.width = paintCv.width; keep.height = paintCv.height;
+        keep.getContext('2d').drawImage(paintCv, 0, 0);
+    }
+    paintCv.width = W; paintCv.height = H;
+    if (keep.width > 0) pctx.drawImage(keep, 0, 0);
+
+    const ng = new Int8Array(gw * gh);
+    ng.fill(-1);
+    if (oldGrid) {
+        const cw = Math.min(gw, oldGw), ch = Math.min(gh, oldGh);
+        for (let y = 0; y < ch; y++)
+            for (let x = 0; x < cw; x++) ng[y * gw + x] = oldGrid[y * oldGw + x];
+    }
+    grid = ng;
+
+    if (state) {
+        for (let i = 0; i < grid.length; i++) if (grid[i] === -2) grid[i] = -1;
+        state.walls = makeWalls();
+        markWalls();
+        for (const p of state.players) {
+            p.home.x = CORNERS[p.team][0] * W;
+            p.home.y = CORNERS[p.team][1] * H;
+            p.x = Math.max(R, Math.min(W - R, p.x));
+            p.y = Math.max(R, Math.min(H - R, p.y));
+        }
+    }
+    recount();
+}
+
+function hitsWall(x, y, r) {
+    for (const b of state.walls) {
+        const nx = Math.max(b.x, Math.min(x, b.x + b.w));
+        const ny = Math.max(b.y, Math.min(y, b.y + b.h));
+        const dx = x - nx, dy = y - ny;
+        if (dx * dx + dy * dy < r * r) return b;
+    }
+    return null;
+}
+
+/* --------------------------------------------------------- a new round -- */
+function newGame() {
+    const total = nRivals + 1;
+    const hues = [myHue];
+    for (let i = 0; hues.length < total; i++) if (HUES[i] && hues.indexOf(i) < 0) hues.push(i);
+
+    state = {
+        players: [], shots: [], bombs: [], pops: [], drips: [],
+        walls: [], pickups: [], total,
+        t: matchSecs, puT: 3, over: false, message: '', messageT: 0,
+        hues,
+    };
+    state.walls = makeWalls();
+
+    pctx.clearRect(0, 0, W, H);
+    grid.fill(-1);
+    markWalls();
+    recount();
+
+    const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
+    for (let t = 0; t < total; t++) {
+        const hx = CORNERS[t][0] * W, hy = CORNERS[t][1] * H;
+        state.players.push({
+            team: t, isBot: t > 0, name: t ? names[t - 1] : 'You',
+            x: hx, y: hy, home: { x: hx, y: hy },
+            face: Math.atan2(H / 2 - hy, W / 2 - hx),
+            hp: HP, ink: TANK, hurtT: 0, fireCd: 0, down: 0,
+            splats: 0, bursts: 0, pu: null, turbo: 0, roller: 0,
+            goal: null, aiT: 0, sampT: 0.35, jink: 0, lastX: hx, lastY: hy,
+        });
+        // everyone starts standing in a puddle of their own
+        splat(hx, hy, SPAWN_R, t);
+    }
+    say('Most colour on the floor at the end wins — not most splats');
+}
+
+function popup(x, y, text, color) {
+    state.pops.push({ x, y, text, color, life: 1.1 });
+}
+
+function say(text) { state.message = text; state.messageT = 2.2; }
+
+/* ------------------------------------------------------------- firing -- */
+function fire(p) {
+    const rolling = p.roller > 0;
+    if (p.ink < (rolling ? ROLL_INK : INK_SHOT)) return;
+    p.fireCd = rolling ? ROLL_CD : FIRE_CD;
+    p.ink -= rolling ? ROLL_INK : INK_SHOT;
+    const shots = rolling ? 3 : 1;
+    for (let i = 0; i < shots; i++) {
+        const spread = rolling ? (i - 1) * 0.26 : (Math.random() - 0.5) * 0.07;
+        const a = p.face + spread;
+        state.shots.push({
+            x: p.x + Math.cos(a) * (R + 4), y: p.y + Math.sin(a) * (R + 4),
+            vx: Math.cos(a) * SHOT_SPD * (rolling ? 0.72 : 1),
+            vy: Math.sin(a) * SHOT_SPD * (rolling ? 0.72 : 1),
+            t: rolling ? ROLL_LIFE : SHOT_LIFE,
+            r: rolling ? ROLL_R : SHOT_R,
+            dmg: rolling ? ROLL_DMG : SHOT_DMG,
+            team: p.team, from: p,
+        });
+    }
+    beep(rolling ? 180 : 320 + Math.random() * 60, 0.04, 'square', 0.025);
+}
+
+function usePower(p) {
+    if (!p.pu) return;
+    if (p.pu === 'bomb') {
+        state.bombs.push({
+            x: p.x, y: p.y,
+            vx: Math.cos(p.face) * (BOMB_REACH / BOMB_FLY),
+            vy: Math.sin(p.face) * (BOMB_REACH / BOMB_FLY),
+            t: BOMB_FLY, team: p.team, from: p,
+        });
+        beep(140, 0.12, 'triangle', 0.05);
+    } else if (p.pu === 'turbo') {
+        p.turbo = TURBO_T;
+        beep(700, 0.14, 'sine', 0.05);
+    } else if (p.pu === 'roller') {
+        p.roller = ROLLER_T;
+        beep(240, 0.16, 'sawtooth', 0.05);
+    }
+    p.pu = null;
+}
+
+function burst(p, killer) {
+    splat(p.x, p.y, DEATH_R, killer ? killer.team : p.team);
+    for (let i = 0; i < 14; i++) {
+        const a = Math.random() * Math.PI * 2, s = 80 + Math.random() * 190;
+        state.drips.push({ x:p.x, y:p.y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
+                           team: killer ? killer.team : p.team, life:0.5, r:3 + Math.random()*4 });
+    }
+    p.down = RESPAWN;
+    p.hp = HP;
+    p.ink = TANK;
+    p.roller = 0; p.turbo = 0;
+    if (killer) {
+        killer.splats++;
+        p.bursts++;
+        if (!killer.isBot) popup(p.x, p.y - 26, 'SPLAT!', '#ffffff');
+        if (!p.isBot) say('Burst by ' + killer.name + ' — back in a moment');
+    }
+    beep(90, 0.22, 'sawtooth', 0.06);
+}
+
+function damage(p, amount, from) {
+    if (p.down > 0) return;
+    p.hp -= amount;
+    p.hurtT = REGEN_WAIT;
+    if (p.hp <= 0) burst(p, from);
+}
+
+/* --------------------------------------------------------------- bots -- */
+// pick somewhere worth walking to: `mine` looks for your own paint (to drink),
+// otherwise anything that is not yours yet (to take)
+function findCell(p, mine) {
+    let best = null, bd = 1e9;
+    for (let i = 0; i < 46; i++) {
+        const gx = Math.floor(Math.random() * gw), gy = Math.floor(Math.random() * gh);
+        const v = grid[gy * gw + gx];
+        if (v === -2) continue;
+        if (mine ? v !== p.team : v === p.team) continue;
+        const x = gx * CELL + CELL / 2, y = gy * CELL + CELL / 2;
+        if (hitsWall(x, y, R + 2)) continue;
+        const d = Math.hypot(x - p.x, y - p.y);
+        if (d < bd) { bd = d; best = { x, y }; }
+    }
+    return best;
+}
+
+function botThink(p, dt) {
+    const cfg = SKILL[skill];
+    let foe = null, fd = 1e9;
+    for (const q of state.players) {
+        if (q === p || q.down > 0) continue;
+        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        if (d < fd) { fd = d; foe = q; }
+    }
+
+    const thirsty = p.ink < 24;
+    p.aiT -= dt;
+    if (p.aiT <= 0 || !p.goal || Math.hypot(p.goal.x - p.x, p.goal.y - p.y) < 46) {
+        p.goal = findCell(p, thirsty) || { x: p.home.x, y: p.home.y };
+        p.aiT = 0.9 + Math.random() * 0.9;
+    }
+
+    // the nearest loose pickup is usually worth the detour
+    let pu = null, pd = 1e9;
+    for (const u of state.pickups) {
+        const d = Math.hypot(u.x - p.x, u.y - p.y);
+        if (d < 320 && d < pd) { pd = d; pu = u; }
+    }
+
+    let tx = p.goal.x, ty = p.goal.y;
+    if (pu) { tx = pu.x; ty = pu.y; }
+
+    let aimX = tx, aimY = ty;
+    let wantFire = !thirsty && p.ink > 8;
+    if (foe && fd < 320 && Math.random() < cfg.aggr) {
+        aimX = foe.x; aimY = foe.y;
+        if (fd < 120) { tx = p.x * 2 - foe.x; ty = p.y * 2 - foe.y; }   // keep some distance
+        wantFire = p.ink > 6;
+    }
+    if (thirsty && cellAt(p.x, p.y) !== p.team) wantFire = false;
+
+    // aim, with a wobble that shrinks as the bots get better
+    const want = Math.atan2(aimY - p.y, aimX - p.x) + (Math.random() - 0.5) * cfg.err;
+    let da = want - p.face;
+    while (da > Math.PI) da -= Math.PI * 2;
+    while (da < -Math.PI) da += Math.PI * 2;
+    p.face += Math.max(-9 * dt, Math.min(9 * dt, da * (wantFire ? 7 : 10) * dt * 3));
+
+    // shuffle sideways when boxed in — measured over a third of a second, since
+    // a single frame of ordinary running is only a few pixels either way
+    p.sampT -= dt;
+    if (p.sampT <= 0) {
+        if (Math.hypot(p.x - p.lastX, p.y - p.lastY) < 24) p.jink = 0.7;
+        p.lastX = p.x; p.lastY = p.y; p.sampT = 0.35;
+    }
+    let mx = tx - p.x, my = ty - p.y;
+    if (p.jink > 0) { p.jink -= dt; const t2 = mx; mx = -my; my = t2; }
+
+    if (p.pu && (
+        (p.pu === 'bomb'   && foe && fd < 240 && Math.random() < cfg.useT) ||
+        (p.pu === 'turbo'  && Math.random() < dt * 0.9) ||
+        (p.pu === 'roller' && Math.random() < dt * 1.2)
+    )) usePower(p);
+
+    const m = Math.hypot(mx, my) || 1;
+    return { mx: (mx / m) * cfg.react, my: (my / m) * cfg.react, fire: wantFire };
+}
+
+/* ------------------------------------------------------------- update -- */
+function update(dt) {
+    if (state.over) return;
+
+    state.t -= dt;
+    if (state.messageT > 0) state.messageT -= dt;
+    if (state.t <= 0) { state.t = 0; return showOver(); }
+
+    // pickups drop into open floor now and then
+    state.puT -= dt;
+    if (state.puT <= 0 && state.pickups.length < PU_MAX) {
+        state.puT = PU_EVERY;
+        for (let i = 0; i < 40; i++) {
+            const x = 60 + Math.random() * (W - 120), y = 60 + Math.random() * (H - 120);
+            if (hitsWall(x, y, 26)) continue;
+            const kinds = ['bomb', 'turbo', 'roller'];
+            state.pickups.push({ x, y, kind: kinds[Math.floor(Math.random() * 3)], spin: 0 });
+            break;
+        }
+    }
+    for (const u of state.pickups) u.spin += dt * 2;
+
+    for (const p of state.players) {
+        if (p.down > 0) {
+            p.down -= dt;
+            if (p.down <= 0) {
+                p.x = p.home.x; p.y = p.home.y;
+                p.down = 0; p.hp = HP; p.ink = TANK;
+                splat(p.x, p.y, SPAWN_R * 0.7, p.team);
+            }
+            continue;
+        }
+
+        if (p.turbo > 0) p.turbo -= dt;
+        if (p.roller > 0) p.roller -= dt;
+        if (p.hurtT > 0) p.hurtT -= dt;
+        else if (p.hp < HP) p.hp = Math.min(HP, p.hp + REGEN * dt);
+
+        let mx = 0, my = 0, wantFire = false;
+        if (p.isBot) {
+            const c = botThink(p, dt);
+            mx = c.mx; my = c.my; wantFire = c.fire;
+        } else {
+            if (keys['arrowleft'] || keys['a']) mx -= 1;
+            if (keys['arrowright'] || keys['d']) mx += 1;
+            if (keys['arrowup'] || keys['w']) my -= 1;
+            if (keys['arrowdown'] || keys['s']) my += 1;
+            const m = Math.hypot(mx, my);
+            if (m) { mx /= m; my /= m; }
+            wantFire = !!keys[' '];
+            // your aim only follows your feet while you are NOT shooting
+            if (!wantFire && m) p.face = Math.atan2(my, mx);
+        }
+
+        const under = cellAt(p.x, p.y);
+        const own = under === p.team;
+        const foreign = under >= 0 && under !== p.team;
+        let spd = foreign ? SPD_ENEMY : own ? SPD_OWN : SPD_BARE;
+        if (wantFire) spd *= SPD_FIRING;
+        if (p.turbo > 0) spd *= TURBO_MULT;
+        p.moving = (mx || my) ? true : false;
+
+        // move, one axis at a time so a wall never eats both
+        const nx = p.x + mx * spd * dt;
+        if (!hitsWall(nx, p.y, R)) p.x = nx;
+        const ny = p.y + my * spd * dt;
+        if (!hitsWall(p.x, ny, R)) p.y = ny;
+        p.x = Math.max(R, Math.min(W - R, p.x));
+        p.y = Math.max(R, Math.min(H - R, p.y));
+
+        // ink: shooting spends it, standing still on your own colour brings it back
+        if (p.fireCd > 0) p.fireCd -= dt;
+        if (wantFire) {
+            if (p.fireCd <= 0) fire(p);
+        } else {
+            const rate = foreign ? FILL_ENEMY : own ? FILL_OWN : FILL_BARE;
+            p.ink = Math.min(TANK, p.ink + rate * (p.turbo > 0 ? 1.5 : 1) * dt);
+        }
+        p.firing = wantFire;
+
+        // walk over a pickup and it is yours
+        for (let i = state.pickups.length - 1; i >= 0; i--) {
+            const u = state.pickups[i];
+            if (Math.hypot(u.x - p.x, u.y - p.y) < R + PU_R) {
+                p.pu = u.kind;
+                state.pickups.splice(i, 1);
+                if (!p.isBot) { popup(p.x, p.y - 30, 'PICKED UP', '#ffffff'); beep(880, 0.09, 'sine', 0.05); }
+            }
+        }
+    }
+
+    // droplets
+    for (let i = state.shots.length - 1; i >= 0; i--) {
+        const s = state.shots[i];
+        s.x += s.vx * dt; s.y += s.vy * dt; s.t -= dt;
+        // it paints as it flies, so a burst lays a stripe rather than dotting the far end
+        if (!hitsWall(s.x, s.y, 2)) blob(s.x, s.y, s.r * 0.42, s.team);
+        let done = false, hitAnyone = false;
+        if (hitsWall(s.x, s.y, 3)) done = true;
+        if (!done) {
+            for (const q of state.players) {
+                if (q.team === s.team || q.down > 0) continue;
+                if (Math.hypot(q.x - s.x, q.y - s.y) < R + 4) {
+                    damage(q, s.dmg, s.from);
+                    splat(s.x, s.y, s.r * 0.8, s.team);
+                    done = true; hitAnyone = true;
+                    break;
+                }
+            }
+        }
+        if (!done && (s.t <= 0 || s.x < 0 || s.y < 0 || s.x > W || s.y > H)) {
+            splat(Math.max(4, Math.min(W - 4, s.x)), Math.max(4, Math.min(H - 4, s.y)), s.r, s.team);
+            done = true;
+        }
+        if (done) state.shots.splice(i, 1);
+    }
+
+    // bombs
+    for (let i = state.bombs.length - 1; i >= 0; i--) {
+        const b = state.bombs[i];
+        b.x += b.vx * dt; b.y += b.vy * dt; b.t -= dt;
+        b.x = Math.max(10, Math.min(W - 10, b.x));
+        b.y = Math.max(10, Math.min(H - 10, b.y));
+        if (b.t > 0) continue;
+        splat(b.x, b.y, BOMB_R, b.team);
+        for (const q of state.players) {
+            if (q.team === b.team || q.down > 0) continue;
+            if (Math.hypot(q.x - b.x, q.y - b.y) < BOMB_HURT) damage(q, BOMB_DMG, b.from);
+        }
+        state.pops.push({ x:b.x, y:b.y, text:'💥', color:'#ffffff', life:0.8 });
+        beep(70, 0.3, 'sawtooth', 0.07);
+        state.bombs.splice(i, 1);
+    }
+
+    for (let i = state.drips.length - 1; i >= 0; i--) {
+        const d = state.drips[i];
+        d.x += d.vx * dt; d.y += d.vy * dt;
+        d.vx *= 0.92; d.vy *= 0.92;
+        d.life -= dt;
+        if (d.life <= 0) { splat(d.x, d.y, d.r * 2.2, d.team); state.drips.splice(i, 1); }
+    }
+
+    for (let i = state.pops.length - 1; i >= 0; i--) {
+        state.pops[i].y -= 34 * dt;
+        state.pops[i].life -= dt;
+        if (state.pops[i].life <= 0) state.pops.splice(i, 1);
+    }
+}
+
+/* ------------------------------------------------------------- render -- */
+function drawFloor() {
+    // bare boards under everything
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#fdfaf0');
+    g.addColorStop(1, '#efe6d2');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(160,140,105,0.25)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 56) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 56) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+    ctx.drawImage(paintCv, 0, 0);
+}
+
+function drawWalls() {
+    for (const b of state.walls) {
+        ctx.fillStyle = '#c98f4e';
+        ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.beginPath(); ctx.roundRect(b.x + 3, b.y + 3, Math.max(2, b.w - 6), Math.max(2, b.h * 0.3), 5); ctx.fill();
+        ctx.strokeStyle = '#8a5a22'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 7); ctx.stroke();
+    }
+}
+
+const PU_FACE = { bomb:'💣', turbo:'⚡', roller:'🎨' };
+function drawPickups() {
+    for (const u of state.pickups) {
+        const bob = Math.sin(u.spin * 2) * 3;
+        ctx.fillStyle = 'rgba(0,0,0,0.16)';
+        ctx.beginPath(); ctx.ellipse(u.x, u.y + 16, 14, 5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(u.x, u.y + bob, PU_R, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#2a2318'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(u.x, u.y + bob, PU_R, 0, Math.PI * 2); ctx.stroke();
+        ctx.font = '19px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#000';
+        ctx.fillText(PU_FACE[u.kind], u.x, u.y + bob + 1);
+        ctx.textBaseline = 'alphabetic';
+    }
+}
+
+function drawShots() {
+    for (const s of state.shots) {
+        ctx.fillStyle = inkOf(s.team);
+        ctx.beginPath(); ctx.ellipse(s.x, s.y, s.r * 0.42, s.r * 0.3, Math.atan2(s.vy, s.vx), 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = deepOf(s.team); ctx.lineWidth = 1.4; ctx.stroke();
+    }
+    for (const d of state.drips) {
+        ctx.fillStyle = inkOf(d.team);
+        ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fill();
+    }
+    for (const b of state.bombs) {
+        const t = 1 - b.t / BOMB_FLY;
+        const lift = Math.sin(t * Math.PI) * 34;
+        ctx.fillStyle = 'rgba(0,0,0,0.18)';
+        ctx.beginPath(); ctx.ellipse(b.x, b.y, 13, 5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = inkOf(b.team);
+        ctx.beginPath(); ctx.arc(b.x, b.y - lift, 13, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#2a2318'; ctx.lineWidth = 2.5; ctx.stroke();
+        ctx.font = '15px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('💣', b.x, b.y - lift + 1);
+        ctx.textBaseline = 'alphabetic';
+    }
+}
+
+function drawPlayer(p) {
+    if (p.down > 0) {
+        // a puddle where they burst, counting back in
+        ctx.fillStyle = inkOf(p.team);
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath(); ctx.ellipse(p.x, p.y + 6, 20, 8, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = deepOf(p.team);
+        ctx.font = 'bold 13px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText(p.down.toFixed(1), p.x, p.y - 12);
+        return;
+    }
+
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y + R * 0.85, R * 0.95, R * 0.36, 0, 0, Math.PI * 2); ctx.fill();
+
+    if (p.turbo > 0) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(p.x, p.y, R + 7 + Math.sin(state.t * 20) * 1.5, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // body
+    ctx.fillStyle = inkOf(p.team);
+    ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = p.isBot ? deepOf(p.team) : '#ffffff';
+    ctx.lineWidth = p.isBot ? 3 : 4;
+    ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.stroke();
+
+    // the nozzle they are pointing
+    const gx = p.x + Math.cos(p.face) * (R + 9), gy = p.y + Math.sin(p.face) * (R + 9);
+    ctx.strokeStyle = deepOf(p.team); ctx.lineWidth = 7; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(p.x + Math.cos(p.face) * 6, p.y + Math.sin(p.face) * 6); ctx.lineTo(gx, gy); ctx.stroke();
+    ctx.strokeStyle = p.roller > 0 ? '#ffffff' : inkOf(p.team); ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.moveTo(p.x + Math.cos(p.face) * 6, p.y + Math.sin(p.face) * 6); ctx.lineTo(gx, gy); ctx.stroke();
+    ctx.lineCap = 'butt';
+
+    // eyes, so you can read which way they face at a glance
+    const ex = Math.cos(p.face), ey = Math.sin(p.face);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(p.x + ex * 5 - ey * 5, p.y + ey * 5 + ex * 5, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x + ex * 5 + ey * 5, p.y + ey * 5 - ex * 5, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2a2318';
+    ctx.beginPath(); ctx.arc(p.x + ex * 7 - ey * 5, p.y + ey * 7 + ex * 5, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x + ex * 7 + ey * 5, p.y + ey * 7 - ex * 5, 2, 0, Math.PI * 2); ctx.fill();
+
+    // health, only once it matters
+    if (p.hp < HP) {
+        const w = 34;
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(p.x - w / 2, p.y - R - 13, w, 5);
+        ctx.fillStyle = p.hp > 50 ? '#5ce05c' : p.hp > 25 ? '#ffd21a' : '#ff5252';
+        ctx.fillRect(p.x - w / 2, p.y - R - 13, w * (p.hp / HP), 5);
+    }
+
+    if (p.isBot) {
+        ctx.fillStyle = deepOf(p.team);
+        ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText(p.name.toUpperCase(), p.x, p.y + R + 15);
+    } else {
+        // a marker so you never lose yourself in the mess
+        const bob = Math.sin(state.t * 6) * 2;
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#2a2318'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - R - 9 + bob);
+        ctx.lineTo(p.x - 8, p.y - R - 20 + bob);
+        ctx.lineTo(p.x + 8, p.y - R - 20 + bob);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+}
+
+function drawHUD() {
+    const me = state.players[0];
+
+    // the whole point of the game, across the top: who owns how much floor
+    const bx = 172, by = 18, bw = W - bx - 18, bh = 24;
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.beginPath(); ctx.roundRect(bx - 4, by - 4, bw + 8, bh + 8, 8); ctx.fill();
+    ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(bx - 4, by - 4, bw + 8, bh + 8, 8); ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fillRect(bx, by, bw, bh);
+
+    let run = bx;
+    for (let t = 0; t < state.total; t++) {
+        const w = bw * (counts[t] / paintable);
+        if (w > 0.5) {
+            ctx.fillStyle = inkOf(t);
+            ctx.fillRect(run, by, w, bh);
+            if (w > 42) {
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 13px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(pct(t).toFixed(0) + '%', run + w / 2, by + bh / 2);
+                ctx.textBaseline = 'alphabetic';
+            }
+        }
+        run += w;
+    }
+    // your share is drawn first, so it is the left-hand block — ring it in white
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+    ctx.strokeRect(bx, by, Math.max(2, bw * (counts[0] / paintable)), bh);
+
+    // clock
+    ctx.textAlign = 'center';
+    const low = state.t <= 10;
+    ctx.font = 'bold 26px Segoe UI';
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.beginPath(); ctx.roundRect(W / 2 - 46, by + bh + 10, 92, 30, 8); ctx.fill();
+    ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(W / 2 - 46, by + bh + 10, 92, 30, 8); ctx.stroke();
+    ctx.fillStyle = low ? '#d32f2f' : '#2a2318';
+    ctx.fillText(Math.ceil(state.t) + 's', W / 2, by + bh + 32);
+
+    // ink tank
+    const tw = 260, tx = W / 2 - tw / 2, ty = H - 52;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.roundRect(tx - 6, ty - 6, tw + 12, 34, 9); ctx.fill();
+    ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(tx - 6, ty - 6, tw + 12, 34, 9); ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,0.1)';
+    ctx.fillRect(tx, ty, tw, 22);
+    ctx.fillStyle = inkOf(0);
+    ctx.fillRect(tx, ty, tw * (me.ink / TANK), 22);
+    ctx.fillStyle = me.ink < 20 ? '#d32f2f' : '#2a2318';
+    ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillText(me.ink < 20 ? 'INK LOW — STAND ON YOUR OWN COLOUR' : 'INK', tx + tw / 2, ty + 16);
+
+    // what you are holding
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.roundRect(tx + tw + 14, ty - 6, 46, 34, 9); ctx.fill();
+    ctx.strokeStyle = 'rgba(42,35,24,0.35)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(tx + tw + 14, ty - 6, 46, 34, 9); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (me.pu) {
+        ctx.font = '20px Segoe UI';
+        ctx.fillStyle = '#000';
+        ctx.fillText(PU_FACE[me.pu], tx + tw + 37, ty + 10);
+    } else {
+        ctx.font = 'bold 10px Segoe UI';
+        ctx.fillStyle = '#9a9086';
+        ctx.fillText('SHIFT', tx + tw + 37, ty + 11);
+    }
+    ctx.textBaseline = 'alphabetic';
+
+    if (me.roller > 0) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#2a2318'; ctx.font = 'bold 13px Segoe UI';
+        ctx.fillText('🎨 ROLLER ' + me.roller.toFixed(1) + 's', W / 2, ty - 16);
+    } else if (me.turbo > 0) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#2a2318'; ctx.font = 'bold 13px Segoe UI';
+        ctx.fillText('⚡ TURBO ' + me.turbo.toFixed(1) + 's', W / 2, ty - 16);
+    }
+
+    for (const q of state.pops) {
+        ctx.globalAlpha = Math.max(0, Math.min(1, q.life));
+        ctx.font = 'bold 17px Segoe UI'; ctx.textAlign = 'center';
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 3;
+        ctx.strokeText(q.text, q.x, q.y);
+        ctx.fillStyle = q.color;
+        ctx.fillText(q.text, q.x, q.y);
+        ctx.globalAlpha = 1;
+    }
+
+    if (state.messageT > 0) {
+        ctx.globalAlpha = Math.max(0, Math.min(1, state.messageT));
+        ctx.textAlign = 'center'; ctx.font = 'bold 20px Segoe UI';
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        const tw2 = 380;
+        ctx.beginPath(); ctx.roundRect(W / 2 - tw2 / 2, H * 0.16, tw2, 36, 10); ctx.fill();
+        ctx.fillStyle = '#2a2318';
+        ctx.fillText(state.message, W / 2, H * 0.16 + 25);
+        ctx.globalAlpha = 1;
+    }
+}
+
+function render() {
+    drawFloor();
+    drawWalls();
+    drawPickups();
+    drawShots();
+    const order = state.players.slice().sort((a, b) => a.y - b.y);
+    for (const p of order) drawPlayer(p);
+    drawHUD();
+}
+
+/* ---------------------------------------------------------- the finish -- */
+function showOver() {
+    if (state.over) return;
+    state.over = true;
+    running = false;
+
+    const rank = state.players.slice().sort((a, b) => counts[b.team] - counts[a.team]);
+    const win = rank[0];
+    const iWon = win === state.players[0];
+    const me = state.players[0];
+
+    document.getElementById('overTitle').textContent = iWon ? 'YOU PAINTED THE MOST' : 'OUT-PAINTED';
+    document.getElementById('overTitle').style.color = iWon ? '#2f7d16' : '#c0392b';
+    document.getElementById('overLine').innerHTML =
+        `<span style="color:${inkOf(win.team)}">${win.isBot ? win.name : 'You'}</span> took ` +
+        `<b>${pct(win.team).toFixed(1)}%</b> of the floor`;
+
+    document.getElementById('overBars').innerHTML = rank.map(p =>
+        `<div class="barrow">` +
+        `<div class="who" style="color:${deepOf(p.team)}">${p.isBot ? p.name : 'YOU'}</div>` +
+        `<div class="track"><div class="fill" style="width:${Math.max(1, pct(p.team)).toFixed(1)}%;` +
+        `background:${inkOf(p.team)}"></div></div>` +
+        `<div class="pc">${pct(p.team).toFixed(1)}%</div></div>`
+    ).join('');
+
+    const bare = 100 - state.players.reduce((a, p) => a + pct(p.team), 0);
+    document.getElementById('overNote').innerHTML =
+        `You burst rivals <b>${me.splats}</b> time${me.splats === 1 ? '' : 's'} and burst <b>${me.bursts}</b> time${me.bursts === 1 ? '' : 's'}.` +
+        `  ·  <b>${bare.toFixed(1)}%</b> of the floor never got painted at all.`;
+
+    document.getElementById('overOv').classList.remove('hidden');
+    beep(iWon ? 660 : 200, 0.4, 'sine', 0.06);
+}
+
+/* --------------------------------------------------------------- loop -- */
+function loop(now) {
+    requestAnimationFrame(loop);
+    if (!running || paused || !state) { last = now; return; }
+    const dt = Math.min((now - last) / 1000, 0.033);
+    last = now;
+    update(dt);
+    render();
+}
+
+/* --------------------------------------------------------------- menu -- */
+function optionRow(id, values, labels, get, set) {
+    const row = document.getElementById(id);
+    row.innerHTML = '';
+    values.forEach((v, i) => {
+        const b = document.createElement('button');
+        b.className = 'btn small' + (get() === v ? ' sel' : '');
+        b.textContent = labels[i];
+        b.addEventListener('click', () => { set(v); paintRows(); });
+        row.appendChild(b);
+    });
+}
+
+function paintRows() {
+    const hueRow = document.getElementById('hueRow');
+    hueRow.innerHTML = '';
+    HUES.forEach((h, i) => {
+        const b = document.createElement('button');
+        b.className = 'btn small hue' + (myHue === i ? ' sel' : '');
+        b.style.background = h.ink;
+        b.textContent = h.name;
+        b.addEventListener('click', () => { myHue = i; paintRows(); });
+        hueRow.appendChild(b);
+    });
+    optionRow('rivalRow', [1, 2, 3], ['1', '2', '3'], () => nRivals, v => nRivals = v);
+    optionRow('skillRow', ['easy', 'normal', 'hard'], ['EASY', 'NORMAL', 'HARD'], () => skill, v => skill = v);
+    optionRow('timeRow', [60, 90, 120], ['60s', '90s', '2 min'], () => matchSecs, v => matchSecs = v);
+}
+
+function start() {
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('overOv').classList.add('hidden');
+    document.getElementById('pauseOv').classList.add('hidden');
+    newGame();
+    paused = false;
+    running = true;
+    last = performance.now();
+}
+
+function toMenu() {
+    running = false; paused = false;
+    document.getElementById('overOv').classList.add('hidden');
+    document.getElementById('pauseOv').classList.add('hidden');
+    document.getElementById('titleOv').classList.remove('hidden');
+}
+
+document.getElementById('startBtn').addEventListener('click', start);
+document.getElementById('againBtn').addEventListener('click', start);
+document.getElementById('menuBtn').addEventListener('click', toMenu);
+document.getElementById('quitBtn').addEventListener('click', toMenu);
+document.getElementById('resumeBtn').addEventListener('click', () => {
+    paused = false;
+    document.getElementById('pauseOv').classList.add('hidden');
+    last = performance.now();
+});
+
+/* -------------------------------------------------------------- input -- */
+addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    keys[k] = true;
+    if ([' ', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown'].indexOf(k) >= 0) e.preventDefault();
+    if (!running) return;
+    if (k === 'shift') usePower(state.players[0]);
+    if (k === 'p' || k === 'escape') {
+        paused = !paused;
+        document.getElementById('pauseOv').classList.toggle('hidden', !paused);
+        if (!paused) last = performance.now();
+    }
+});
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+window.addEventListener('resize', resize);
+
+resize();
+paintRows();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
