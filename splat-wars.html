@@ -75,6 +75,25 @@
     .barrow .fill { height:100%; border-radius:6px; }
     .barrow .pc { width:56px; text-align:left; font-variant-numeric:tabular-nums; font-weight:bold; }
     .note { font-size:12.5px; color:#7b6a70; margin-top:8px; }
+    .purse { font-size:16px; color:#8a6a05; margin:8px 0 4px; }
+    .purse b { font-size:22px; color:#c2137a; }
+    .item {
+        display:flex; align-items:center; gap:12px; text-align:left;
+        background:rgba(255,255,255,0.82); border:1px solid rgba(200,120,170,0.4);
+        border-radius:10px; padding:10px 12px; margin:7px 0;
+    }
+    .item .face { font-size:24px; width:30px; text-align:center; }
+    .item .txt { flex:1; }
+    .item .name { font-weight:bold; font-size:14.5px; color:#2a2318; }
+    .item .desc { font-size:12.5px; color:#6d6151; line-height:1.45; }
+    .item .lvl { font-size:11.5px; color:#2f7d16; letter-spacing:0.5px; font-weight:bold; }
+    .item button {
+        background:linear-gradient(135deg,#ff67b6,#c2137a); color:#fff; border:2px solid #ffd0e8;
+        border-radius:9px; cursor:pointer; padding:8px 13px; font-size:13px; font-weight:bold;
+        white-space:nowrap; min-width:104px;
+    }
+    .item button[disabled] { background:#e2d8dd; border-color:#c9b6c0; color:#8f8489; cursor:default; }
+    .item.maxed { border-color:rgba(47,125,22,0.5); background:rgba(228,246,214,0.85); }
 </style>
 </head>
 <body>
@@ -97,7 +116,8 @@
       <b>burst</b>, dropping a big blob of <b>your</b> colour where they stood.<br><br>
       <b>A turret sits in each corner.</b> Stand in its ring and it sets you a job — hold the ring,
       paint the core, or splat the targets it puts out. Finish it and the turret is <b>yours</b>, and
-      it sprays that corner in your colour for the rest of the round. Two sides stood in the same
+      it sprays for the rest of the round — always down whichever line it has <b>least of your
+      colour on</b>, so it works on the ground you have not done rather than going round in a circle. Two sides stood in the same
       ring and <b>nobody gains</b>. Rivals can take it back off you the same way.<br><br>
       Pickups drop all round: <b>💣 ink bomb</b>, <b>⚡ turbo</b>, <b>🎨 roller</b>,
       <b>🚿 sprinkler</b> — set it down and it paints a spreading circle until someone knocks it
@@ -109,6 +129,11 @@
       hurt anybody; they only paint, and you can paint back over everything they lay down.<br><br>
       The <b>last 30 seconds count double</b>: any floor you take in that time and <b>still hold at
       the whistle</b> is worth twice as much. Rounds are won and lost right at the end.<br><br>
+      Every round pays you <b>🪙 paint tokens</b> — for the floor you finish holding, for winning,
+      for every turret you still hold and for claiming the mega boom. The <b>🛒 paint shop</b> sells
+      a bigger tank, a faster drink, a wider spray, quicker feet, more pickups, and — for a great
+      many rounds' worth — a corner turret that is <b>already yours at kickoff</b>. None of it is
+      cheap on purpose.<br><br>
       Put <b>more than one player on a team</b> and you get <b>team-mates in your colour</b>. Their
       paint counts as yours and you cannot splat each other. On the <b>big arena</b> the floor is
       twice the window each way — the map in the corner shows the whole fight.
@@ -131,7 +156,24 @@
     <div class="row" id="arenaRow"></div>
     <div class="label">HOW LONG</div>
     <div class="row" id="timeRow"></div>
-    <div class="row" style="margin-top:16px;"><button class="btn" id="startBtn">START</button></div>
+    <div class="purse" id="titlePurse"></div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn" id="startBtn">START</button>
+      <button class="btn" id="shopBtn">🛒 PAINT SHOP</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="shopOv">
+  <div class="panel">
+    <h1>🛒 PAINT SHOP</h1>
+    <h2>Nothing here is cheap. Most of it takes a great many rounds.</h2>
+    <div class="purse" id="shopPurse"></div>
+    <div id="shopList"></div>
+    <div class="note">You bank paint tokens for every round you play — the more floor you finish
+      holding, the more you take away. Winning, holding turrets and claiming the mega boom all pay
+      on top. What you buy here is yours for good.</div>
+    <div class="row" style="margin-top:14px;"><button class="btn" id="shopBack">BACK</button></div>
   </div>
 </div>
 
@@ -151,8 +193,10 @@
     <div class="final" id="overLine"></div>
     <div class="bars" id="overBars"></div>
     <div class="note" id="overNote"></div>
+    <div class="purse" id="overPay"></div>
     <div class="row" style="margin-top:14px;">
       <button class="btn" id="againBtn">PAINT IT AGAIN</button>
+      <button class="btn" id="shopBtn2">🛒 SHOP</button>
       <button class="btn" id="menuBtn">MENU</button>
     </div>
   </div>
@@ -236,6 +280,42 @@ const SKILL = {
 };
 
 let myHue = 0, nTeams = 2, teamSize = 2, skill = 'normal', matchSecs = 90;
+
+// The paint shop. None of it is cheap and the last line is a season's work.
+const STORE = [
+    { key:'tank',   face:'🪣', name:'Bigger tank',      max:3, cost:[2500, 6000, 14000],
+      desc:'+25 ink in the can each time. Longer bursts before you have to go and drink.' },
+    { key:'refill', face:'💧', name:'Thirsty boots',    max:3, cost:[3000, 7500, 16000],
+      desc:'Drink 25% faster off your own colour each time. Less standing about.' },
+    { key:'spray',  face:'🖌️', name:'Wider spray',      max:3, cost:[4000, 9000, 20000],
+      desc:'Every drop you throw lands 12% fatter. It adds up over a whole round.' },
+    { key:'boots',  face:'👟', name:'Quick feet',       max:2, cost:[5000, 12000],
+      desc:'Run 7% faster each time — on any floor, even a rival\u2019s.' },
+    { key:'drops',  face:'📦', name:'Friends in supply', max:2, cost:[4500, 10000],
+      desc:'Pickups turn up 20% more often each time. More bombs, mines and sprinklers.' },
+    { key:'head',   face:'⭐', name:'A corner already yours', max:1, cost:[40000],
+      desc:'The turret nearest your corner starts the round belonging to you. The dearest thing here by a very long way.' },
+];
+let coins = 0;
+let owned = { tank:0, refill:0, spray:0, boots:0, drops:0, head:0 };
+
+function storeLoad() {
+    try {
+        const d = JSON.parse(localStorage.getItem('splatWars.store') || '{}');
+        coins = d.coins || 0;
+        owned = Object.assign({ tank:0, refill:0, spray:0, boots:0, drops:0, head:0 }, d.owned || {});
+    } catch (e) { /* first time out */ }
+}
+function storeSave() {
+    try { localStorage.setItem('splatWars.store', JSON.stringify({ coins, owned })); } catch (e) {}
+}
+
+// what the upgrades actually do
+function tankMax()   { return TANK + owned.tank * 25; }
+function fillOwn()   { return FILL_OWN * (1 + owned.refill * 0.25); }
+function sprayMult(p) { return p.isBot ? 1 : 1 + owned.spray * 0.12; }
+function bootMult(p)  { return p.isBot ? 1 : 1 + owned.boots * 0.07; }
+function dropEvery() { return PU_EVERY * (1 - owned.drops * 0.2); }
 let state = null, running = false, paused = false, last = 0;
 const keys = {};
 
@@ -419,6 +499,14 @@ function newGame() {
     };
     state.walls = makeWalls();
     state.turrets = makeTurrets();
+    if (owned.head) {
+        // the corner turret closest to where you start is already flying your colour
+        const hx = CORNERS[0][0] * W, hy = CORNERS[0][1] * H;
+        let near = state.turrets[0];
+        for (const tu of state.turrets)
+            if (Math.hypot(tu.x - hx, tu.y - hy) < Math.hypot(near.x - hx, near.y - hy)) near = tu;
+        near.team = 0;
+    }
     // long rounds get a second drop, and never to the same player twice
     state.megaTimes = matchSecs >= 180
         ? [matchSecs * (0.62 + Math.random() * 0.1), matchSecs * (0.26 + Math.random() * 0.1)]
@@ -443,7 +531,7 @@ function newGame() {
                 team: t, isBot: !isMe, name: isMe ? 'You' : names[nextName++ % names.length],
                 x: hx, y: hy, home: { x: hx, y: hy },
                 face: Math.atan2(H / 2 - hy, W / 2 - hx),
-                hp: HP, ink: TANK, hurtT: 0, fireCd: 0, down: 0,
+                hp: HP, ink: isMe ? tankMax() : TANK, hurtT: 0, fireCd: 0, down: 0,
                 splats: 0, bursts: 0, pu: null, turbo: 0, roller: 0,
                 goal: null, aiT: 0, sampT: 0.35, jink: 0, lastX: hx, lastY: hy,
             });
@@ -485,7 +573,7 @@ function fire(p) {
             vx: Math.cos(a) * SHOT_SPD * (rolling ? 0.72 : 1),
             vy: Math.sin(a) * SHOT_SPD * (rolling ? 0.72 : 1),
             t: rolling ? ROLL_LIFE : SHOT_LIFE,
-            r: rolling ? ROLL_R : SHOT_R,
+            r: (rolling ? ROLL_R : SHOT_R) * sprayMult(p),
             dmg: rolling ? ROLL_DMG : SHOT_DMG,
             team: p.team, from: p,
         });
@@ -524,7 +612,7 @@ function burst(p, killer) {
     }
     p.down = RESPAWN;
     p.hp = HP;
-    p.ink = TANK;
+    p.ink = p.isBot ? TANK : tankMax();
     p.roller = 0; p.turbo = 0;
     if (killer) {
         killer.splats++;
@@ -645,7 +733,8 @@ function drawKit() {
 function makeTurrets() {
     return TURRET_SPOTS.map((c, i) => {
         const t = { i, x: c[0] * W, y: c[1] * H, team: -1, task: null, taskBy: -1,
-                    prog: 0, targets: [], fireT: 0, sweep: Math.random() * Math.PI * 2, flash: 0 };
+                    prog: 0, targets: [], fireT: 0, sweep: Math.random() * Math.PI * 2,
+                    jitter: Math.random(), flash: 0 };
         // nudge it out of a crate if the layout put one there
         for (let n = 0; n < 24 && hitsWall(t.x, t.y, TURRET_R + 8); n++) {
             t.x += (t.x < W / 2 ? 1 : -1) * 22;
@@ -711,12 +800,12 @@ function updateTurrets(dt) {
             else if (t.prog <= 0 && !holding && !inside.length) { t.task = null; t.taskBy = -1; t.targets = []; }
         }
 
-        // an owned turret sprays its corner, sweeping round as it goes
+        // an owned turret picks the emptiest line it can see and sprays that
         if (t.team >= 0) {
             t.fireT -= dt;
             if (t.fireT <= 0) {
                 t.fireT = TURRET_FIRE;
-                t.sweep += 0.72;
+                t.sweep = thinnestWay(t);
                 const a = t.sweep;
                 state.shots.push({
                     x: t.x + Math.cos(a) * (TURRET_R + 4), y: t.y + Math.sin(a) * (TURRET_R + 4),
@@ -726,6 +815,28 @@ function updateTurrets(dt) {
             }
         }
     }
+}
+
+// look down twelve lines and take the one with the least of its own colour on
+// it, so a turret works on the corner it has not done rather than going round
+// and round repainting what it already holds
+function thinnestWay(t) {
+    let best = t.sweep, bs = -1;
+    for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2 + t.jitter;
+        let want = 0;
+        for (let d = 55; d <= TURRET_RANGE; d += 48) {
+            const x = t.x + Math.cos(a) * d, y = t.y + Math.sin(a) * d;
+            if (x < 0 || y < 0 || x >= W || y >= H) break;
+            const v = cellAt(x, y);
+            if (v === -2) break;                 // a crate: nothing past it is reachable
+            if (v !== t.team) want++;
+        }
+        const sc = want + Math.random() * 0.6;   // a nudge, so ties do not lock it in place
+        if (sc > bs) { bs = sc; best = a; }
+    }
+    t.jitter += 0.13;
+    return best;
 }
 
 function drawTurrets() {
@@ -1036,7 +1147,7 @@ function update(dt) {
     // pickups drop into open floor now and then
     state.puT -= dt;
     if (state.puT <= 0 && state.pickups.length < PU_MAX) {
-        state.puT = PU_EVERY;
+        state.puT = dropEvery();
         for (let i = 0; i < 40; i++) {
             const x = 60 + Math.random() * (W - 120), y = 60 + Math.random() * (H - 120);
             if (hitsWall(x, y, 26)) continue;
@@ -1052,7 +1163,7 @@ function update(dt) {
             p.down -= dt;
             if (p.down <= 0) {
                 p.x = p.home.x; p.y = p.home.y;
-                p.down = 0; p.hp = HP; p.ink = TANK;
+                p.down = 0; p.hp = HP; p.ink = p.isBot ? TANK : tankMax();
                 splat(p.x, p.y, SPAWN_R * 0.7, p.team);
             }
             continue;
@@ -1085,6 +1196,7 @@ function update(dt) {
         let spd = foreign ? SPD_ENEMY : own ? SPD_OWN : SPD_BARE;
         if (wantFire) spd *= SPD_FIRING;
         if (p.turbo > 0) spd *= TURBO_MULT;
+        spd *= bootMult(p);
         p.moving = (mx || my) ? true : false;
 
         // move, one axis at a time so a wall never eats both
@@ -1100,8 +1212,9 @@ function update(dt) {
         if (wantFire) {
             if (p.fireCd <= 0) fire(p);
         } else {
-            const rate = foreign ? FILL_ENEMY : own ? FILL_OWN : FILL_BARE;
-            p.ink = Math.min(TANK, p.ink + rate * (p.turbo > 0 ? 1.5 : 1) * dt);
+            const rate = foreign ? FILL_ENEMY : own ? (p.isBot ? FILL_OWN : fillOwn()) : FILL_BARE;
+            const cap = p.isBot ? TANK : tankMax();
+            p.ink = Math.min(cap, p.ink + rate * (p.turbo > 0 ? 1.5 : 1) * dt);
         }
         p.firing = wantFire;
 
@@ -1458,7 +1571,7 @@ function drawHUD() {
     ctx.fillStyle = 'rgba(0,0,0,0.1)';
     ctx.fillRect(tx, ty, tw, 22);
     ctx.fillStyle = inkOf(0);
-    ctx.fillRect(tx, ty, tw * (me.ink / TANK), 22);
+    ctx.fillRect(tx, ty, tw * Math.min(1, me.ink / tankMax()), 22);
     ctx.fillStyle = me.ink < 20 ? '#d32f2f' : '#2a2318';
     ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'center';
     ctx.fillText(me.ink < 20 ? 'INK LOW — STAND ON YOUR OWN COLOUR' : 'INK', tx + tw / 2, ty + 16);
@@ -1692,6 +1805,20 @@ function showOver() {
             ? `  ·  Mega boom: ${state.megaWinners.map(p => p.isBot ? p.name : 'you').join(' and ')}.`
             : '  ·  Nobody claimed the mega boom.');
 
+    // what the round was worth
+    const held = state.turrets.filter(u => u.team === 0).length;
+    const megas = state.megaWinners.filter(q => q === me).length;
+    const pay = Math.round(score(0)) * 2 + (iWon ? 60 : 0) + held * 15 + megas * 40;
+    coins += pay;
+    storeSave();
+    document.getElementById('overPay').innerHTML =
+        `🪙 <b>+${pay}</b> paint tokens` +
+        `<span style="font-size:12px;color:#7b6a70"> — ${Math.round(score(0)) * 2} for the floor` +
+        (iWon ? ', 60 for the win' : '') +
+        (held ? `, ${held * 15} for ${held} turret${held === 1 ? '' : 's'}` : '') +
+        (megas ? ', 40 for the mega boom' : '') +
+        `. You have ${coins.toLocaleString()}.</span>`;
+
     document.getElementById('overOv').classList.remove('hidden');
     beep(iWon ? 660 : 200, 0.4, 'sine', 0.06);
 }
@@ -1708,6 +1835,50 @@ function loop(now) {
 }
 
 /* --------------------------------------------------------------- menu -- */
+function purseText() {
+    return `🪙 <b>${coins.toLocaleString()}</b> paint tokens`;
+}
+
+function buildShop() {
+    document.getElementById('shopPurse').innerHTML = purseText();
+    const list = document.getElementById('shopList');
+    list.innerHTML = '';
+    for (const it of STORE) {
+        const lvl = owned[it.key] || 0;
+        const maxed = lvl >= it.max;
+        const price = maxed ? 0 : it.cost[lvl];
+        const row = document.createElement('div');
+        row.className = 'item' + (maxed ? ' maxed' : '');
+        row.innerHTML =
+            `<div class="face">${it.face}</div>` +
+            `<div class="txt"><div class="name">${it.name}</div>` +
+            `<div class="desc">${it.desc}</div>` +
+            `<div class="lvl">${maxed ? 'BOUGHT' : it.max > 1 ? `owned ${lvl} of ${it.max}` : 'not yours yet'}</div></div>`;
+        const b = document.createElement('button');
+        if (maxed) { b.textContent = 'DONE'; b.disabled = true; }
+        else {
+            b.textContent = '🪙 ' + price.toLocaleString();
+            b.disabled = coins < price;
+            b.addEventListener('click', () => {
+                if (coins < price) return;
+                coins -= price;
+                owned[it.key] = lvl + 1;
+                storeSave();
+                buildShop();
+                document.getElementById('titlePurse').innerHTML = purseText();
+                beep(760, 0.12, 'sine', 0.05);
+            });
+        }
+        row.appendChild(b);
+        list.appendChild(row);
+    }
+}
+
+function openShop() {
+    buildShop();
+    document.getElementById('shopOv').classList.remove('hidden');
+}
+
 function optionRow(id, values, labels, get, set) {
     const row = document.getElementById(id);
     row.innerHTML = '';
@@ -1754,12 +1925,19 @@ function start() {
 
 function toMenu() {
     running = false; paused = false;
+    document.getElementById('titlePurse').innerHTML = purseText();
     document.getElementById('overOv').classList.add('hidden');
     document.getElementById('pauseOv').classList.add('hidden');
     document.getElementById('titleOv').classList.remove('hidden');
 }
 
 document.getElementById('startBtn').addEventListener('click', start);
+document.getElementById('shopBtn').addEventListener('click', openShop);
+document.getElementById('shopBtn2').addEventListener('click', openShop);
+document.getElementById('shopBack').addEventListener('click', () => {
+    document.getElementById('shopOv').classList.add('hidden');
+    document.getElementById('titlePurse').innerHTML = purseText();
+});
 document.getElementById('againBtn').addEventListener('click', start);
 document.getElementById('menuBtn').addEventListener('click', toMenu);
 document.getElementById('quitBtn').addEventListener('click', toMenu);
@@ -1786,8 +1964,10 @@ addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 window.addEventListener('resize', resize);
 
+storeLoad();
 resize();
 paintRows();
+document.getElementById('titlePurse').innerHTML = purseText();
 requestAnimationFrame(loop);
 })();
 </script>
