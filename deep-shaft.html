@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep Shaft - Simon's Game Gallery</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+        font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background:#0b0a09; color:#f2ece1; overflow:hidden;
+        -webkit-user-select:none; user-select:none;
+    }
+    canvas { display:block; }
+    .back-btn {
+        position:fixed; top:14px; left:14px; z-index:99999; text-decoration:none;
+        color:#1b1b1b; background:rgba(255,255,255,0.9); border:1px solid rgba(0,0,0,0.25);
+        padding:8px 16px; border-radius:8px; font-size:14px; line-height:1.2;
+    }
+    .back-btn:hover { background:#fff; }
+    .footer-link {
+        position:fixed; bottom:8px; left:0; right:0; text-align:center;
+        font-size:12px; color:rgba(255,255,255,0.32); z-index:20; pointer-events:none;
+    }
+    .footer-link a { color:rgba(255,255,255,0.6); pointer-events:auto; }
+
+    .overlay {
+        position:fixed; inset:0; z-index:40; display:flex; align-items:center;
+        justify-content:center; padding:16px; overflow-y:auto; background:rgba(8,7,6,0.88);
+    }
+    .overlay.hidden { display:none; }
+    .panel {
+        background:linear-gradient(150deg,#2b2118,#16110c);
+        border:2px solid #e8b445; border-radius:18px; padding:20px 26px;
+        max-width:660px; width:94%; text-align:center;
+        max-height:calc(100vh - 32px); overflow-y:auto;
+        box-shadow:0 18px 60px rgba(0,0,0,0.7), 0 0 44px rgba(232,180,69,0.14);
+    }
+    h1 { font-size:clamp(26px,5.5vw,42px); letter-spacing:2px; margin-bottom:4px;
+         text-shadow:0 0 16px rgba(232,180,69,0.4); }
+    h2 { font-size:15px; font-weight:normal; color:#c2ab8c; margin-bottom:10px; }
+    .rules { text-align:left; font-size:13.5px; line-height:1.6; color:#e7dcc9;
+             background:rgba(0,0,0,0.32); border-radius:10px; padding:12px 14px; margin:10px 0; }
+    .rules b { color:#e8b445; }
+    .keys { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0; font-size:13px; }
+    .keys div { background:rgba(0,0,0,0.32); border-radius:8px; padding:8px 10px; text-align:left; }
+    kbd { background:#1a140e; border:1px solid #7a5f33; border-bottom-width:2px;
+          border-radius:5px; padding:1px 6px; font-size:12px; color:#f0dcb0; }
+    .label { font-size:12px; color:#c2ab8c; margin:10px 0 3px; letter-spacing:1px; }
+    .row { display:flex; gap:7px; justify-content:center; flex-wrap:wrap; }
+    .btn {
+        background:linear-gradient(135deg,#e8b445,#a8720d); color:#241704;
+        border:2px solid #ffe1a6; border-radius:10px; cursor:pointer;
+        padding:11px 24px; font-size:16px; font-weight:bold; box-shadow:0 4px 0 #6a4406;
+    }
+    .btn:hover { filter:brightness(1.1); }
+    .btn:active { transform:translateY(2px); box-shadow:0 2px 0 #6a4406; }
+    .btn.small { padding:6px 12px; font-size:13px; min-width:56px; color:#f2ece1;
+                 background:linear-gradient(135deg,#3d3225,#221a12); border-color:#7a6244;
+                 box-shadow:0 3px 0 #12100c; }
+    .btn.small.sel { background:linear-gradient(135deg,#e8b445,#a8720d); color:#241704; border-color:#ffe9c4; }
+    .final { font-size:17px; color:#e8b445; margin:8px 0; }
+    .purse { font-size:16px; color:#e8b445; margin:6px 0 12px; }
+    .purse b { font-size:20px; }
+    .item {
+        display:flex; align-items:center; gap:12px; text-align:left;
+        background:rgba(0,0,0,0.3); border:1px solid rgba(232,180,69,0.25);
+        border-radius:10px; padding:10px 12px; margin:7px 0;
+    }
+    .item .txt { flex:1; }
+    .item .name { font-weight:bold; font-size:14.5px; color:#f2ece1; }
+    .item .desc { font-size:12.5px; color:#c2ab8c; line-height:1.45; }
+    .item .lvl { font-size:11.5px; color:#8fd46a; letter-spacing:0.5px; }
+    .item button {
+        background:linear-gradient(135deg,#e8b445,#a8720d); color:#241704; border:2px solid #ffe1a6;
+        border-radius:9px; cursor:pointer; padding:8px 13px; font-size:13px; font-weight:bold;
+        white-space:nowrap; min-width:92px;
+    }
+    .item button[disabled] { background:#2c2519; border-color:#4d4231; color:#8a7c66; cursor:default; }
+    .item.maxed { border-color:rgba(143,212,106,0.45); }
+    .seam { font-size:13px; margin:4px 0; color:#c2ab8c; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<div class="overlay" id="titleOv">
+  <div class="panel">
+    <h1>⛏️ DEEP SHAFT</h1>
+    <h2>Dig down. Fill the cart. Get out before the air runs out.</h2>
+    <div class="rules">
+      Dig through the rock and take what you find. <b>Coal</b> is 2, <b>iron</b> 6, <b>gold</b> 15
+      and a <b>gem</b> 40 — and the deeper you go the better the seams get.<br><br>
+      Your <b>lamp</b> is the clock. It burns down the whole time you are below, and burns
+      <b>faster the deeper you are</b>. Run it out and you are left in the dark, and the dark ends
+      your shift.<br><br>
+      You can only carry so much. Take the <b>lift</b> back to the surface to bank what you have —
+      but the lift only goes from the shaft you came down, so it is a long climb from the far side
+      of a tunnel.<br><br>
+      Some rock is <b>propped</b> — dig it out and the ceiling comes down a moment later. Watch for
+      the cracks. And there is <b>gas</b> in the deep seams: it does not hurt you, but it eats your
+      lamp.<br><br>
+      Everything you bank goes in the tin, and the <b>pit store</b> sells a better pick, a bigger
+      sack, a brighter lamp and a canary that finds the seams for you.
+    </div>
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows — dig and walk</div>
+      <div><kbd>Space</kbd> — take the lift when you are on it</div>
+      <div>Walk into rock to dig it</div>
+      <div><kbd>Esc</kbd> — pause</div>
+    </div>
+    <div class="label">SHIFT LENGTH</div>
+    <div class="row" id="lamp">
+      <button class="btn small" data-l="60">SHORT</button>
+      <button class="btn small sel" data-l="100">NORMAL</button>
+      <button class="btn small" data-l="150">LONG</button>
+    </div>
+    <div class="label">THE PIT</div>
+    <div class="row" id="hard">
+      <button class="btn small" data-h="easy">SAFE</button>
+      <button class="btn small sel" data-h="normal">WORKING</button>
+      <button class="btn small" data-h="hard">TREACHEROUS</button>
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="start">GO DOWN</button>
+      <button class="btn small" id="shopBtn">🪙 PIT STORE</button>
+    </div>
+    <div style="color:#c2ab8c; font-size:12px; margin-top:8px;" id="purseHint"></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="shopOv">
+  <div class="panel">
+    <h1>🪙 THE PIT STORE</h1>
+    <h2>Kit that comes back down with you every shift</h2>
+    <div class="purse">You have <b id="purse">0</b> in the tin</div>
+    <div id="shopList"></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="shopBack">BACK</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overOv">
+  <div class="panel">
+    <h1 id="overTitle">END OF SHIFT</h1>
+    <div class="final" id="finalText"></div>
+    <div id="seams" style="margin:10px 0;"></div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn" id="again">BACK DOWN</button>
+      <button class="btn small" id="shopFromOver">🪙 PIT STORE</button>
+      <button class="btn small" id="menu">MENU</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener('resize', resize); resize();
+
+/* ==================================================================
+   THE PIT
+   ================================================================== */
+const TILE = 46;
+const COLS = 26;
+const ROWS = 60;                 // how deep it goes
+const SURFACE = 3;               // rows of sky before the rock starts
+const R = 15;                    // digger radius
+
+const SPEED = 190;
+const DIG_BASE = 0.5;            // seconds to break plain rock
+const REACH = TILE * 0.75;
+
+const LAMP_BURN = 1;             // lamp seconds per second at the top
+const LAMP_DEEP = 0.016;         // ...plus this much per row down
+const GAS_BURN = 3.2;            // gas eats the lamp this much faster
+
+const CAVE_WARN = 1.1;           // how long the cracks show before it falls
+const CAVE_R = 1;                // how many tiles either side come down
+
+// What is in the ground, and how deep it starts showing up.
+const ORE = {
+    rock:  { name:'rock',  v:0,  hard:1,    col:'#5d5044', col2:'#463c33' },
+    dirt:  { name:'dirt',  v:0,  hard:0.55, col:'#6b543a', col2:'#523f2b' },
+    coal:  { name:'coal',  v:2,  hard:1.15, col:'#2e2b28', col2:'#1a1817', spark:'#7a7a7a', from:2  },
+    iron:  { name:'iron',  v:6,  hard:1.5,  col:'#8a7f74', col2:'#6a5f55', spark:'#cbbfae', from:10 },
+    gold:  { name:'gold',  v:15, hard:1.9,  col:'#c8a13a', col2:'#8f6f18', spark:'#ffe9a6', from:22 },
+    gem:   { name:'gem',   v:40, hard:2.4,  col:'#57b9d6', col2:'#2c7f99', spark:'#c9f4ff', from:34 },
+};
+const ORE_ORDER = ['coal', 'iron', 'gold', 'gem'];
+
+const HARD = {
+    easy:   { name:'Safe',        props:0.020, gas:0.010, oreMul:1.15 },
+    normal: { name:'Working',     props:0.042, gas:0.026, oreMul:1.0  },
+    hard:   { name:'Treacherous', props:0.075, gas:0.048, oreMul:0.9  },
+};
+let lampSecs = 100, hard = 'normal';
+
+/* ==================================================================
+   THE STORE
+   ================================================================== */
+let coins = 0;
+let owned = { pick: 0, sack: 0, lamp: 0, canary: 0, boots: 0 };
+
+const STORE = [
+    { key:'pick',   name:'A better pick',  max:3, cost:[30, 80, 180],
+      desc:'Digs a fifth faster each time. The deep seams are hard going without it.' },
+    { key:'sack',   name:'A bigger sack',  max:3, cost:[25, 70, 150],
+      desc:'Six more in the sack each time, so fewer trips up the lift.' },
+    { key:'lamp',   name:'A brighter lamp', max:3, cost:[40, 100, 220],
+      desc:'Twenty more seconds of light, and it shows you more of the tunnel.' },
+    { key:'canary', name:'A canary',       max:1, cost:[120],
+      desc:'Chirps at seams through the rock — every ore near you shows on screen.' },
+    { key:'boots',  name:'Pit boots',      max:2, cost:[45, 110],
+      desc:'Walk faster, and a cave-in glances off you instead of ending the shift.' },
+];
+
+function storeLoad() {
+    try {
+        const raw = localStorage.getItem('deepShaft.store');
+        if (raw) {
+            const d = JSON.parse(raw);
+            coins = d.coins || 0;
+            owned = Object.assign({ pick:0, sack:0, lamp:0, canary:0, boots:0 }, d.owned || {});
+        }
+    } catch (e) {}
+}
+function storeSave() {
+    try { localStorage.setItem('deepShaft.store', JSON.stringify({ coins, owned })); } catch (e) {}
+}
+function digSpeed()  { return DIG_BASE * Math.pow(0.8, owned.pick); }
+function sackSize()  { return 8 + owned.sack * 6; }
+function lampMax()   { return lampSecs + owned.lamp * 20; }
+function lampReach() { return 190 + owned.lamp * 34; }
+function walkSpeed() { return SPEED * (1 + owned.boots * 0.1); }
+function hasCanary() { return owned.canary > 0; }
+function tough()     { return owned.boots >= 2; }
+
+function buildStore() {
+    const list = document.getElementById('shopList');
+    document.getElementById('purse').textContent = coins;
+    if (!list) return;
+    list.innerHTML = '';
+    STORE.forEach(it => {
+        const have = owned[it.key] || 0;
+        const maxed = have >= it.max;
+        const price = maxed ? null : it.cost[have];
+        const row = document.createElement('div');
+        row.className = 'item' + (maxed ? ' maxed' : '');
+        row.innerHTML =
+            `<div class="txt"><div class="name">${it.name}</div>` +
+            `<div class="desc">${it.desc}</div>` +
+            `<div class="lvl">${maxed ? 'NOTHING BETTER TO BE HAD' : `owned ${have} of ${it.max}`}</div></div>`;
+        const b = document.createElement('button');
+        b.textContent = maxed ? 'OWNED' : `🪙 ${price}`;
+        b.disabled = maxed || coins < price;
+        b.onclick = () => {
+            if (coins < price) return;
+            coins -= price;
+            owned[it.key] = have + 1;
+            storeSave(); buildStore(); refreshPurse();
+        };
+        row.appendChild(b);
+        list.appendChild(row);
+    });
+}
+function refreshPurse() {
+    const el = document.getElementById('purseHint');
+    if (!el) return;
+    const kit = STORE.filter(i => owned[i.key]).map(i => `${i.name.replace(/^A /, '')} ${owned[i.key]}`);
+    el.innerHTML = `🪙 <b style="color:#e8b445">${coins}</b> in the tin` +
+        (kit.length ? `  ·  ${kit.join(', ')}` : '  ·  nothing but a pick and a lamp');
+}
+
+/* ==================================================================
+   SOUND
+   ================================================================== */
+let audio = null;
+function actx() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); return audio; }
+function tone(f, dur = 0.1, type = 'sine', vol = 0.05, slide = 0) {
+    try {
+        const a = actx(), o = a.createOscillator(), g = a.createGain();
+        o.type = type; o.frequency.setValueAtTime(f, a.currentTime);
+        if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, f + slide), a.currentTime + dur);
+        g.gain.setValueAtTime(vol, a.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+        o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+    } catch (e) {}
+}
+const chip   = () => tone(190 + Math.random() * 60, 0.05, 'square', 0.03, -60);
+const breaks = () => { tone(150, 0.12, 'square', 0.05, -70); tone(90, 0.16, 'sawtooth', 0.035); };
+const ding   = () => { tone(880, 0.08, 'sine', 0.05); tone(1240, 0.11, 'sine', 0.04); };
+const rumble = () => { tone(70, 0.5, 'sawtooth', 0.09, -30); tone(110, 0.4, 'square', 0.05, -50); };
+const lift   = () => { tone(300, 0.16, 'triangle', 0.05, 260); };
+const gasp   = () => tone(220, 0.4, 'sine', 0.06, -150);
+
+/* ==================================================================
+   STATE
+   ================================================================== */
+let state = null;
+const keys = {};
+addEventListener('keydown', e => {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    if (e.code === 'Escape' && state && !state.over) state.paused = !state.paused;
+    if (e.code === 'Space' && state && !state.paused) rideLift();
+    keys[e.code] = true;
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+function idx(cx, cy) { return cy * COLS + cx; }
+function tileAt(cx, cy) {
+    if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return null;
+    return state.grid[idx(cx, cy)];
+}
+function solid(cx, cy) {
+    const t = tileAt(cx, cy);
+    return !!t && !t.dug;
+}
+function tileUnder(x, y) {
+    return tileAt(Math.floor(x / TILE), Math.floor(y / TILE));
+}
+
+function newShift() {
+    const cfg = HARD[hard];
+    const grid = new Array(COLS * ROWS);
+    for (let cy = 0; cy < ROWS; cy++) {
+        for (let cx = 0; cx < COLS; cx++) {
+            let kind = 'rock';
+            if (cy < SURFACE) kind = 'sky';
+            else if (cy < SURFACE + 2) kind = 'dirt';
+            else {
+                // the deeper you are, the better the odds of something worth having
+                const depth = cy - SURFACE;
+                let picked = null;
+                for (const k of ORE_ORDER) {
+                    const o = ORE[k];
+                    if (depth < o.from) continue;
+                    const chance = (0.055 + (depth - o.from) * 0.0032) * cfg.oreMul;
+                    if (Math.random() < chance) picked = k;
+                }
+                kind = picked || (Math.random() < 0.2 ? 'dirt' : 'rock');
+            }
+            grid[idx(cx, cy)] = {
+                cx, cy, kind,
+                dug: kind === 'sky',
+                prop: kind !== 'sky' && cy > SURFACE + 3 && Math.random() < cfg.props,
+                gas: kind !== 'sky' && cy > SURFACE + 12 && Math.random() < cfg.gas,
+                chip: 0, seed: Math.random() * 99,
+            };
+        }
+    }
+    // the shaft you come down, straight through the middle
+    const shaftX = Math.floor(COLS / 2);
+    for (let cy = 0; cy < SURFACE + 2; cy++) {
+        const t = grid[idx(shaftX, cy)];
+        t.dug = true; t.prop = false; t.gas = false;
+    }
+
+    state = {
+        grid, shaftX, cfg,
+        you: {
+            x: shaftX * TILE + TILE / 2, y: (SURFACE + 1) * TILE + TILE / 2,
+            vx: 0, vy: 0, face: 0, step: 0, moving: false, hurt: 0,
+        },
+        sack: [], banked: 0, trips: 0,
+        lamp: lampMax(),
+        digging: null, digT: 0,
+        falls: [], bits: [], pops: [],
+        camY: 0, shake: 0,
+        deepest: 0, mined: {},
+        elapsed: 0, paused: false, over: false, paid: false,
+        message: '', messageT: 0,
+    };
+    say('DOWN YOU GO', 1.6);
+}
+
+function say(t, s) { state.message = t; state.messageT = s || 1.5; }
+function sackValue() { return state.sack.reduce((a, k) => a + ORE[k].v, 0); }
+
+/* ==================================================================
+   DIGGING
+   ================================================================== */
+function startDig(t) {
+    if (!t || t.dug || t.kind === 'sky') return;
+    if (state.digging !== t) { state.digging = t; state.digT = 0; }
+}
+
+function finishDig(t) {
+    t.dug = true;
+    const o = ORE[t.kind];
+    if (o.v > 0) {
+        if (state.sack.length < sackSize()) {
+            state.sack.push(t.kind);
+            state.mined[t.kind] = (state.mined[t.kind] || 0) + 1;
+            state.pops.push({ x: t.cx * TILE + TILE / 2, y: t.cy * TILE, life: 1.3,
+                text: `${o.name.toUpperCase()} +${o.v}`, color: o.spark });
+            ding();
+        } else {
+            state.pops.push({ x: t.cx * TILE + TILE / 2, y: t.cy * TILE, life: 1.4,
+                text: 'SACK IS FULL', color: '#ff8a65' });
+        }
+    }
+    breaks();
+    for (let i = 0; i < 9; i++) {
+        state.bits.push({
+            x: t.cx * TILE + TILE / 2, y: t.cy * TILE + TILE / 2,
+            vx: (Math.random() - 0.5) * 190, vy: -60 - Math.random() * 130,
+            life: 0.5 + Math.random() * 0.3, col: o.col,
+        });
+    }
+    // propped rock brings the roof down a moment later
+    if (t.prop) {
+        state.falls.push({ cx: t.cx, cy: t.cy, t: CAVE_WARN });
+        say('THE ROOF IS GOING!', 1.4);
+        rumble();
+    }
+}
+
+function updateFalls(dt) {
+    for (let i = state.falls.length - 1; i >= 0; i--) {
+        const f = state.falls[i];
+        f.t -= dt;
+        if (f.t > 0) continue;
+        state.shake = 18;
+        rumble();
+        for (let dx = -CAVE_R; dx <= CAVE_R; dx++) {
+            const cx = f.cx + dx, cy = f.cy - 1;
+            const t = tileAt(cx, cy);
+            if (t && t.dug && cy > SURFACE) {
+                t.dug = false; t.kind = 'rock'; t.prop = false; t.gas = false;
+            }
+            // anyone standing under it takes it
+            const you = state.you;
+            const ux = Math.floor(you.x / TILE), uy = Math.floor(you.y / TILE);
+            if (ux === cx && (uy === cy || uy === f.cy)) {
+                if (tough() && you.hurt <= 0) {
+                    you.hurt = 2.2;
+                    state.lamp = Math.max(4, state.lamp - 12);
+                    state.pops.push({ x: you.x, y: you.y - 26, text: 'BOOTS TOOK IT', color:'#8fd46a', life: 1.6 });
+                } else {
+                    endShift('buried');
+                }
+            }
+        }
+        state.falls.splice(i, 1);
+    }
+}
+
+/* ==================================================================
+   THE LIFT
+   ================================================================== */
+function onLift(p) {
+    return Math.abs(p.x - (state.shaftX * TILE + TILE / 2)) < TILE * 0.6;
+}
+function rideLift() {
+    const you = state.you;
+    if (!onLift(you)) {
+        state.pops.push({ x: you.x, y: you.y - 26, text: 'GET TO THE SHAFT', color: '#ff8a65', life: 1.4 });
+        return;
+    }
+    const worth = sackValue();
+    if (worth > 0) {
+        state.banked += worth;
+        state.trips++;
+        state.pops.push({ x: you.x, y: you.y - 30, text: `BANKED ${worth}`, color: '#e8b445', life: 1.8 });
+        say(`UP AND BACK — ${worth} BANKED`, 1.6);
+    } else {
+        say('NOTHING IN THE SACK', 1.2);
+    }
+    state.sack = [];
+    you.y = (SURFACE + 1) * TILE + TILE / 2;
+    you.x = state.shaftX * TILE + TILE / 2;
+    you.vx = you.vy = 0;
+    state.lamp = Math.min(lampMax(), state.lamp + 6);   // a moment of daylight
+    lift();
+}
+
+/* ==================================================================
+   UPDATE
+   ================================================================== */
+function update(dt) {
+    state.elapsed += dt;
+    state.shake = Math.max(0, state.shake - dt * 50);
+    if (state.messageT > 0) state.messageT -= dt;
+    const you = state.you;
+    you.hurt = Math.max(0, you.hurt - dt);
+
+    // the lamp, and how fast it goes
+    const depth = Math.max(0, Math.floor(you.y / TILE) - SURFACE);
+    state.deepest = Math.max(state.deepest, depth);
+    const here = tileUnder(you.x, you.y);
+    const gassy = here && here.gas;
+    state.lamp -= dt * (LAMP_BURN + depth * LAMP_DEEP) * (gassy ? GAS_BURN : 1);
+    if (gassy && Math.random() < dt * 3) {
+        state.pops.push({ x: you.x + (Math.random() - 0.5) * 30, y: you.y - 20,
+            text: '·', color: '#9fe870', life: 0.6 });
+    }
+    if (state.lamp <= 0) { endShift('dark'); return; }
+
+    // moving and digging
+    let ix = 0, iy = 0;
+    if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
+    if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
+    if (keys['KeyW'] || keys['ArrowUp']) iy -= 1;
+    if (keys['KeyS'] || keys['ArrowDown']) iy += 1;
+    const m = Math.hypot(ix, iy);
+    if (m > 0) { ix /= m; iy /= m; you.face = Math.atan2(iy, ix); }
+    you.moving = m > 0;
+
+    // what is in front of you?
+    const ahead = tileUnder(you.x + ix * REACH, you.y + iy * REACH);
+    if (m > 0 && ahead && !ahead.dug && ahead.kind !== 'sky') {
+        startDig(ahead);
+        state.digT += dt;
+        ahead.chip = Math.min(1, state.digT / (digSpeed() * ORE[ahead.kind].hard));
+        if (Math.random() < dt * 12) chip();
+        if (state.digT >= digSpeed() * ORE[ahead.kind].hard) {
+            finishDig(ahead);
+            state.digging = null; state.digT = 0;
+        }
+    } else {
+        if (state.digging) { state.digging.chip = 0; }
+        state.digging = null; state.digT = 0;
+    }
+
+    // walk into open ground only
+    const sp = walkSpeed() * (state.digging ? 0.25 : 1);
+    const nx = you.x + ix * sp * dt, ny = you.y + iy * sp * dt;
+    if (!solid(Math.floor(nx / TILE), Math.floor(you.y / TILE))) you.x = nx;
+    if (!solid(Math.floor(you.x / TILE), Math.floor(ny / TILE))) you.y = ny;
+    you.x = Math.max(R, Math.min(COLS * TILE - R, you.x));
+    you.y = Math.max(R, Math.min(ROWS * TILE - R, you.y));
+    if (you.moving) you.step += dt * 10;
+
+    updateFalls(dt);
+
+    for (const b of state.bits) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 420 * dt; b.life -= dt; }
+    state.bits = state.bits.filter(b => b.life > 0);
+    for (const p of state.pops) { p.life -= dt; p.y -= dt * 24; }
+    state.pops = state.pops.filter(p => p.life > 0);
+
+    // camera follows you down
+    const want = Math.max(0, Math.min(ROWS * TILE - H, you.y - H / 2));
+    state.camY += (want - state.camY) * Math.min(1, 7 * dt);
+}
+
+function endShift(how) {
+    if (state.over) return;
+    state.over = true;
+    state.how = how;
+    if (how === 'dark') gasp(); else rumble();
+    showOver();
+}
+
+/* ==================================================================
+   RENDER
+   ================================================================== */
+function drawTile(t) {
+    const x = t.cx * TILE, y = t.cy * TILE;
+    if (t.kind === 'sky') return;
+    if (t.dug) {
+        // hollowed out
+        ctx.fillStyle = '#120f0c';
+        ctx.fillRect(x, y, TILE, TILE);
+        if (t.gas) {
+            ctx.fillStyle = 'rgba(120,220,110,0.13)';
+            ctx.fillRect(x, y, TILE, TILE);
+        }
+        return;
+    }
+    const o = ORE[t.kind];
+    ctx.fillStyle = o.col;
+    ctx.fillRect(x, y, TILE, TILE);
+    ctx.fillStyle = o.col2;
+    ctx.fillRect(x, y + TILE * 0.62, TILE, TILE * 0.38);
+    // speckle, fixed per tile so it doesn't crawl
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    for (let i = 0; i < 4; i++) {
+        const sx = x + ((t.seed * (i + 2)) % (TILE - 10)) + 3;
+        const sy = y + ((t.seed * (i + 5)) % (TILE - 10)) + 3;
+        ctx.fillRect(sx, sy, 5, 4);
+    }
+    if (o.spark) {
+        ctx.fillStyle = o.spark;
+        for (let i = 0; i < 4; i++) {
+            const a = (i / 4) * Math.PI * 2 + t.seed;
+            ctx.beginPath();
+            ctx.arc(x + TILE / 2 + Math.cos(a) * TILE * 0.26,
+                    y + TILE / 2 + Math.sin(a) * TILE * 0.26, 3.4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    if (t.prop) {
+        // timbers, so you can see it is holding something up
+        ctx.strokeStyle = '#8a6a3f'; ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(x + 7, y + TILE - 4); ctx.lineTo(x + 7, y + 8);
+        ctx.moveTo(x + TILE - 7, y + TILE - 4); ctx.lineTo(x + TILE - 7, y + 8);
+        ctx.moveTo(x + 4, y + 8); ctx.lineTo(x + TILE - 4, y + 8);
+        ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+    if (t.chip > 0) {
+        ctx.strokeStyle = `rgba(255,220,150,${0.35 + t.chip * 0.5})`;
+        ctx.lineWidth = 2.5;
+        for (let i = 0; i < Math.ceil(t.chip * 4); i++) {
+            const a = i * 1.7 + t.seed;
+            ctx.beginPath();
+            ctx.moveTo(x + TILE / 2, y + TILE / 2);
+            ctx.lineTo(x + TILE / 2 + Math.cos(a) * TILE * 0.4, y + TILE / 2 + Math.sin(a) * TILE * 0.4);
+            ctx.stroke();
+        }
+    }
+}
+
+function drawYou() {
+    const you = state.you;
+    const bob = you.moving ? Math.abs(Math.sin(you.step)) * 2.5 : 0;
+    const x = you.x, y = you.y - bob;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath(); ctx.ellipse(you.x, you.y + R * 0.8, R * 0.9, R * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+
+    const sw = you.moving ? Math.sin(you.step) * 5 : 0;
+    ctx.strokeStyle = '#2f2418'; ctx.lineWidth = 4.5; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - 5, y + R * 0.3); ctx.lineTo(x - 5 + sw, y + R * 0.95);
+    ctx.moveTo(x + 5, y + R * 0.3); ctx.lineTo(x + 5 - sw, y + R * 0.95);
+    ctx.stroke();
+
+    ctx.fillStyle = you.hurt > 0 ? '#9a9a9a' : '#4a6f9c';
+    ctx.beginPath();
+    ctx.moveTo(x - R * 0.6, y + R * 0.36);
+    ctx.lineTo(x - R * 0.46, y - R * 0.36);
+    ctx.lineTo(x + R * 0.46, y - R * 0.36);
+    ctx.lineTo(x + R * 0.6, y + R * 0.36);
+    ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = '#f0c9a4';
+    ctx.beginPath(); ctx.arc(x, y - R * 0.62, R * 0.4, 0, Math.PI * 2); ctx.fill();
+    // helmet and lamp
+    ctx.fillStyle = '#e8b445';
+    ctx.beginPath(); ctx.arc(x, y - R * 0.7, R * 0.46, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#fff6c0';
+    ctx.beginPath(); ctx.arc(x, y - R * 0.86, 3.6, 0, Math.PI * 2); ctx.fill();
+
+    // the pick, swinging when you dig
+    const swing = state.digging ? Math.sin(state.elapsed * 22) * 0.7 : 0.4;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(you.face + swing);
+    ctx.strokeStyle = '#8a6a3f'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(24, 0); ctx.stroke();
+    ctx.strokeStyle = '#cbbfae'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(20, -7); ctx.lineTo(28, 4); ctx.stroke();
+    ctx.restore();
+}
+
+function drawLampLight() {
+    const you = state.you;
+    const reach = lampReach() * (0.55 + 0.45 * Math.min(1, state.lamp / Math.max(1, lampMax())));
+    ctx.save();
+    ctx.fillStyle = 'rgba(4,3,2,0.94)';
+    ctx.fillRect(0, state.camY - 40, COLS * TILE, H + 80);
+    ctx.globalCompositeOperation = 'destination-out';
+    const g = ctx.createRadialGradient(you.x, you.y, reach * 0.25, you.x, you.y, reach);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(you.x, you.y, reach, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // a warm wash over what the lamp reaches
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g2 = ctx.createRadialGradient(you.x, you.y, 8, you.x, you.y, reach * 0.8);
+    g2.addColorStop(0, 'rgba(255,200,90,0.13)');
+    g2.addColorStop(1, 'rgba(255,200,90,0)');
+    ctx.fillStyle = g2;
+    ctx.beginPath(); ctx.arc(you.x, you.y, reach * 0.8, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+}
+
+function drawCanary() {
+    if (!hasCanary()) return;
+    const you = state.you;
+    for (const t of state.grid) {
+        if (!t || t.dug || ORE[t.kind].v <= 0) continue;
+        const cx = t.cx * TILE + TILE / 2, cy = t.cy * TILE + TILE / 2;
+        if (Math.hypot(cx - you.x, cy - you.y) > 340) continue;
+        ctx.strokeStyle = ORE[t.kind].spark;
+        ctx.globalAlpha = 0.5 + Math.sin(state.elapsed * 4 + t.seed) * 0.2;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(t.cx * TILE + 4, t.cy * TILE + 4, TILE - 8, TILE - 8);
+        ctx.globalAlpha = 1;
+    }
+}
+
+function drawHUD() {
+    const you = state.you;
+    const depth = Math.max(0, Math.floor(you.y / TILE) - SURFACE);
+
+    // the lamp
+    const pct = Math.max(0, state.lamp / lampMax());
+    const bw = 260, bx = W / 2 - bw / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(bx - 3, 20, bw + 6, 20);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(bx, 23, bw, 14);
+    ctx.fillStyle = pct < 0.2 ? '#ff6f6f' : pct < 0.45 ? '#ffa63d' : '#ffe08a';
+    ctx.fillRect(bx, 23, bw * pct, 14);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 12px Segoe UI';
+    ctx.fillStyle = '#241704';
+    ctx.fillText(`LAMP  ${Math.max(0, state.lamp).toFixed(0)}s`, W / 2, 34);
+
+    ctx.font = 'bold 26px Segoe UI';
+    ctx.fillStyle = '#f2ece1';
+    ctx.fillText(`${depth} m down`, W / 2, 68);
+
+    // sack
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 15px Segoe UI';
+    const full = state.sack.length >= sackSize();
+    ctx.fillStyle = full ? '#ff8a65' : '#e8b445';
+    ctx.fillText(`sack ${state.sack.length}/${sackSize()} — worth ${sackValue()}`, 18, H - 46);
+    ctx.fillStyle = '#c2ab8c'; ctx.font = 'bold 13px Segoe UI';
+    ctx.fillText(full ? 'full — get back to the shaft' : 'banked ' + state.banked, 18, H - 26);
+
+    // what is in the sack
+    ctx.textAlign = 'right';
+    const counts = {};
+    state.sack.forEach(k => counts[k] = (counts[k] || 0) + 1);
+    let lx = W - 18;
+    Object.keys(counts).reverse().forEach(k => {
+        const label = `${ORE[k].name} ${counts[k]}`;
+        ctx.fillStyle = ORE[k].spark || '#c2ab8c';
+        ctx.font = 'bold 13px Segoe UI';
+        ctx.fillText(label, lx, H - 46);
+        lx -= ctx.measureText(label).width + 16;
+    });
+
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 13px Segoe UI';
+    ctx.fillStyle = onLift(you) ? '#8fd46a' : '#8a7c66';
+    ctx.fillText(onLift(you) ? 'you are in the shaft — SPACE to ride up and bank'
+                             : 'the shaft is the only way up', W / 2, H - 22);
+
+    if (state.messageT > 0) {
+        ctx.globalAlpha = Math.min(1, state.messageT);
+        ctx.font = 'bold 28px Segoe UI';
+        ctx.fillStyle = '#e8b445';
+        ctx.fillText(state.message, W / 2, 108);
+        ctx.globalAlpha = 1;
+    }
+    if (state.paused) {
+        ctx.fillStyle = 'rgba(8,7,6,0.7)'; ctx.fillRect(0, 0, W, H);
+        ctx.font = 'bold 46px Segoe UI'; ctx.fillStyle = '#f2ece1';
+        ctx.fillText('PAUSED', W / 2, H / 2);
+    }
+}
+
+function render() {
+    ctx.fillStyle = '#0b0a09';
+    ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    if (state.shake > 0.5) ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
+    ctx.translate(0, -Math.round(state.camY));
+
+    // sky and the pit head
+    ctx.fillStyle = '#1d2b3a';
+    ctx.fillRect(0, 0, COLS * TILE, SURFACE * TILE);
+    ctx.fillStyle = '#2f4a2a';
+    ctx.fillRect(0, SURFACE * TILE - 10, COLS * TILE, 12);
+    ctx.fillStyle = '#7a5f33';
+    ctx.fillRect(state.shaftX * TILE - 26, SURFACE * TILE - 74, 12, 74);
+    ctx.fillRect(state.shaftX * TILE + TILE + 14, SURFACE * TILE - 74, 12, 74);
+    ctx.fillRect(state.shaftX * TILE - 26, SURFACE * TILE - 82, TILE + 52, 12);
+    ctx.fillStyle = '#e8b445';
+    ctx.font = 'bold 13px Segoe UI'; ctx.textAlign = 'center';
+    ctx.fillText('THE SHAFT', state.shaftX * TILE + TILE / 2, SURFACE * TILE - 92);
+
+    // only the rows near the camera are worth drawing
+    const y0 = Math.max(0, Math.floor(state.camY / TILE) - 1);
+    const y1 = Math.min(ROWS - 1, Math.ceil((state.camY + H) / TILE));
+    for (let cy = y0; cy <= y1; cy++) {
+        for (let cx = 0; cx < COLS; cx++) drawTile(state.grid[idx(cx, cy)]);
+    }
+
+    // the shaft itself, drawn down the middle
+    ctx.strokeStyle = 'rgba(232,180,69,0.22)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 9]);
+    ctx.beginPath();
+    ctx.moveTo(state.shaftX * TILE + TILE / 2, SURFACE * TILE);
+    ctx.lineTo(state.shaftX * TILE + TILE / 2, ROWS * TILE);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // cracks before a fall
+    for (const f of state.falls) {
+        const a = 1 - f.t / CAVE_WARN;
+        ctx.strokeStyle = `rgba(255,120,60,${0.4 + a * 0.5})`;
+        ctx.lineWidth = 3;
+        for (let dx = -CAVE_R; dx <= CAVE_R; dx++) {
+            const x = (f.cx + dx) * TILE, y = (f.cy - 1) * TILE;
+            ctx.beginPath();
+            ctx.moveTo(x + 6, y + TILE - 4); ctx.lineTo(x + TILE / 2, y + 8);
+            ctx.lineTo(x + TILE - 6, y + TILE - 4);
+            ctx.stroke();
+        }
+    }
+
+    for (const b of state.bits) {
+        ctx.globalAlpha = Math.min(1, b.life * 2);
+        ctx.fillStyle = b.col;
+        ctx.fillRect(b.x, b.y, 4, 4);
+        ctx.globalAlpha = 1;
+    }
+
+    drawYou();
+    drawCanary();
+    drawLampLight();
+
+    for (const p of state.pops) {
+        ctx.globalAlpha = Math.min(1, p.life);
+        ctx.fillStyle = p.color; ctx.font = 'bold 15px Segoe UI'; ctx.textAlign = 'center';
+        ctx.fillText(p.text, p.x, p.y);
+        ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    drawHUD();
+}
+
+/* ==================================================================
+   END
+   ================================================================== */
+function showOver() {
+    if (!state.paid) {
+        state.paid = true;
+        coins += state.banked;
+        storeSave();
+    }
+    const t = document.getElementById('overTitle');
+    const how = state.how;
+    t.textContent = how === 'buried' ? 'THE ROOF CAME IN' : how === 'dark' ? 'THE LAMP WENT OUT' : 'END OF SHIFT';
+    t.style.color = how === 'buried' ? '#ff6f6f' : '#e8b445';
+    document.getElementById('finalText').innerHTML =
+        `You banked <b>${state.banked}</b> from <b>${state.trips}</b> trip${state.trips === 1 ? '' : 's'} up the shaft,` +
+        ` and got <b>${state.deepest} m</b> down.` +
+        (sackValue() ? `<br><span style="font-size:14px;color:#ff8a65">You were still carrying ${sackValue()} — that stays down there.</span>` : '') +
+        `<br><span style="font-size:14px;color:#e8b445">🪙 <b>+${state.banked}</b> into the tin — ${coins} saved</span>`;
+    const rows = Object.keys(state.mined).map(k =>
+        `<div class="seam">${ORE[k].name} × ${state.mined[k]} — worth ${ORE[k].v * state.mined[k]}</div>`);
+    document.getElementById('seams').innerHTML = rows.join('') ||
+        '<div class="seam">You came back up with nothing at all.</div>';
+    document.getElementById('overOv').classList.remove('hidden');
+}
+
+/* ==================================================================
+   LOOP
+   ================================================================== */
+let last = 0;
+function loop(now) {
+    const dt = last ? Math.min((now - last) / 1000, 0.033) : 0.016;
+    last = now;
+    if (state) {
+        if (!state.paused && !state.over) update(dt);
+        render();
+    } else {
+        ctx.fillStyle = '#0b0a09'; ctx.fillRect(0, 0, W, H);
+    }
+    requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ==================================================================
+   MENU
+   ================================================================== */
+function pick(sel, attr, fn) {
+    document.querySelectorAll(sel + ' button').forEach(b => {
+        b.onclick = () => {
+            document.querySelectorAll(sel + ' button').forEach(x => x.classList.remove('sel'));
+            b.classList.add('sel');
+            fn(b.dataset[attr]);
+        };
+    });
+}
+pick('#lamp', 'l', v => { lampSecs = parseInt(v, 10); });
+pick('#hard', 'h', v => { hard = v; });
+
+storeLoad();
+refreshPurse();
+let storeReturn = 'titleOv';
+function openStore(fromOver) {
+    storeReturn = fromOver ? 'overOv' : 'titleOv';
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('overOv').classList.add('hidden');
+    document.getElementById('shopOv').classList.remove('hidden');
+    buildStore();
+}
+document.getElementById('shopBtn').onclick = () => { actx(); openStore(false); };
+document.getElementById('shopFromOver').onclick = () => openStore(true);
+document.getElementById('shopBack').onclick = () => {
+    document.getElementById('shopOv').classList.add('hidden');
+    document.getElementById(storeReturn).classList.remove('hidden');
+    refreshPurse();
+};
+document.getElementById('start').onclick = () => {
+    actx();
+    document.getElementById('titleOv').classList.add('hidden');
+    document.getElementById('overOv').classList.add('hidden');
+    newShift();
+};
+document.getElementById('again').onclick = () => {
+    document.getElementById('overOv').classList.add('hidden');
+    newShift();
+};
+document.getElementById('menu').onclick = () => {
+    document.getElementById('overOv').classList.add('hidden');
+    document.getElementById('titleOv').classList.remove('hidden');
+    refreshPurse();
+    state = null;
+};
+})();
+</script>
+</body>
+</html>
