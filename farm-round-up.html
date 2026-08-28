@@ -8,77 +8,83 @@
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
         font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        background:#0e1116; color:#eef3f8; overflow:hidden;
+        background:#a8dcff; color:#2a2318; overflow:hidden;
         -webkit-user-select:none; user-select:none;
     }
     canvas { display:block; }
     .back-btn {
         position:fixed; top:14px; left:14px; z-index:99999; text-decoration:none;
-        color:#1b1b1b; background:rgba(255,255,255,0.9); border:1px solid rgba(0,0,0,0.25);
+        color:#2a2318; background:rgba(255,255,255,0.92); border:1px solid rgba(90,70,40,0.35);
         padding:8px 16px; border-radius:8px; font-size:14px; line-height:1.2;
     }
     .back-btn:hover { background:#fff; }
     .footer-link {
         position:fixed; bottom:8px; left:0; right:0; text-align:center;
-        font-size:12px; color:rgba(255,255,255,0.35); z-index:20; pointer-events:none;
+        font-size:12px; color:rgba(255,255,255,0.75); z-index:20; pointer-events:none;
+        text-shadow:0 1px 3px rgba(0,0,0,0.5);
     }
-    .footer-link a { color:rgba(255,255,255,0.65); pointer-events:auto; }
+    .footer-link a { color:#fff; pointer-events:auto; }
 
     .overlay {
         position:fixed; inset:0; z-index:40; display:flex; align-items:center;
-        justify-content:center; padding:16px; overflow-y:auto; background:rgba(8,11,16,0.86);
+        justify-content:center; padding:16px; overflow-y:auto;
+        background:linear-gradient(170deg, rgba(150,214,255,0.93), rgba(190,236,168,0.93));
     }
     .overlay.hidden { display:none; }
     .panel {
-        background:linear-gradient(150deg,#1d2836,#121821);
-        border:2px solid #ffa63d; border-radius:18px; padding:20px 26px;
-        max-width:660px; width:94%; text-align:center;
+        background:linear-gradient(150deg,#fffdf4,#ffeed2);
+        border:3px solid #e8850f; border-radius:18px; padding:20px 26px;
+        max-width:660px; width:94%; text-align:center; color:#2a2318;
         max-height:calc(100vh - 32px); overflow-y:auto;
-        box-shadow:0 18px 60px rgba(0,0,0,0.65), 0 0 44px rgba(255,166,61,0.14);
+        box-shadow:0 18px 50px rgba(60,40,10,0.35), 0 0 0 6px rgba(255,255,255,0.5);
     }
-    h1 { font-size:clamp(26px,5.5vw,42px); letter-spacing:2px; margin-bottom:4px;
-         text-shadow:0 0 16px rgba(255,166,61,0.4); }
-    h2 { font-size:15px; font-weight:normal; color:#9fb3c8; margin-bottom:10px; }
-    .rules { text-align:left; font-size:13.5px; line-height:1.6; color:#dbe6f0;
-             background:rgba(0,0,0,0.3); border-radius:10px; padding:12px 14px; margin:10px 0; }
-    .rules b { color:#ffa63d; }
+    h1 { font-size:clamp(26px,5.5vw,42px); letter-spacing:2px; margin-bottom:4px; color:#8a3f05;
+         text-shadow:0 2px 0 #ffd9a6; }
+    h2 { font-size:15px; font-weight:normal; color:#7b6a4c; margin-bottom:10px; }
+    .rules { text-align:left; font-size:13.5px; line-height:1.6; color:#3b3222;
+             background:rgba(255,255,255,0.72); border:1px solid rgba(200,160,90,0.4);
+             border-radius:10px; padding:12px 14px; margin:10px 0; }
+    .rules b { color:#b8560a; }
     .keys { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0; font-size:13px; }
-    .keys div { background:rgba(0,0,0,0.3); border-radius:8px; padding:8px 10px; text-align:left; }
-    kbd { background:#141b25; border:1px solid #4a6070; border-bottom-width:2px;
-          border-radius:5px; padding:1px 6px; font-size:12px; color:#cfe2f0; }
-    .label { font-size:12px; color:#9fb3c8; margin:10px 0 3px; letter-spacing:1px; }
+    .keys div { background:rgba(255,255,255,0.72); border:1px solid rgba(200,160,90,0.4);
+                border-radius:8px; padding:8px 10px; text-align:left; }
+    kbd { background:#fff6e2; border:1px solid #c99b58; border-bottom-width:2px;
+          border-radius:5px; padding:1px 6px; font-size:12px; color:#4a3a1c; }
+    .label { font-size:12px; color:#7b6a4c; margin:10px 0 3px; letter-spacing:1px; }
     .row { display:flex; gap:7px; justify-content:center; flex-wrap:wrap; }
     .btn {
-        background:linear-gradient(135deg,#ffa63d,#c96a0b); color:#22160a;
+        background:linear-gradient(135deg,#ffb43d,#c96a0b); color:#2a1a05;
         border:2px solid #ffd9a6; border-radius:10px; cursor:pointer;
-        padding:11px 24px; font-size:16px; font-weight:bold; box-shadow:0 4px 0 #7d4206;
+        padding:11px 24px; font-size:16px; font-weight:bold; box-shadow:0 4px 0 #a35408;
     }
-    .btn:hover { filter:brightness(1.1); }
-    .btn:active { transform:translateY(2px); box-shadow:0 2px 0 #7d4206; }
-    .btn.small { padding:6px 12px; font-size:13px; min-width:56px; color:#eef3f8;
-                 background:linear-gradient(135deg,#2a3a4c,#18222e); border-color:#5a7488; box-shadow:0 3px 0 #0d141c; }
-    .btn.small.sel { background:linear-gradient(135deg,#ffa63d,#c96a0b); color:#22160a; border-color:#ffe3c2; }
-    .btn.team { min-width:78px; font-weight:bold; color:#141b25; }
-    .btn.team.sel { box-shadow:0 0 12px rgba(255,255,255,0.5); border-color:#fff; }
-    .final { font-size:17px; color:#ffa63d; margin:8px 0; }
-    .purse { font-size:16px; color:#ffd24a; margin:6px 0 12px; }
-    .purse b { font-size:20px; }
+    .btn:hover { filter:brightness(1.08); }
+    .btn:active { transform:translateY(2px); box-shadow:0 2px 0 #a35408; }
+    .btn.small { padding:6px 12px; font-size:13px; min-width:56px; color:#3b3222;
+                 background:linear-gradient(135deg,#ffffff,#eadfc8); border-color:#c9ab7c;
+                 box-shadow:0 3px 0 #bda887; }
+    .btn.small.sel { background:linear-gradient(135deg,#ffc46b,#e8850f); color:#2a1a05;
+                     border-color:#8a3f05; box-shadow:0 3px 0 #a35408; }
+    .btn.team { min-width:78px; font-weight:bold; color:#241c0c; border-color:#fff; }
+    .btn.team.sel { box-shadow:0 0 0 3px #8a3f05; border-color:#fff; }
+    .final { font-size:17px; color:#a34b05; margin:8px 0; font-weight:bold; }
+    .purse { font-size:16px; color:#8a6a05; margin:6px 0 12px; }
+    .purse b { font-size:20px; color:#a37f05; }
     .item {
         display:flex; align-items:center; gap:12px; text-align:left;
-        background:rgba(0,0,0,0.26); border:1px solid rgba(255,166,61,0.25);
+        background:rgba(255,255,255,0.8); border:1px solid rgba(200,160,90,0.5);
         border-radius:10px; padding:10px 12px; margin:7px 0;
     }
     .item .txt { flex:1; }
-    .item .name { font-weight:bold; font-size:14.5px; color:#eef3f8; }
-    .item .desc { font-size:12.5px; color:#9fb3c8; line-height:1.45; }
-    .item .lvl { font-size:11.5px; color:#8fd46a; letter-spacing:0.5px; }
+    .item .name { font-weight:bold; font-size:14.5px; color:#2a2318; }
+    .item .desc { font-size:12.5px; color:#6d6151; line-height:1.45; }
+    .item .lvl { font-size:11.5px; color:#2f7d16; letter-spacing:0.5px; font-weight:bold; }
     .item button {
-        background:linear-gradient(135deg,#ffa63d,#c96a0b); color:#22160a; border:2px solid #ffd9a6;
+        background:linear-gradient(135deg,#ffb43d,#c96a0b); color:#2a1a05; border:2px solid #ffd9a6;
         border-radius:9px; cursor:pointer; padding:8px 13px; font-size:13px; font-weight:bold;
         white-space:nowrap; min-width:92px;
     }
-    .item button[disabled] { background:#2a3a46; border-color:#44586a; color:#7e93a3; cursor:default; }
-    .item.maxed { border-color:rgba(143,212,106,0.45); }
+    .item button[disabled] { background:#e2d8c6; border-color:#c6b89f; color:#8f8474; cursor:default; }
+    .item.maxed { border-color:rgba(47,125,22,0.5); background:rgba(228,246,214,0.85); }
     .standing { font-size:14px; margin:3px 0; }
 </style>
 </head>
@@ -176,7 +182,7 @@
       <button class="btn" id="start">ROUND THEM UP</button>
       <button class="btn small" id="shopBtn">🪙 FEED STORE</button>
     </div>
-    <div style="color:#8ea3b5; font-size:12px; margin-top:8px;" id="purseHint"></div>
+    <div style="color:#7b6a4c; font-size:12px; margin-top:8px;" id="purseHint"></div>
   </div>
 </div>
 
@@ -186,7 +192,7 @@
     <h2>What you made yesterday, spent on doing better today</h2>
     <div class="purse">You have <b id="purse">0</b> in the tin</div>
     <div id="shopList"></div>
-    <div style="color:#8ea3b5; font-size:12px; margin-top:8px;">
+    <div style="color:#7b6a4c; font-size:12px; margin-top:8px;">
       Everything you bank in a day goes in the tin, and what you buy stays bought.
       Seed is used up when you sow it — press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> on your own land.
     </div>
@@ -414,7 +420,7 @@ function buildShop() {
 function refreshPurseHint() {
     const el = document.getElementById('purseHint');
     if (!el) return;
-    el.innerHTML = `🪙 <b style="color:#ffd24a">${coins}</b> in the tin` +
+    el.innerHTML = `🪙 <b style="color:#a37f05">${coins}</b> in the tin` +
         `  ·  ${owned.plots} plot${owned.plots === 1 ? '' : 's'}` +
         `  ·  ${seedCount()} seed packet${seedCount() === 1 ? '' : 's'}` +
         (owned.field ? `  ·  field ploughed out ${owned.field}×` : '') +
@@ -2325,14 +2331,14 @@ function showOver() {
     const me = state.players[0];
     const iWon = win === me;
     document.getElementById('overTitle').textContent = iWon ? 'BEST FARMHAND' : 'END OF THE DAY';
-    document.getElementById('overTitle').style.color = iWon ? '#b6e34a' : '#ff8a65';
+    document.getElementById('overTitle').style.color = iWon ? '#2f7d16' : '#c0392b';
     document.getElementById('finalText').innerHTML =
         `<b style="color:${TEAMS[win.team].color}">${win.isBot ? win.name : 'You'}</b> penned ` +
         `<b>${win.banked}</b> worth of livestock.` +
-        `<br><span style="font-size:14px;color:#9fb3c8">You penned <b>${me.banked}</b>, barged rivals <b>${me.rammed}</b> time${me.rammed === 1 ? '' : 's'}, ` +
+        `<br><span style="font-size:14px;color:#6d6151">You penned <b>${me.banked}</b>, barged rivals <b>${me.rammed}</b> time${me.rammed === 1 ? '' : 's'}, ` +
         `and lost <b>${me.dropped}</b> animal${me.dropped === 1 ? '' : 's'}` +
         `${me.raided ? `, while rustling from a pen <b>${me.raided}</b> time${me.raided === 1 ? '' : 's'}` : ''}.</span>` +
-        `<br><span style="font-size:13px;color:#7d8fa0">${state.sold.length} wagon${state.sold.length === 1 ? '' : 's'} reached the market` +
+        `<br><span style="font-size:13px;color:#7b6a4c">${state.sold.length} wagon${state.sold.length === 1 ? '' : 's'} reached the market` +
         (me.planted ? ` · you sowed ${me.planted} and picked ${me.harvested}` : '') +
         (me.eaten ? ` · deer had ${me.eaten}` : '') + `.</span>` +
         `<br><span style="font-size:14px;color:#ffd24a">🪙 <b>+${me.banked}</b> into the tin — ${coins} saved</span>`;
@@ -2345,7 +2351,7 @@ function showOver() {
         if (p.raided) bits.push(`${p.raided} raid${p.raided === 1 ? '' : 's'}`);
         return `<div class="standing">${i + 1}. <b style="color:${TEAMS[p.team].color}">` +
                `${p.isBot ? p.name : 'You'}</b> — ${p.banked}` +
-               (bits.length ? `<br><span style="font-size:12px;color:#9fb3c8">${bits.join(' · ')}</span>` : '') +
+               (bits.length ? `<br><span style="font-size:12px;color:#7b6a4c">${bits.join(' · ')}</span>` : '') +
                `</div>`;
     }).join('');
     document.getElementById('overOv').classList.remove('hidden');
