@@ -119,7 +119,9 @@
       wagon. A <b>defender</b> 🧑‍🚒 sees off the fox and the deer and barges rivals off your land.
       Everything they bring in is banked as yours.<br><br>
       Every plot has a <b>ploughed field</b> in the bottom corner — that is the only ground that
-      takes seed, and yours is marked in your own colour. Stand in it and press <kbd>1</kbd>
+      takes seed, and yours is marked in your own colour. The store will <b>plough you more
+      ground</b> when you can afford it, which is the only way to get more than a handful in at
+      once. Stand in it and press <kbd>1</kbd>
       <kbd>2</kbd> <kbd>3</kbd> to sow, leave it to come up, then pick it and load it onto a wagon
       like anything else — wheat sells for 6, corn 14, a pumpkin 30.<br><br>
       And watch for <b>deer</b> 🦌. They walk in, pick the crop nobody is standing near, and take a
@@ -275,6 +277,7 @@ const PLANT_GAP = 62;            // how far apart you can sow them
 // that takes seed — you can see it, so you know where to stand.
 const FIELD_W = 420;
 const FIELD_H = 250;
+const FIELD_GROW = 0.26;         // each ploughing adds this much to both sides
 
 // Deer come for whatever is growing.
 const DEER_FROM = 20;
@@ -352,7 +355,7 @@ const HAND_SPEED = 0.88;         // a shade slower than you
 // What you make in a day is yours to keep and spend before the next one.
 let coins = 0;
 let owned = {
-    plots: 1, scarecrow: 0, dog: 0,
+    plots: 1, scarecrow: 0, dog: 0, field: 0,
     seeds: { wheat: 0, corn: 0, pumpkin: 0 },
     hires: { farmer: 0, feeder: 0, seller: 0, defender: 0 },
 };
@@ -364,6 +367,8 @@ const SHOP = [
       desc:'24 seconds in the ground, sells for 14.' },
     { key:'pumpkin', kind:'seed', name:'Pumpkin seed', cost:15,
       desc:'A slow 36 seconds and the deer love it — but it sells for 30.' },
+    { key:'field', kind:'up', name:'Plough more ground', max:3, cost:[35, 80, 170],
+      desc:'Your field gets a quarter bigger each time — room for more in the ground at once.' },
     { key:'scarecrow', kind:'up', name:'Scarecrow', max:2, cost:[40, 90],
       desc:'Stands on your land and keeps deer off everything within reach.' },
     { key:'dog', kind:'up', name:'Farm dog of your own', max:1, cost:[70],
@@ -387,7 +392,7 @@ function shopLoad() {
         if (raw) {
             const d = JSON.parse(raw);
             coins = d.coins || 0;
-            owned = Object.assign({ plots: 1, scarecrow: 0, dog: 0, seeds: {}, hires: {} }, d.owned || {});
+            owned = Object.assign({ plots: 1, scarecrow: 0, dog: 0, field: 0, seeds: {}, hires: {} }, d.owned || {});
             owned.seeds = Object.assign({ wheat: 0, corn: 0, pumpkin: 0 }, owned.seeds || {});
             owned.hires = Object.assign({ farmer: 0, feeder: 0, seller: 0, defender: 0 }, owned.hires || {});
         }
@@ -444,6 +449,7 @@ function refreshPurseHint() {
     el.innerHTML = `🪙 <b style="color:#ffd24a">${coins}</b> in the tin` +
         `  ·  ${owned.plots} plot${owned.plots === 1 ? '' : 's'}` +
         `  ·  ${seedCount()} seed packet${seedCount() === 1 ? '' : 's'}` +
+        (owned.field ? `  ·  field ploughed out ${owned.field}×` : '') +
         (owned.scarecrow ? `  ·  ${owned.scarecrow} scarecrow${owned.scarecrow === 1 ? '' : 's'}` : '') +
         (hiredCount() ? `  ·  ${hiredCount()} hired hand${hiredCount() === 1 ? '' : 's'}` : '');
 }
@@ -538,6 +544,7 @@ function newGame() {
         players, depots, wagons: plats, terrW, total,
         wagonT: [], wagonN: 0, sold: [],
         crops: [], deer: [], deerT: DEER_FROM, scarecrows: [],
+        fieldLevel: owned.field || 0,
         crates: [], crateT: 0.5,
         pads: [],
         dog: null, dogT: 10,
@@ -647,7 +654,13 @@ function marketX(plot) { return state.terrW * (plot + 1) - MARKET_W; }
 
 // The ploughed field on a given plot.
 function fieldOf(plot) {
-    return { x: state.terrW * plot + 70, y: H - FIELD_H - 60, w: FIELD_W, h: FIELD_H };
+    // ploughing more ground makes your fields bigger — not anybody else's
+    const me = state.players[0];
+    const mine = me && (plot === me.team || (me.extraPlots || []).indexOf(plot) >= 0);
+    const k = mine ? 1 + (state.fieldLevel || 0) * FIELD_GROW : 1;
+    const w = Math.min(state.terrW - 150, FIELD_W * k);
+    const h = Math.min(H - 190, FIELD_H * k);
+    return { x: state.terrW * plot + 70, y: H - h - 60, w, h };
 }
 function inField(p, plot) {
     const f = fieldOf(plot);
