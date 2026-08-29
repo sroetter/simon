@@ -98,8 +98,9 @@
       The rats are only ever after the food — they never come looking for you. But they
       will not move out of your way either, so <b>walk into one and it nips you</b> and
       you lose a heart. Charge one to send it flying instead. Three hearts and you are out.<br><br>
-      A rat can only put away <b>four helpings a floor</b>. After that it is stuffed, gives up
-      stealing and waddles about getting in the way — so they can never clear the floor on you.
+      A rat is a nuisance rather than a rival. It only notices food it is nearly stood on, it
+      is slower than you are even on a full belly, and it can only put away <b>two helpings a
+      floor</b> — after that it is stuffed and just waddles about getting in the way.
     </div>
     <div class="keys">
       <div><kbd>W A S D</kbd> or <kbd>← ↑ ↓ →</kbd> — waddle about</div>
@@ -181,10 +182,12 @@ const P_SPD_MAX = 258, P_SPD_MIN = 168; // ...and slow down with it
 const DASH_T = 0.22, DASH_SPD = 640, DASH_CD = 0.46;
 
 const HEARTS = 3, HURT_INVULN = 1.4;
-const RAT_R = 13, RAT_SPD = 152, RAT_STUN = 1.1, RAT_EAT = 0.55;
-// a rat has a stomach too. four is its lot for the floor, then it is stuffed
-// and stops taking things, so a pack of them can never strip the place bare.
-const RAT_FILL = 4, RAT_FULL_SPD = 0.55;
+const RAT_R = 13, RAT_SPD = 108, RAT_STUN = 1.1, RAT_EAT = 1.8;
+// A rat is a nuisance, not a rival. It only notices food it is nearly stood on,
+// it is slower than you are even on a full belly, it sits and chews for a good
+// while after each theft, and two helpings is its lot for the whole floor.
+const RAT_SIGHT = 240;
+const RAT_FILL = 2, RAT_FULL_SPD = 0.55, RAT_CHEW_SPD = 0.35;
 const FOOD_R = 15, RESTOCK = 2.1;
 const CRATE_MIN = 34, CRATE_MAX = 62;
 const PU_EVERY = 13, PU_R = 16, PU_LIFE = 11;
@@ -303,7 +306,7 @@ function levelPlan(n) {
     return {
         bricks: Math.min(9, 3 + n),                              // how many are in the way
         food:   Math.min(30, 13 + n * 2),                        // how much lies about at once
-        rats:   Math.round(Math.min(6, Math.max(0, n - 3)) * d.rats),   // none until floor 4
+        rats:   Math.round(Math.min(4, Math.max(0, n - 3)) * d.rats),   // none until floor 4
         chilli: n <= 1 ? 0 : Math.min(0.22, 0.05 * (n - 1)) * d.chilli,
         crates: Math.min(8, n),
         drain:  (0.85 + n * 0.12) * d.drain,                     // belly lost per second
@@ -675,11 +678,11 @@ function updateRats(dt) {
         // get hurt it is because you walked into one, not because it hunted you down.
         const dp = Math.hypot(p.x - r.x, p.y - r.y);
         let tx = null, ty = null, bd = 1e9;
-        if (!r.full) {
+        if (!r.full && r.munch <= 0) {
             for (const f of state.food) {
                 if (f.kind.hot) continue;
                 const d = Math.hypot(f.x - r.x, f.y - r.y);
-                if (d < bd) { bd = d; tx = f.x; ty = f.y; }
+                if (d < bd && d < RAT_SIGHT) { bd = d; tx = f.x; ty = f.y; }
             }
         }
         if (tx === null) {
@@ -697,7 +700,7 @@ function updateRats(dt) {
         const dx = tx - r.x, dy = ty - r.y, d = Math.hypot(dx, dy) || 1;
         const wob = Math.sin(r.wob) * 0.25;
         const a = Math.atan2(dy, dx) + wob;
-        const spd = RAT_SPD * (r.full ? RAT_FULL_SPD : 1);
+        const spd = RAT_SPD * (r.full ? RAT_FULL_SPD : r.munch > 0 ? RAT_CHEW_SPD : 1);
         r.vx += (Math.cos(a) * spd - r.vx) * Math.min(1, dt * 8);
         r.vy += (Math.sin(a) * spd - r.vy) * Math.min(1, dt * 8);
         moveWithWalls(r, dt);
