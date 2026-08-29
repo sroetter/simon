@@ -94,6 +94,11 @@
     }
     .item button[disabled] { background:#e2d8dd; border-color:#c9b6c0; color:#8f8489; cursor:default; }
     .item.maxed { border-color:rgba(47,125,22,0.5); background:rgba(228,246,214,0.85); }
+    .cat { text-align:left; margin:18px 0 2px; font-size:13px; font-weight:bold;
+           letter-spacing:1.5px; color:#c2137a; padding-bottom:4px;
+           border-bottom:2px solid rgba(255,63,164,0.3); }
+    .cat:first-child { margin-top:4px; }
+    .cat span { font-weight:normal; letter-spacing:0; font-size:11.5px; color:#7b6a70; }
 </style>
 </head>
 <body>
@@ -129,7 +134,8 @@
       hurt anybody; they only paint, and you can paint back over everything they lay down.<br><br>
       The <b>last 30 seconds count double</b>: any floor you take in that time and <b>still hold at
       the whistle</b> is worth twice as much. Rounds are won and lost right at the end.<br><br>
-      Every round pays you <b>🪙 paint tokens</b> — for the floor you finish holding, for winning,
+      Every round pays you <b>🪙 paint tokens</b> — <b>+10</b> a burst and <b>−5</b> every time
+      you go down, for the floor you finish holding, for winning,
       for every turret you still hold and for claiming the mega boom. The <b>🛒 paint shop</b> sells
       a bigger tank, a faster drink, a wider spray, quicker feet, more pickups, and — for a great
       many rounds' worth — a corner turret that is <b>already yours at kickoff</b>. None of it is
@@ -246,7 +252,7 @@ const FILL_OWN = 42, FILL_BARE = 12, FILL_ENEMY = 0;
 const FIRE_CD = 0.085, SHOT_SPD = 560, SHOT_LIFE = 0.4, SHOT_R = 26, SHOT_DMG = 24;
 const ROLL_CD = 0.19, ROLL_INK = 3.6, ROLL_LIFE = 0.19, ROLL_R = 42, ROLL_DMG = 17;
 const HP = 100, REGEN_WAIT = 2.0, REGEN = 20;
-const DEATH_R = 54, RESPAWN = 2.4, SPAWN_R = 74;
+const DEATH_R = 54, RESPAWN = 5, SPAWN_R = 74;
 const BOMB_FLY = 0.55, BOMB_REACH = 250, BOMB_R = 84, BOMB_DMG = 62, BOMB_HURT = 96;
 const TURBO_T = 7, TURBO_MULT = 1.42, ROLLER_T = 8;
 const PU_EVERY = 7.5, PU_MAX = 3, PU_R = 17;
@@ -265,13 +271,34 @@ const CORNERS = [[0.12, 0.22], [0.88, 0.78], [0.88, 0.22], [0.12, 0.78]];
 const TURRET_SPOTS = [[0.24, 0.27], [0.76, 0.73], [0.76, 0.27], [0.24, 0.73]];
 const TURRET_R = 25, TURRET_RING = 84, TURRET_FIRE = 0.5, TURRET_RANGE = 200;
 const TASK_HOLD = 4.5, TASK_SHOTS = 8, TASK_TARGETS = 3, TARGET_R = 15;
-const TASKS = ['hold', 'shoot', 'targets'];
-const TASK_GOAL = { hold: TASK_HOLD, shoot: TASK_SHOTS, targets: TASK_TARGETS };
-const TASK_TEXT = {
-    hold:    'STAND IN THE RING',
-    shoot:   'PAINT THE CORE ' + TASK_SHOTS + ' TIMES',
-    targets: 'SPLAT ALL ' + TASK_TARGETS + ' TARGETS',
-};
+const TASK_PAINT = 40, TASK_LAPS = 2, TASK_BURSTS = 1;
+const TASKS = ['hold', 'shoot', 'targets', 'paint', 'laps', 'burst'];
+// a bot will walk into a ring and stand there, which finishes some jobs and not
+// others — it is never asked to run rings round anything
+const BOT_TASKS = ['hold', 'shoot', 'targets', 'paint', 'burst'];
+const TASK_GOAL = { hold: TASK_HOLD, shoot: TASK_SHOTS, targets: TASK_TARGETS,
+                    paint: TASK_PAINT, laps: TASK_LAPS, burst: TASK_BURSTS };
+// however late it gets, no job is ever worse than this
+const TASK_MAX = { paint: 85, laps: 5, burst: 3 };
+// how fast a job bleeds away with nobody of that side stood in the ring. the
+// three new ones keep their own books, so they sit at zero here
+const TASK_DECAY = { hold: 0.8, shoot: 0.5, targets: 0.5, paint: 0, laps: 0, burst: 0 };
+const TASK_DROP = 7;   // seconds an untouched job hangs about before it is given up
+// A turret held from the whistle paints for you all round, so grabbing one early
+// has to be the easier bargain: the job a turret sets grows steadily longer as the
+// clock runs down, up to this much again by the final whistle.
+const TASK_RAMP = 1.5;
+const KILL_PAY = 10, DEATH_PAY = 5;   // tokens for bursting a rival, and for being burst
+// what the banner over a turret reads, now that no two jobs are the same size
+function taskText(t) {
+    const g = taskGoal(t);
+    if (t.task === 'hold')    return 'STAND IN THE RING ' + g.toFixed(1) + 's';
+    if (t.task === 'shoot')   return 'PAINT THE CORE ' + g + ' TIMES';
+    if (t.task === 'targets') return 'SPLAT ALL ' + g + ' TARGETS';
+    if (t.task === 'paint')   return 'PAINT ' + g + '% OF THE RING';
+    if (t.task === 'laps')    return 'RUN ' + g + ' RING' + (g === 1 ? '' : 'S') + ' ROUND IT';
+    return 'BURST ' + g + ' RIVAL' + (g === 1 ? '' : 'S') + ' NEARBY';
+}
 
 const SKILL = {
     easy:   { err:0.42, aggr:0.45, react:0.72, useT:0.9 },
@@ -281,29 +308,55 @@ const SKILL = {
 
 let myHue = 0, nTeams = 2, teamSize = 2, skill = 'normal', matchSecs = 90;
 
-// The paint shop. None of it is cheap and the last line is a season's work.
+// The paint shop, in three aisles. None of it is cheap and the last line is a
+// season's work. Every entry names a `cat` — buildShop() lays them out under it.
+const SHOP_CATS = [
+    { key:'ink',  name:'\ud83c\udfa8 INK & SPRAY',   note:'more paint, thrown fatter' },
+    { key:'body', name:'\ud83c\udfc3 LEGS & LUNGS',  note:'getting about, staying up, getting back' },
+    { key:'kit',  name:'\ud83d\udce6 KIT & CORNERS', note:'pickups, bombs and the four turrets' },
+];
 const STORE = [
-    { key:'tank',   face:'🪣', name:'Bigger tank',      max:3, cost:[2500, 6000, 14000],
+    { key:'tank',   cat:'ink', face:'\ud83e\udea3', name:'Bigger tank',   max:3, cost:[1250, 3000, 7000],
       desc:'+25 ink in the can each time. Longer bursts before you have to go and drink.' },
-    { key:'refill', face:'💧', name:'Thirsty boots',    max:3, cost:[3000, 7500, 16000],
+    { key:'refill', cat:'ink', face:'\ud83d\udca7', name:'Thirsty boots', max:3, cost:[1500, 3750, 8000],
       desc:'Drink 25% faster off your own colour each time. Less standing about.' },
-    { key:'spray',  face:'🖌️', name:'Wider spray',      max:3, cost:[4000, 9000, 20000],
+    { key:'spray',  cat:'ink', face:'\ud83d\udd8c\ufe0f', name:'Wider spray', max:3, cost:[2000, 4500, 10000],
       desc:'Every drop you throw lands 12% fatter. It adds up over a whole round.' },
-    { key:'boots',  face:'👟', name:'Quick feet',       max:2, cost:[5000, 12000],
-      desc:'Run 7% faster each time — on any floor, even a rival\u2019s.' },
-    { key:'drops',  face:'📦', name:'Friends in supply', max:2, cost:[4500, 10000],
+    { key:'roller', cat:'ink', face:'\ud83c\udfb3', name:'Fat roller',    max:2, cost:[2200, 5200],
+      desc:'The roller pickup sweeps 15% wider each time. The fastest floor in the game, faster.' },
+    { key:'mess',   cat:'ink', face:'\ud83d\udca5', name:'Messy end',     max:2, cost:[1800, 4200],
+      desc:'When you burst a rival the splat you leave lands 20% wider each time.' },
+
+    { key:'boots',  cat:'body', face:'\ud83d\udc5f', name:'Quick feet',   max:2, cost:[2500, 6000],
+      desc:'Run 7% faster each time \u2014 on any floor, even a rival\u2019s.' },
+    { key:'coat',   cat:'body', face:'\ud83e\udde5', name:'Thicker coat', max:2, cost:[2600, 6200],
+      desc:'+20 health each time. It takes one more hit to put you down.' },
+    { key:'mend',   cat:'body', face:'\ud83e\ude79', name:'Quick mender', max:2, cost:[2000, 4800],
+      desc:'Start healing sooner after a hit and heal 40% faster each time.' },
+    { key:'back',   cat:'body', face:'\u23f1\ufe0f', name:'Straight back up', max:2, cost:[2400, 5600],
+      desc:'Down for 18% less time each. Fewer seconds watching from your corner.' },
+    { key:'land',   cat:'body', face:'\ud83e\ude82', name:'Big landing',  max:1, cost:[3200],
+      desc:'The puddle you drop into when you come back is half again as wide.' },
+
+    { key:'drops',  cat:'kit', face:'\ud83d\udce6', name:'Friends in supply', max:2, cost:[2250, 5000],
       desc:'Pickups turn up 20% more often each time. More bombs, mines and sprinklers.' },
-    { key:'head',   face:'⭐', name:'A corner already yours', max:1, cost:[40000],
+    { key:'bomb',   cat:'kit', face:'\ud83e\udde8', name:'Fatter bombs',  max:2, cost:[2800, 6500],
+      desc:'Your bombs paint 18% wider each time. The blast that hurts stays the same.' },
+    { key:'sprink', cat:'kit', face:'\ud83d\udebf', name:'Longer sprinklers', max:2, cost:[2100, 4900],
+      desc:'Sprinklers you put down run 40% longer each time, painting the whole while.' },
+    { key:'task',   cat:'kit', face:'\ud83d\udc41\ufe0f', name:'Keen eye', max:2, cost:[3000, 7000],
+      desc:'The little job a turret sets your side is 15% shorter each time.' },
+    { key:'head',   cat:'kit', face:'\u2b50', name:'A corner already yours', max:1, cost:[20000],
       desc:'The turret nearest your corner starts the round belonging to you. The dearest thing here by a very long way.' },
 ];
 let coins = 0;
-let owned = { tank:0, refill:0, spray:0, boots:0, drops:0, head:0 };
+let owned = { tank:0, refill:0, spray:0, roller:0, mess:0, boots:0, coat:0, mend:0, back:0, land:0, drops:0, bomb:0, sprink:0, task:0, head:0 };
 
 function storeLoad() {
     try {
         const d = JSON.parse(localStorage.getItem('splatWars.store') || '{}');
         coins = d.coins || 0;
-        owned = Object.assign({ tank:0, refill:0, spray:0, boots:0, drops:0, head:0 }, d.owned || {});
+        owned = Object.assign({ tank:0, refill:0, spray:0, roller:0, mess:0, boots:0, coat:0, mend:0, back:0, land:0, drops:0, bomb:0, sprink:0, task:0, head:0 }, d.owned || {});
     } catch (e) { /* first time out */ }
 }
 function storeSave() {
@@ -316,6 +369,26 @@ function fillOwn()   { return FILL_OWN * (1 + owned.refill * 0.25); }
 function sprayMult(p) { return p.isBot ? 1 : 1 + owned.spray * 0.12; }
 function bootMult(p)  { return p.isBot ? 1 : 1 + owned.boots * 0.07; }
 function dropEvery() { return PU_EVERY * (1 - owned.drops * 0.2); }
+// the rest of the shop, each one a single number the sim already asks for.
+// bots never benefit — every one of these checks who is holding the brush.
+function rollMult(p)  { return p.isBot ? 1 : 1 + owned.roller * 0.15; }
+function burstR(p)    { return DEATH_R * (p.isBot ? 1 : 1 + owned.mess * 0.2); }
+function myHp()       { return HP + owned.coat * 20; }
+function hpMax(p)     { return p.isBot ? HP : myHp(); }
+function regenRate(p) { return REGEN * (p.isBot ? 1 : 1 + owned.mend * 0.4); }
+function regenWait(p) { return REGEN_WAIT * (p.isBot ? 1 : 1 - owned.mend * 0.2); }
+function respawnT(p)  { return RESPAWN * (p.isBot ? 1 : 1 - owned.back * 0.18); }
+function landR(p)     { return SPAWN_R * 0.7 * (p.isBot ? 1 : 1 + owned.land * 0.5); }
+function bombR(p)     { return BOMB_R * (!p || p.isBot ? 1 : 1 + owned.bomb * 0.18); }
+function sprinkT(p)   { return SPRINK_T * (p.isBot ? 1 : 1 + owned.sprink * 0.4); }
+// the job is sized once, when it is picked up, and then left alone — so the bar
+// cannot shift under you mid-task and Keen eye bought later cannot shorten it
+function taskGoal(t)  { return t.goal || TASK_GOAL[t.task]; }
+function taskHard()   {
+    if (!state || !matchSecs) return 1;
+    const gone = Math.max(0, Math.min(1, 1 - state.t / matchSecs));
+    return 1 + TASK_RAMP * gone;
+}
 let state = null, running = false, paused = false, last = 0;
 const keys = {};
 
@@ -531,7 +604,7 @@ function newGame() {
                 team: t, isBot: !isMe, name: isMe ? 'You' : names[nextName++ % names.length],
                 x: hx, y: hy, home: { x: hx, y: hy },
                 face: Math.atan2(H / 2 - hy, W / 2 - hx),
-                hp: HP, ink: isMe ? tankMax() : TANK, hurtT: 0, fireCd: 0, down: 0,
+                hp: isMe ? myHp() : HP, ink: isMe ? tankMax() : TANK, hurtT: 0, fireCd: 0, down: 0,
                 splats: 0, bursts: 0, pu: null, turbo: 0, roller: 0,
                 goal: null, aiT: 0, sampT: 0.35, jink: 0, lastX: hx, lastY: hy,
             });
@@ -573,7 +646,7 @@ function fire(p) {
             vx: Math.cos(a) * SHOT_SPD * (rolling ? 0.72 : 1),
             vy: Math.sin(a) * SHOT_SPD * (rolling ? 0.72 : 1),
             t: rolling ? ROLL_LIFE : SHOT_LIFE,
-            r: (rolling ? ROLL_R : SHOT_R) * sprayMult(p),
+            r: (rolling ? ROLL_R * rollMult(p) : SHOT_R) * sprayMult(p),
             dmg: rolling ? ROLL_DMG : SHOT_DMG,
             team: p.team, from: p,
         });
@@ -604,19 +677,22 @@ function usePower(p) {
 }
 
 function burst(p, killer) {
-    splat(p.x, p.y, DEATH_R, killer ? killer.team : p.team);
+    splat(p.x, p.y, burstR(killer || p), killer ? killer.team : p.team);
     for (let i = 0; i < 14; i++) {
         const a = Math.random() * Math.PI * 2, s = 80 + Math.random() * 190;
         state.drips.push({ x:p.x, y:p.y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
                            team: killer ? killer.team : p.team, life:0.5, r:3 + Math.random()*4 });
     }
-    p.down = RESPAWN;
-    p.hp = HP;
+    p.down = respawnT(p);
+    p.hp = hpMax(p);
     p.ink = p.isBot ? TANK : tankMax();
     p.roller = 0; p.turbo = 0;
     if (killer) {
         killer.splats++;
         p.bursts++;
+        for (const tu of state.turrets)
+            if (tu.task === 'burst' && tu.taskBy === killer.team && tu.team !== killer.team &&
+                Math.hypot(tu.x - p.x, tu.y - p.y) < TURRET_RANGE) { tu.prog++; tu.flash = 0.25; }
         if (!killer.isBot) popup(p.x, p.y - 26, 'SPLAT!', '#ffffff');
         if (!p.isBot) say('Burst by ' + killer.name + ' — back in a moment');
     }
@@ -626,14 +702,14 @@ function burst(p, killer) {
 function damage(p, amount, from) {
     if (p.down > 0) return;
     p.hp -= amount;
-    p.hurtT = REGEN_WAIT;
+    p.hurtT = regenWait(p);
     if (p.hp <= 0) burst(p, from);
 }
 
 /* --------------------------------------------------- sprinklers, mines -- */
 function placeKit(p, kind) {
     if (kind === 'sprinkler') {
-        state.kit.push({ kind, x: p.x, y: p.y, team: p.team, t: SPRINK_T,
+        state.kit.push({ kind, x: p.x, y: p.y, team: p.team, t: sprinkT(p),
                          hp: SPRINK_HP, pulse: 0.3, arm: 0, ring: 0, spin: 0 });
         beep(560, 0.12, 'sine', 0.05);
     } else {
@@ -733,7 +809,8 @@ function drawKit() {
 function makeTurrets() {
     return TURRET_SPOTS.map((c, i) => {
         const t = { i, x: c[0] * W, y: c[1] * H, team: -1, task: null, taskBy: -1,
-                    prog: 0, targets: [], fireT: 0, sweep: Math.random() * Math.PI * 2,
+                    prog: 0, goal: 0, targets: [], idle: 0, lapSum: 0, lapA: null, lapP: null,
+                    fireT: 0, sweep: Math.random() * Math.PI * 2,
                     jitter: Math.random(), flash: 0 };
         // nudge it out of a crate if the layout put one there
         for (let n = 0; n < 24 && hitsWall(t.x, t.y, TURRET_R + 8); n++) {
@@ -745,12 +822,22 @@ function makeTurrets() {
 }
 
 function setTask(t, team) {
-    t.task = TASKS[Math.floor(Math.random() * TASKS.length)];
+    const pool = team === 0 ? TASKS : BOT_TASKS;
+    t.task = pool[Math.floor(Math.random() * pool.length)];
     t.taskBy = team;
     t.prog = 0;
     t.targets = [];
+    t.lapSum = 0; t.lapA = null; t.lapP = null; t.idle = 0;
+    // how far the round has run, less whatever Keen eye takes off it for your side
+    const raw = TASK_GOAL[t.task] * taskHard() * (team === 0 ? 1 - owned.task * 0.15 : 1);
+    const lim = TASK_MAX[t.task] ? Math.min(TASK_MAX[t.task], raw) : raw;
+    t.goal = t.task === 'hold' ? lim : Math.max(1, Math.round(lim));
+    // painting the ring is measured off the floor, so a corner you already hold
+    // would finish the job on the spot — always ask for real ground on top
+    if (t.task === 'paint')
+        t.goal = Math.min(TASK_MAX.paint, Math.max(t.goal, Math.round(ringShare(t, team)) + 12));
     if (t.task === 'targets') {
-        for (let i = 0; i < TASK_TARGETS; i++) {
+        for (let i = 0; i < t.goal; i++) {
             for (let n = 0; n < 30; n++) {
                 const a = Math.random() * Math.PI * 2, d = 70 + Math.random() * 110;
                 const x = t.x + Math.cos(a) * d, y = t.y + Math.sin(a) * d;
@@ -760,12 +847,35 @@ function setTask(t, team) {
                 break;
             }
         }
+        // a crowded floor can refuse a target a spot; never ask for more than are out
+        t.goal = Math.max(1, t.targets.length);
     }
+}
+
+// what share of the floor inside a turret's ring is flying one colour
+function ringShare(t, team) {
+    let mine = 0, all = 0;
+    const rr = TURRET_RING * TURRET_RING;
+    for (let y = t.y - TURRET_RING; y <= t.y + TURRET_RING; y += CELL)
+        for (let x = t.x - TURRET_RING; x <= t.x + TURRET_RING; x += CELL) {
+            const dx = x - t.x, dy = y - t.y;
+            if (dx * dx + dy * dy > rr) continue;
+            const v = cellAt(x, y);
+            if (v === -2) continue;
+            all++;
+            if (v === team) mine++;
+        }
+    return all ? (mine / all) * 100 : 0;
+}
+
+function dropTask(t) {
+    t.task = null; t.taskBy = -1; t.prog = 0; t.goal = 0; t.targets = [];
+    t.lapSum = 0; t.lapA = null; t.lapP = null; t.idle = 0;
 }
 
 function takeTurret(t, team) {
     t.team = team;
-    t.task = null; t.taskBy = -1; t.prog = 0; t.targets = [];
+    dropTask(t);
     t.flash = 1;
     splat(t.x, t.y, 92, team);
     state.pops.push({ x: t.x, y: t.y - 40, text: 'TURRET TAKEN', color: '#ffffff', life: 1.4 });
@@ -785,6 +895,8 @@ function updateTurrets(dt) {
         const claimants = sides.filter(team => team !== t.team);
         t.contested = sides.length > 1;
 
+        if (!inside.length) t.idle += dt; else t.idle = 0;
+
         if (!t.task && claimants.length === 1) setTask(t, claimants[0]);
 
         if (t.task) {
@@ -792,12 +904,34 @@ function updateTurrets(dt) {
             if (t.contested) {
                 // nobody makes headway while two sides are stood in it
             } else if (t.task === 'hold') {
-                if (holding) t.prog += dt; else t.prog = Math.max(0, t.prog - dt * 0.8);
+                if (holding) t.prog += dt; else t.prog = Math.max(0, t.prog - dt * TASK_DECAY.hold);
+            } else if (t.task === 'paint') {
+                // read straight off the floor, so a rival painting over it takes it back
+                t.prog = ringShare(t, t.taskBy);
+            } else if (t.task === 'laps') {
+                const runner = inside.find(p => p.team === t.taskBy);
+                if (runner) {
+                    const a = Math.atan2(runner.y - t.y, runner.x - t.x);
+                    if (t.lapP === runner && t.lapA !== null) {
+                        let d = a - t.lapA;
+                        while (d >  Math.PI) d -= Math.PI * 2;
+                        while (d < -Math.PI) d += Math.PI * 2;
+                        t.lapSum += d;   // signed, so jigging on the spot cancels itself out
+                    }
+                    t.lapP = runner; t.lapA = a;
+                } else {
+                    t.lapP = null; t.lapA = null;
+                    t.lapSum -= t.lapSum * Math.min(1, dt * 0.5);
+                }
+                t.prog = Math.abs(t.lapSum) / (Math.PI * 2);
             } else if (!holding) {
-                t.prog = Math.max(0, t.prog - dt * 0.5);
+                t.prog = Math.max(0, t.prog - dt * (TASK_DECAY[t.task] || 0));
             }
-            if (t.prog >= TASK_GOAL[t.task]) takeTurret(t, t.taskBy);
-            else if (t.prog <= 0 && !holding && !inside.length) { t.task = null; t.taskBy = -1; t.targets = []; }
+            if (t.prog >= taskGoal(t)) takeTurret(t, t.taskBy);
+            // a job nobody has come near for a while goes back on the shelf. the
+            // decaying ones give up the moment they run dry instead.
+            else if (t.idle > TASK_DROP) dropTask(t);
+            else if (t.prog <= 0 && !holding && !inside.length && TASK_DECAY[t.task]) dropTask(t);
         }
 
         // an owned turret picks the emptiest line it can see and sprays that
@@ -889,11 +1023,11 @@ function drawTurrets() {
             ctx.strokeStyle = t.contested ? '#d32f2f' : inkOf(t.taskBy); ctx.lineWidth = 2.5;
             ctx.beginPath(); ctx.roundRect(bx - 4, by - 16, w + 8, 32, 7); ctx.stroke();
             ctx.fillStyle = '#2a2318'; ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
-            ctx.fillText(t.contested ? 'CONTESTED — NOBODY GAINS' : TASK_TEXT[t.task], t.x, by - 4);
+            ctx.fillText(t.contested ? 'CONTESTED — NOBODY GAINS' : taskText(t), t.x, by - 4);
             ctx.fillStyle = 'rgba(0,0,0,0.12)';
             ctx.fillRect(bx, by + 2, w, 8);
             ctx.fillStyle = inkOf(t.taskBy);
-            ctx.fillRect(bx, by + 2, w * Math.min(1, t.prog / TASK_GOAL[t.task]), 8);
+            ctx.fillRect(bx, by + 2, w * Math.min(1, t.prog / taskGoal(t)), 8);
         }
     }
 }
@@ -1163,8 +1297,8 @@ function update(dt) {
             p.down -= dt;
             if (p.down <= 0) {
                 p.x = p.home.x; p.y = p.home.y;
-                p.down = 0; p.hp = HP; p.ink = p.isBot ? TANK : tankMax();
-                splat(p.x, p.y, SPAWN_R * 0.7, p.team);
+                p.down = 0; p.hp = hpMax(p); p.ink = p.isBot ? TANK : tankMax();
+                splat(p.x, p.y, landR(p), p.team);
             }
             continue;
         }
@@ -1172,7 +1306,7 @@ function update(dt) {
         if (p.turbo > 0) p.turbo -= dt;
         if (p.roller > 0) p.roller -= dt;
         if (p.hurtT > 0) p.hurtT -= dt;
-        else if (p.hp < HP) p.hp = Math.min(HP, p.hp + REGEN * dt);
+        else if (p.hp < hpMax(p)) p.hp = Math.min(hpMax(p), p.hp + regenRate(p) * dt);
 
         let mx = 0, my = 0, wantFire = false;
         if (p.isBot) {
@@ -1292,7 +1426,7 @@ function update(dt) {
         b.x = Math.max(10, Math.min(W - 10, b.x));
         b.y = Math.max(10, Math.min(H - 10, b.y));
         if (b.t > 0) continue;
-        splat(b.x, b.y, BOMB_R, b.team);
+        splat(b.x, b.y, bombR(b.from), b.team);
         for (const q of state.players) {
             if (q.team === b.team || q.down > 0) continue;
             if (Math.hypot(q.x - b.x, q.y - b.y) < BOMB_HURT) damage(q, BOMB_DMG, b.from);
@@ -1495,12 +1629,12 @@ function drawPlayer(p) {
     ctx.beginPath(); ctx.arc(p.x + ex * 7 + ey * 5, p.y + ey * 7 - ex * 5, 2, 0, Math.PI * 2); ctx.fill();
 
     // health, only once it matters
-    if (p.hp < HP) {
-        const w = 34;
+    if (p.hp < hpMax(p)) {
+        const w = 34, f = p.hp / hpMax(p);
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
         ctx.fillRect(p.x - w / 2, p.y - R - 13, w, 5);
-        ctx.fillStyle = p.hp > 50 ? '#5ce05c' : p.hp > 25 ? '#ffd21a' : '#ff5252';
-        ctx.fillRect(p.x - w / 2, p.y - R - 13, w * (p.hp / HP), 5);
+        ctx.fillStyle = f > 0.5 ? '#5ce05c' : f > 0.25 ? '#ffd21a' : '#ff5252';
+        ctx.fillRect(p.x - w / 2, p.y - R - 13, w * f, 5);
     }
 
     if (p.isBot) {
@@ -1808,7 +1942,10 @@ function showOver() {
     // what the round was worth
     const held = state.turrets.filter(u => u.team === 0).length;
     const megas = state.megaWinners.filter(q => q === me).length;
-    const pay = Math.round(score(0)) * 2 + (iWon ? 60 : 0) + held * 15 + megas * 40;
+    const kills = me.splats * KILL_PAY, deaths = me.bursts * DEATH_PAY;
+    // a bad round can eat into what it paid, but never into what you had banked
+    const pay = Math.max(0, Math.round(score(0)) * 2 + (iWon ? 60 : 0)
+                            + held * 15 + megas * 40 + kills - deaths);
     coins += pay;
     storeSave();
     document.getElementById('overPay').innerHTML =
@@ -1817,7 +1954,9 @@ function showOver() {
         (iWon ? ', 60 for the win' : '') +
         (held ? `, ${held * 15} for ${held} turret${held === 1 ? '' : 's'}` : '') +
         (megas ? ', 40 for the mega boom' : '') +
-        `. You have ${coins.toLocaleString()}.</span>`;
+        (kills ? `, ${kills} for ${me.splats} burst${me.splats === 1 ? '' : 's'}` : '') +
+        (deaths ? `, <span style="color:#c0392b">\u2212${deaths} for going down ${me.bursts} time${me.bursts === 1 ? '' : 's'}</span>` : '') +
+        `. You have <span id="overPayTotal">${coins.toLocaleString()}</span>.</span>`;
 
     document.getElementById('overOv').classList.remove('hidden');
     beep(iWon ? 660 : 200, 0.4, 'sine', 0.06);
@@ -1843,7 +1982,16 @@ function buildShop() {
     document.getElementById('shopPurse').innerHTML = purseText();
     const list = document.getElementById('shopList');
     list.innerHTML = '';
-    for (const it of STORE) {
+    for (const cat of SHOP_CATS) {
+      const items = STORE.filter(it => it.cat === cat.key);
+      if (!items.length) continue;
+      const bought = items.reduce((a, it) => a + (owned[it.key] || 0), 0);
+      const rungs = items.reduce((a, it) => a + it.max, 0);
+      const head = document.createElement('div');
+      head.className = 'cat';
+      head.innerHTML = `${cat.name} <span>\u2014 ${cat.note} \u00b7 ${bought}/${rungs} bought</span>`;
+      list.appendChild(head);
+      for (const it of items) {
         const lvl = owned[it.key] || 0;
         const maxed = lvl >= it.max;
         const price = maxed ? 0 : it.cost[lvl];
@@ -1871,12 +2019,29 @@ function buildShop() {
         }
         row.appendChild(b);
         list.appendChild(row);
+      }
     }
 }
 
-function openShop() {
+// every overlay shares a z-index, so two on screen at once fight over DOM order.
+// the shop puts away whatever it was opened from and hands it back on the way out.
+let shopReturn = null;
+
+function openShop(from) {
     buildShop();
+    shopReturn = from || null;
+    if (shopReturn) document.getElementById(shopReturn).classList.add('hidden');
     document.getElementById('shopOv').classList.remove('hidden');
+}
+
+function closeShop() {
+    document.getElementById('shopOv').classList.add('hidden');
+    if (shopReturn) document.getElementById(shopReturn).classList.remove('hidden');
+    shopReturn = null;
+    document.getElementById('titlePurse').innerHTML = purseText();
+    // the results screen prints a token total that goes stale once you spend
+    const tot = document.getElementById('overPayTotal');
+    if (tot) tot.textContent = coins.toLocaleString();
 }
 
 function optionRow(id, values, labels, get, set) {
@@ -1932,12 +2097,9 @@ function toMenu() {
 }
 
 document.getElementById('startBtn').addEventListener('click', start);
-document.getElementById('shopBtn').addEventListener('click', openShop);
-document.getElementById('shopBtn2').addEventListener('click', openShop);
-document.getElementById('shopBack').addEventListener('click', () => {
-    document.getElementById('shopOv').classList.add('hidden');
-    document.getElementById('titlePurse').innerHTML = purseText();
-});
+document.getElementById('shopBtn').addEventListener('click', () => openShop('titleOv'));
+document.getElementById('shopBtn2').addEventListener('click', () => openShop('overOv'));
+document.getElementById('shopBack').addEventListener('click', closeShop);
 document.getElementById('againBtn').addEventListener('click', start);
 document.getElementById('menuBtn').addEventListener('click', toMenu);
 document.getElementById('quitBtn').addEventListener('click', toMenu);
