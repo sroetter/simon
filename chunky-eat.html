@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chunky Eat - Simon's Game Gallery</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+        font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background:#2b1d12; color:#2a2318; overflow:hidden;
+        -webkit-user-select:none; user-select:none;
+    }
+    canvas { display:block; }
+    .back-btn {
+        position:fixed; top:14px; left:14px; z-index:99999; text-decoration:none;
+        color:#2a2318; background:rgba(255,255,255,0.92); border:1px solid rgba(90,70,40,0.35);
+        padding:8px 16px; border-radius:8px; font-size:14px; line-height:1.2;
+    }
+    .back-btn:hover { background:#fff; }
+    .footer-link {
+        position:fixed; bottom:8px; left:0; right:0; text-align:center;
+        font-size:12px; color:rgba(255,255,255,0.8); z-index:20; pointer-events:none;
+        text-shadow:0 1px 3px rgba(0,0,0,0.45);
+    }
+    .footer-link a { color:#fff; pointer-events:auto; }
+
+    .overlay {
+        position:fixed; inset:0; z-index:40; display:flex; align-items:center;
+        justify-content:center; padding:16px; overflow-y:auto;
+        background:linear-gradient(160deg, rgba(255,176,58,0.93), rgba(196,86,47,0.93));
+    }
+    .overlay.hidden { display:none; }
+    .panel {
+        background:linear-gradient(150deg,#fffdf4,#ffeed8);
+        border:3px solid #c4562f; border-radius:20px; padding:20px 26px;
+        max-width:660px; width:94%; text-align:center; color:#2a2318;
+        max-height:calc(100vh - 32px); overflow-y:auto;
+        box-shadow:0 18px 50px rgba(70,35,10,0.35), 0 0 0 6px rgba(255,255,255,0.5);
+    }
+    h1 { font-size:clamp(26px,5.5vw,46px); letter-spacing:2px; margin-bottom:4px; color:#c4562f;
+         text-shadow:0 2px 0 #ffd9a8; }
+    h2 { font-size:15px; font-weight:normal; color:#7b6a56; margin-bottom:10px; }
+    .rules { text-align:left; font-size:13.5px; line-height:1.6; color:#3b3222;
+             background:rgba(255,255,255,0.8); border:1px solid rgba(196,86,47,0.3);
+             border-radius:10px; padding:12px 14px; margin:10px 0; }
+    .rules b { color:#c4562f; }
+    .keys { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0; font-size:13px; }
+    .keys div { background:rgba(255,255,255,0.8); border:1px solid rgba(196,86,47,0.3);
+                border-radius:8px; padding:8px 10px; text-align:left; }
+    kbd { background:#fff5e6; border:1px solid #d9a476; border-bottom-width:2px;
+          border-radius:5px; padding:1px 6px; font-size:12px; color:#7a3d18; }
+    .label { font-size:12px; color:#7b6a56; margin:10px 0 3px; letter-spacing:1px; }
+    .row { display:flex; gap:7px; justify-content:center; flex-wrap:wrap; }
+    .btn {
+        background:linear-gradient(135deg,#ffa63a,#c4562f); color:#fff;
+        border:2px solid #ffd9a8; border-radius:11px; cursor:pointer;
+        padding:11px 26px; font-size:16px; font-weight:bold; box-shadow:0 4px 0 #8a3512;
+        font-family:inherit;
+    }
+    .btn:hover { filter:brightness(1.08); }
+    .btn:active { transform:translateY(2px); box-shadow:0 2px 0 #8a3512; }
+    .btn.small { padding:6px 12px; font-size:13px; min-width:58px; color:#3b3222;
+                 background:linear-gradient(135deg,#ffffff,#f2e6d6); border-color:#d9c3a8;
+                 box-shadow:0 3px 0 #c9ab8b; }
+    .btn.small.sel { background:linear-gradient(135deg,#ffb85c,#c4562f); color:#fff;
+                     border-color:#8a3512; box-shadow:0 3px 0 #8a3512; }
+    .big { font-size:20px; font-weight:bold; margin:8px 0; }
+    .note { font-size:12.5px; color:#7b6a56; margin-top:8px; }
+    .tally { margin:12px 0; font-size:14px; }
+    .tally .line { display:flex; justify-content:space-between; align-items:center;
+                   background:rgba(255,255,255,0.72); border:1px solid rgba(196,86,47,0.28);
+                   border-radius:8px; padding:7px 12px; margin:5px 0; text-align:left; }
+    .tally .line b { font-variant-numeric:tabular-nums; color:#c4562f; font-size:16px; }
+    .foodrow { font-size:26px; letter-spacing:4px; margin:6px 0 2px; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<div class="overlay" id="titleOv">
+  <div class="panel">
+    <h1>🍗 CHUNKY EAT</h1>
+    <h2>Eat everything on the floor. Then eat your way through the wall.</h2>
+    <div class="foodrow">🍎 🍕 🍔 🍩 🍗 🧀 🍰 🥨</div>
+    <div class="rules">
+      Food is scattered all over the floor. Walk over it and you eat it, and your
+      <b>belly meter</b> fills up.<br><br>
+      The way out is bricked up. Once your belly is past the <b>SMASH line</b> you can
+      <b>charge the wall</b> and knock a brick out — but every brick you break costs you a
+      good chunk of what you have eaten. Break them all, walk through the gap, and you are
+      on to the next level.<br><br>
+      There is a catch. The fuller you get the <b>bigger and slower</b> you are, and hunger
+      slowly eats into your meter the whole time. Later floors have <b>rats</b> that get to
+      the food before you do, and <b>chillies</b> that undo a lot of good eating.
+    </div>
+    <div class="keys">
+      <div><kbd>W A S D</kbd> or <kbd>← ↑ ↓ →</kbd> — waddle about</div>
+      <div><kbd>Space</kbd> — charge (smash bricks, shove rats)</div>
+      <div><kbd>P</kbd> or <kbd>Esc</kbd> — pause</div>
+      <div>Or just hold the mouse down to walk that way</div>
+    </div>
+    <div class="label">HOW HUNGRY ARE YOU</div>
+    <div class="row" id="diffRow"></div>
+    <div class="row" style="margin-top:16px;"><button class="btn" id="startBtn">START EATING</button></div>
+    <div class="note" id="titleBest"></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="pauseOv">
+  <div class="panel">
+    <h1>PAUSED</h1>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="resumeBtn">KEEP EATING</button>
+      <button class="btn" id="quitBtn">GIVE UP</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="clearOv">
+  <div class="panel">
+    <h1 id="clearTitle">THROUGH THE WALL</h1>
+    <h2 id="clearSub"></h2>
+    <div class="foodrow" id="clearFood"></div>
+    <div class="tally" id="clearTally"></div>
+    <div class="row" style="margin-top:8px;"><button class="btn" id="nextBtn">NEXT FLOOR</button></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overOv">
+  <div class="panel">
+    <h1 id="overTitle">ALL OUT OF PUFF</h1>
+    <h2 id="overSub"></h2>
+    <div class="tally" id="overTally"></div>
+    <div class="note" id="overBest"></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="againBtn">GO AGAIN</button>
+      <button class="btn" id="menuBtn">MENU</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ============================================================ CHUNKY EAT ==
+   Waddle round the floor hoovering up food. The exit is bricked up: fill your
+   belly past the smash line, charge the wall, and knock the bricks out one at
+   a time. Every brick costs you a chunk of what you ate, so a wall is several
+   trips back to the floor for more.
+   ========================================================================== */
+
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+
+let VW = 0, VH = 0;
+
+/* --------------------------------------------------------------- world -- */
+const HUD_H = 74;                       // the strip along the top the board must not use
+const WALL_T = 60;                      // how thick the bricked-up wall is
+// The doorway is one brick deep and always the same size — a harder floor packs
+// more, thinner bricks into it rather than making the hole bigger. One brick deep
+// matters: you are stopped dead at the wall face until the way is clear, so a
+// brick sitting behind another brick could never be reached at all.
+const DOOR_MIN = 150, DOOR_MAX = 300, DOOR_SHARE = 0.46;
+
+const BELLY_MAX = 100;
+const SMASH_MIN = 28;                   // below this a charge just bounces off
+const SMASH_COST = 20;                  // what one brick takes out of your belly
+
+const P_R_MIN = 16, P_R_MAX = 28;       // you grow as you fill up...
+const P_SPD_MAX = 258, P_SPD_MIN = 168; // ...and slow down with it
+const DASH_T = 0.22, DASH_SPD = 640, DASH_CD = 0.46;
+const HURT_INVULN = 1.4;
+const HEARTS = 3;
+
+const RAT_R = 13, RAT_SPD = 152, RAT_STUN = 1.1, RAT_EAT = 0.55;
+const FOOD_R = 15, RESTOCK = 2.1;
+const CRATE_MIN = 34, CRATE_MAX = 62;
+const PU_EVERY = 13, PU_R = 16, PU_LIFE = 11;
+
+// what is lying about on the floor. the value is what it does to your belly.
+const FOODS = [
+    { g:'🍎', v:7 },  { g:'🍇', v:7 },  { g:'🥨', v:8 },  { g:'🧀', v:9 },
+    { g:'🍩', v:10 }, { g:'🍗', v:11 }, { g:'🌭', v:11 }, { g:'🍕', v:12 },
+    { g:'🍰', v:12 }, { g:'🍔', v:13 },
+];
+const GOLDEN = { g:'🍯', v:26, gold:true };
+const CHILLI = { g:'🌶️', v:-18, hot:true };
+
+const POWERS = [
+    { key:'speed',  g:'⚡', name:'QUICK FEET',  t:6.5 },
+    { key:'magnet', g:'🧲', name:'MAGNET',      t:7.5 },
+    { key:'strong', g:'💪', name:'FREE SMASH',  t:0 },   // one brick on the house
+];
+
+const DIFFS = {
+    peckish: { name:'PECKISH', drain:0.55, rats:0.6, chilli:0.5, pay:1.0 },
+    hungry:  { name:'HUNGRY',  drain:1.0,  rats:1.0, chilli:1.0, pay:1.4 },
+    ravenous:{ name:'RAVENOUS',drain:1.6,  rats:1.5, chilli:1.5, pay:2.0 },
+};
+let diff = 'hungry';
+
+/* -------------------------------------------------------------- state --- */
+let state = null;
+let running = false, paused = false, last = 0;
+let keys = {};
+let pointer = { on:false, x:0, y:0 };
+let best = { level:1, score:0 };
+
+function storeLoad() {
+    try {
+        const d = JSON.parse(localStorage.getItem('chunkyEat') || '{}');
+        best.level = d.level || 1;
+        best.score = d.score || 0;
+        if (d.diff && DIFFS[d.diff]) diff = d.diff;
+    } catch (e) {}
+}
+function storeSave() {
+    try { localStorage.setItem('chunkyEat', JSON.stringify({ level:best.level, score:best.score, diff })); }
+    catch (e) {}
+}
+
+/* --------------------------------------------------------------- sound -- */
+let actx = null;
+function beep(freq, len, type, vol) {
+    try {
+        if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = actx.createOscillator(), g = actx.createGain();
+        o.type = type || 'sine'; o.frequency.value = freq;
+        g.gain.value = vol == null ? 0.05 : vol;
+        g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + len);
+        o.connect(g); g.connect(actx.destination);
+        o.start(); o.stop(actx.currentTime + len);
+    } catch (e) {}
+}
+function chompSound(v) { beep(240 + v * 12, 0.07, 'square', 0.035); }
+
+/* --------------------------------------------------------------- board -- */
+// the playable floor, and the wall down its right-hand side
+function board() { return state.board; }
+
+function layout() {
+    VW = cv.width = window.innerWidth;
+    VH = cv.height = window.innerHeight;
+    if (!state) return;
+    fitBoard();
+}
+
+function fitBoard() {
+    const pad = 18;
+    const b = state.board;
+    b.x = pad;
+    b.y = HUD_H;
+    b.w = Math.max(360, VW - pad * 2);
+    b.h = Math.max(260, VH - HUD_H - pad);
+    b.wallX = b.x + b.w - WALL_T;          // left face of the wall
+    // the doorway sits in the middle of the wall, and the bricks share it out
+    b.doorH = Math.max(DOOR_MIN, Math.min(DOOR_MAX, b.h * DOOR_SHARE));
+    b.doorY = b.y + (b.h - b.doorH) / 2;
+    state.brickH = b.doorH / state.bricks.length;
+    for (const br of state.bricks) {
+        br.x = b.wallX;
+        br.y = b.doorY + br.row * state.brickH;
+    }
+    // nothing should be left stranded outside the new floor
+    clampInside(state.player);
+    for (const r of state.rats) clampInside(r);
+    for (const f of state.food) clampInside(f, FOOD_R);
+    for (const p of state.powers) clampInside(p, PU_R);
+    for (const c of state.crates) {
+        c.x = Math.min(c.x, b.wallX - c.w - 30);
+        c.y = Math.min(c.y, b.y + b.h - c.h - 10);
+        c.x = Math.max(c.x, b.x + 10); c.y = Math.max(c.y, b.y + 10);
+    }
+}
+
+function clampInside(o, r) {
+    const b = state.board, rad = r == null ? (o.r || 14) : r;
+    o.x = Math.max(b.x + rad, Math.min(b.wallX - rad, o.x));
+    o.y = Math.max(b.y + rad, Math.min(b.y + b.h - rad, o.y));
+}
+
+// the floor you can actually walk on, wall excluded
+function floorRect() {
+    const b = state.board;
+    return { x:b.x, y:b.y, w:b.wallX - b.x, h:b.h };
+}
+
+/* ------------------------------------------------------------- levels --- */
+function levelPlan(n) {
+    const d = DIFFS[diff];
+    return {
+        bricks: Math.min(9, 3 + n),                              // how many are in the way
+        food:   Math.min(30, 13 + n * 2),                        // how much lies about at once
+        rats:   Math.round(Math.min(6, Math.max(0, n - 1)) * d.rats),
+        chilli: n <= 1 ? 0 : Math.min(0.22, 0.05 * (n - 1)) * d.chilli,
+        crates: Math.min(8, n),
+        drain:  (0.85 + n * 0.12) * d.drain,                     // belly lost per second
+    };
+}
+
+function startLevel(n, carry) {
+    const plan = levelPlan(n);
+    const keep = carry || { hearts:HEARTS, score:0, eaten:0, bricks:0, best:{} };
+
+    state = {
+        level: n, plan,
+        board: { x:0, y:0, w:0, h:0, wallX:0, doorY:0, doorH:0 },
+        brickH: 40,
+        bricks: [], food: [], rats: [], crates: [], powers: [],
+        bits: [], pops: [], crumbs: [],
+        player: {
+            x:0, y:0, vx:0, vy:0, face:0, r:P_R_MIN,
+            belly:0, hearts:keep.hearts, invuln:0,
+            dash:0, dashCd:0, chew:0, stun:0,
+            speedT:0, magnetT:0, strong:0,
+        },
+        score: keep.score, eaten: keep.eaten, bricksDone: keep.bricks,
+        tally: {},                    // what got eaten this level, by glyph
+        levelEaten: 0, levelBricks: 0,
+        t: 0, restock: 0, puT: PU_EVERY, shake: 0, flash: 0,
+        msg: '', msgT: 0,
+        done: false, over: false,
+    };
+
+    for (let r = 0; r < plan.bricks; r++)
+        state.bricks.push({ row:r, x:0, y:0, hp:1, shake:0 });
+
+    fitBoard();
+
+    const f = floorRect();
+    state.player.x = f.x + 70;
+    state.player.y = f.y + f.h / 2;
+
+    makeCrates(plan.crates);
+    for (let i = 0; i < plan.food; i++) dropFood();
+    for (let i = 0; i < plan.rats; i++) makeRat();
+
+    say(n === 1 ? 'Eat what is on the floor — fill the belly meter'
+                : 'Floor ' + n + ' — more wall, and it will not eat itself');
+    running = true; paused = false;
+    last = performance.now();
+}
+
+function makeCrates(n) {
+    const f = floorRect();
+    state.crates = [];
+    for (let i = 0; i < n; i++) {
+        for (let a = 0; a < 40; a++) {
+            const w = CRATE_MIN + Math.random() * (CRATE_MAX - CRATE_MIN);
+            const h = CRATE_MIN + Math.random() * (CRATE_MAX - CRATE_MIN);
+            const x = f.x + 60 + Math.random() * (f.w - 120 - w);
+            const y = f.y + 30 + Math.random() * (f.h - 60 - h);
+            // keep the spawn corner and the doorway approach clear
+            if (x < f.x + 150 && y > f.y + f.h / 2 - 90 && y < f.y + f.h / 2 + 90) continue;
+            if (x + w > state.board.wallX - 78) continue;
+            const c = { x, y, w, h };
+            if (state.crates.some(o => rectsOverlap(o, c, 26))) continue;
+            state.crates.push(c);
+            break;
+        }
+    }
+}
+
+function rectsOverlap(a, b, pad) {
+    const p = pad || 0;
+    return a.x - p < b.x + b.w && a.x + a.w + p > b.x && a.y - p < b.y + b.h && a.y + a.h + p > b.y;
+}
+
+function inCrate(x, y, r) {
+    for (const c of state.crates)
+        if (x + r > c.x && x - r < c.x + c.w && y + r > c.y && y - r < c.y + c.h) return c;
+    return null;
+}
+
+/* ---------------------------------------------------------- food drops -- */
+function pickFood() {
+    if (Math.random() < 0.045) return GOLDEN;
+    if (Math.random() < state.plan.chilli) return CHILLI;
+    return FOODS[Math.floor(Math.random() * FOODS.length)];
+}
+
+function dropFood(kind) {
+    const f = floorRect();
+    for (let a = 0; a < 50; a++) {
+        const x = f.x + 26 + Math.random() * (f.w - 52);
+        const y = f.y + 26 + Math.random() * (f.h - 52);
+        if (inCrate(x, y, FOOD_R + 3)) continue;
+        const p = state.player;
+        if (Math.hypot(p.x - x, p.y - y) < 70) continue;    // never right under your nose
+        const k = kind || pickFood();
+        state.food.push({ x, y, kind:k, bob:Math.random() * 6.28, spin:(Math.random() - 0.5) * 0.6, pop:0.35 });
+        return true;
+    }
+    return false;
+}
+
+function makeRat() {
+    const f = floorRect();
+    for (let a = 0; a < 40; a++) {
+        const x = f.x + 40 + Math.random() * (f.w - 80);
+        const y = f.y + 40 + Math.random() * (f.h - 80);
+        if (inCrate(x, y, RAT_R + 4)) continue;
+        if (Math.hypot(state.player.x - x, state.player.y - y) < 220) continue;
+        state.rats.push({ x, y, vx:0, vy:0, r:RAT_R, stun:0, target:null, munch:0,
+                          wob:Math.random() * 6.28, bump:0 });
+        return;
+    }
+}
+
+/* ------------------------------------------------------------ messages -- */
+function say(text) { state.msg = text; state.msgT = 3.2; }
+function popup(x, y, text, colour, size) {
+    state.pops.push({ x, y, text, colour:colour || '#ffffff', life:1.0, size:size || 17 });
+}
+function crumbs(x, y, n, colour) {
+    for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2, s = 40 + Math.random() * 150;
+        state.crumbs.push({ x, y, vx:Math.cos(a) * s, vy:Math.sin(a) * s,
+                            life:0.4 + Math.random() * 0.3, r:2 + Math.random() * 3, colour });
+    }
+}
+
+/* ------------------------------------------------------------- eating --- */
+function eat(f, i) {
+    const p = state.player, k = f.kind;
+    state.food.splice(i, 1);
+
+    if (k.hot) {
+        p.belly = Math.max(0, p.belly + k.v);
+        p.stun = 0.45;
+        state.flash = 0.5;
+        popup(f.x, f.y - 20, 'HOT!', '#ff5a3c', 20);
+        crumbs(f.x, f.y, 12, '#ff6a3c');
+        beep(150, 0.28, 'sawtooth', 0.05);
+        say('That was a chilli. Wrong sort of full.');
+        return;
+    }
+
+    p.belly = Math.min(BELLY_MAX, p.belly + k.v);
+    p.chew = 0.22;
+    const worth = Math.round(k.v * (k.gold ? 6 : 2) * DIFFS[diff].pay);
+    state.score += worth;
+    state.eaten++; state.levelEaten++;
+    state.tally[k.g] = (state.tally[k.g] || 0) + 1;
+    popup(f.x, f.y - 18, '+' + k.v, k.gold ? '#ffd23a' : '#ffffff', k.gold ? 22 : 16);
+    crumbs(f.x, f.y, k.gold ? 16 : 7, k.gold ? '#ffd23a' : '#d8a25e');
+    chompSound(k.v);
+    if (k.gold) { beep(880, 0.16, 'sine', 0.05); say('A whole pot of honey!'); }
+
+    if (p.belly >= SMASH_MIN && !state.readySaid) {
+        state.readySaid = true;
+        say('Belly past the line — charge the wall with SPACE');
+    }
+}
+
+/* -------------------------------------------------------------- bricks -- */
+function bricksLeft() { return state.bricks.filter(b => b.hp > 0).length; }
+
+function smashAt(p) {
+    // the brick your snout is actually touching
+    let hit = null, hd = 1e9;
+    for (const b of state.bricks) {
+        if (b.hp <= 0) continue;
+        const cx = Math.max(b.x, Math.min(p.x, b.x + WALL_T));
+        const cy = Math.max(b.y, Math.min(p.y, b.y + state.brickH));
+        const d = Math.hypot(p.x - cx, p.y - cy);
+        if (d < p.r + 6 && d < hd) { hd = d; hit = b; }
+    }
+    if (!hit) return false;
+
+    const free = p.strong > 0;
+    if (!free && p.belly < SMASH_MIN) {
+        hit.shake = 0.25;
+        p.vx = -90; p.dash = 0;
+        popup(p.x, p.y - p.r - 16, 'NOT FULL ENOUGH', '#ffdf6a', 15);
+        beep(110, 0.14, 'triangle', 0.04);
+        say('Not enough in the belly to shift that. Eat more.');
+        return true;
+    }
+
+    hit.hp = 0;
+    if (free) { p.strong = 0; popup(p.x, p.y - p.r - 18, 'FREE SMASH!', '#7ee06a', 18); }
+    else p.belly = Math.max(0, p.belly - SMASH_COST);
+
+    state.bricksDone++; state.levelBricks++;
+    state.score += Math.round(30 * DIFFS[diff].pay);
+    state.shake = 0.42;
+    p.dash = 0; p.vx *= -0.35; p.vy *= -0.35;
+    brickBits(hit);
+    beep(90, 0.3, 'sawtooth', 0.07);
+    beep(300, 0.12, 'square', 0.03);
+
+    const left = bricksLeft();
+    if (left === 0) say('The way is open — go on through!');
+    else if (left === 1) say('One brick left in the way');
+    else popup(hit.x + WALL_T / 2, hit.y - 6, left + ' TO GO', '#ffffff', 15);
+    return true;
+}
+
+function brickBits(b) {
+    for (let i = 0; i < 18; i++) {
+        const a = Math.random() * Math.PI * 2, s = 60 + Math.random() * 260;
+        state.bits.push({
+            x: b.x + Math.random() * WALL_T, y: b.y + Math.random() * state.brickH,
+            vx: Math.cos(a) * s - 80, vy: Math.sin(a) * s,
+            life: 0.5 + Math.random() * 0.5, r: 3 + Math.random() * 5,
+            spin: (Math.random() - 0.5) * 12, a: Math.random() * 6.28,
+        });
+    }
+}
+
+/* -------------------------------------------------------------- update -- */
+function update(dt) {
+    const p = state.player, b = state.board, plan = state.plan;
+    state.t += dt;
+    if (state.msgT > 0) state.msgT -= dt;
+    if (state.shake > 0) state.shake -= dt;
+    if (state.flash > 0) state.flash -= dt;
+
+    /* --- hunger never stops --- */
+    p.belly = Math.max(0, p.belly - plan.drain * dt);
+    if (p.belly < SMASH_MIN) state.readySaid = false;
+
+    /* --- how big and how quick you are right now --- */
+    const fill = p.belly / BELLY_MAX;
+    p.r = P_R_MIN + (P_R_MAX - P_R_MIN) * fill;
+    let spd = P_SPD_MAX - (P_SPD_MAX - P_SPD_MIN) * fill;
+    if (p.speedT > 0) { spd *= 1.4; p.speedT -= dt; }
+    if (p.magnetT > 0) p.magnetT -= dt;
+    if (p.invuln > 0) p.invuln -= dt;
+    if (p.chew > 0) p.chew -= dt;
+    if (p.stun > 0) p.stun -= dt;
+    if (p.dashCd > 0) p.dashCd -= dt;
+
+    /* --- where you are trying to go --- */
+    let mx = 0, my = 0;
+    if (keys['arrowleft'] || keys['a']) mx -= 1;
+    if (keys['arrowright'] || keys['d']) mx += 1;
+    if (keys['arrowup'] || keys['w']) my -= 1;
+    if (keys['arrowdown'] || keys['s']) my += 1;
+    if (!mx && !my && pointer.on) {
+        const dx = pointer.x - p.x, dy = pointer.y - p.y, d = Math.hypot(dx, dy);
+        if (d > 12) { mx = dx / d; my = dy / d; }
+    }
+    const m = Math.hypot(mx, my);
+    if (m > 0) { mx /= m; my /= m; p.face = Math.atan2(my, mx); }
+
+    if (p.dash > 0) {
+        p.dash -= dt;
+        p.vx = Math.cos(p.face) * DASH_SPD;
+        p.vy = Math.sin(p.face) * DASH_SPD;
+    } else if (p.stun > 0) {
+        p.vx *= 0.82; p.vy *= 0.82;
+    } else {
+        p.vx += (mx * spd - p.vx) * Math.min(1, dt * 14);
+        p.vy += (my * spd - p.vy) * Math.min(1, dt * 14);
+    }
+
+    moveWithWalls(p, dt);
+
+    /* --- through the gap? --- */
+    if (p.x > b.wallX + WALL_T - p.r * 0.4 && bricksLeft() === 0) return levelClear();
+
+    /* --- charging the wall --- */
+    if (p.dash > 0) smashAt(p);
+
+    /* --- food --- */
+    for (let i = state.food.length - 1; i >= 0; i--) {
+        const f = state.food[i];
+        f.bob += dt * 3;
+        if (f.pop > 0) f.pop -= dt;
+        if (p.magnetT > 0) {
+            const dx = p.x - f.x, dy = p.y - f.y, d = Math.hypot(dx, dy);
+            if (d < 190 && d > 1) { f.x += (dx / d) * 260 * dt; f.y += (dy / d) * 260 * dt; }
+        }
+        if (Math.hypot(p.x - f.x, p.y - f.y) < p.r + FOOD_R * 0.7) eat(f, i);
+    }
+
+    state.restock -= dt;
+    if (state.restock <= 0) {
+        state.restock = RESTOCK;
+        // the floor is always restocked, so a level can never become unwinnable
+        if (state.food.length < plan.food) dropFood();
+    }
+
+    /* --- power-ups --- */
+    state.puT -= dt;
+    if (state.puT <= 0) {
+        state.puT = PU_EVERY;
+        if (state.powers.length < 2) dropPower();
+    }
+    for (let i = state.powers.length - 1; i >= 0; i--) {
+        const u = state.powers[i];
+        u.life -= dt; u.bob += dt * 4;
+        if (u.life <= 0) { state.powers.splice(i, 1); continue; }
+        if (Math.hypot(p.x - u.x, p.y - u.y) < p.r + PU_R) {
+            takePower(u.p);
+            state.powers.splice(i, 1);
+        }
+    }
+
+    updateRats(dt);
+    updateBits(dt);
+}
+
+function moveWithWalls(o, dt) {
+    const b = state.board;
+    const r = o.r;
+    // x then y, so sliding along a crate feels right
+    let nx = o.x + o.vx * dt;
+    if (!inCrate(nx, o.y, r)) o.x = nx; else o.vx = 0;
+    let ny = o.y + o.vy * dt;
+    if (!inCrate(o.x, ny, r)) o.y = ny; else o.vy = 0;
+
+    o.y = Math.max(b.y + r, Math.min(b.y + b.h - r, o.y));
+    o.x = Math.max(b.x + r, o.x);
+
+    // the wall itself: solid, except through a doorway with no bricks left in it
+    const throughDoor = o.y > b.doorY - r * 0.2 && o.y < b.doorY + b.doorH + r * 0.2;
+    const doorOpen = o === state.player && bricksLeft() === 0 && throughDoor;
+    if (!doorOpen) {
+        if (o.x > b.wallX - r) { o.x = b.wallX - r; if (o.vx > 0) o.vx = 0; }
+    } else {
+        o.x = Math.min(o.x, b.x + b.w + 40);
+    }
+}
+
+function dropPower() {
+    const f = floorRect();
+    for (let a = 0; a < 40; a++) {
+        const x = f.x + 40 + Math.random() * (f.w - 80);
+        const y = f.y + 40 + Math.random() * (f.h - 80);
+        if (inCrate(x, y, PU_R + 4)) continue;
+        state.powers.push({ x, y, p:POWERS[Math.floor(Math.random() * POWERS.length)],
+                            life:PU_LIFE, bob:0 });
+        return;
+    }
+}
+
+function takePower(pu) {
+    const p = state.player;
+    if (pu.key === 'speed') p.speedT = pu.t;
+    else if (pu.key === 'magnet') p.magnetT = pu.t;
+    else p.strong = 1;
+    popup(p.x, p.y - p.r - 20, pu.g + ' ' + pu.name, '#7ee06a', 18);
+    beep(720, 0.16, 'sine', 0.05);
+}
+
+/* ---------------------------------------------------------------- rats -- */
+function updateRats(dt) {
+    const p = state.player;
+    for (const r of state.rats) {
+        r.wob += dt * 9;
+        if (r.bump > 0) r.bump -= dt;
+        if (r.stun > 0) {
+            r.stun -= dt;
+            r.vx *= 0.86; r.vy *= 0.86;
+            moveWithWalls(r, dt);
+            continue;
+        }
+
+        // a rat wants the nearest food. if you are close and slow it fancies a nip.
+        const dp = Math.hypot(p.x - r.x, p.y - r.y);
+        let tx = null, ty = null;
+        if (dp < 150 && p.belly > 45) { tx = p.x; ty = p.y; }
+        else {
+            let bd = 1e9;
+            for (const f of state.food) {
+                const d = Math.hypot(f.x - r.x, f.y - r.y);
+                if (d < bd) { bd = d; tx = f.x; ty = f.y; }
+            }
+        }
+        if (tx === null) { tx = p.x; ty = p.y; }
+
+        const dx = tx - r.x, dy = ty - r.y, d = Math.hypot(dx, dy) || 1;
+        const wob = Math.sin(r.wob) * 0.25;
+        const a = Math.atan2(dy, dx) + wob;
+        r.vx += (Math.cos(a) * RAT_SPD - r.vx) * Math.min(1, dt * 8);
+        r.vy += (Math.sin(a) * RAT_SPD - r.vy) * Math.min(1, dt * 8);
+        moveWithWalls(r, dt);
+
+        // beat you to the crumbs
+        r.munch -= dt;
+        if (r.munch <= 0) {
+            for (let i = state.food.length - 1; i >= 0; i--) {
+                const f = state.food[i];
+                if (Math.hypot(f.x - r.x, f.y - r.y) < r.r + FOOD_R * 0.7) {
+                    if (f.kind.hot) continue;              // even a rat knows better
+                    state.food.splice(i, 1);
+                    r.munch = RAT_EAT;
+                    crumbs(f.x, f.y, 5, '#b09070');
+                    popup(f.x, f.y - 14, 'nicked!', '#d8c3a5', 13);
+                    beep(420, 0.05, 'square', 0.02);
+                    break;
+                }
+            }
+        }
+
+        // a charge shoves them off; otherwise they take a bite out of you
+        if (dp < p.r + r.r) {
+            if (p.dash > 0) {
+                const a2 = Math.atan2(r.y - p.y, r.x - p.x);
+                r.vx = Math.cos(a2) * 460; r.vy = Math.sin(a2) * 460;
+                r.stun = RAT_STUN;
+                popup(r.x, r.y - 16, 'SHOVED', '#ffffff', 14);
+                beep(200, 0.09, 'triangle', 0.04);
+            } else if (p.invuln <= 0 && r.bump <= 0) {
+                bite(r);
+            }
+        }
+    }
+}
+
+function bite(r) {
+    const p = state.player;
+    p.hearts--;
+    p.belly = Math.max(0, p.belly - 12);
+    p.invuln = HURT_INVULN;
+    r.bump = 1.0;
+    const a = Math.atan2(p.y - r.y, p.x - r.x);
+    p.vx = Math.cos(a) * 320; p.vy = Math.sin(a) * 320;
+    state.shake = 0.3; state.flash = 0.35;
+    popup(p.x, p.y - p.r - 18, '−1 ♥', '#ff5a5a', 20);
+    beep(160, 0.25, 'sawtooth', 0.06);
+    if (p.hearts <= 0) gameOver();
+    else say('A rat got you — mind your ankles');
+}
+
+/* --------------------------------------------------------------- bits --- */
+function updateBits(dt) {
+    for (let i = state.bits.length - 1; i >= 0; i--) {
+        const b = state.bits[i];
+        b.life -= dt; if (b.life <= 0) { state.bits.splice(i, 1); continue; }
+        b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 620 * dt; b.vx *= 0.99; b.a += b.spin * dt;
+    }
+    for (let i = state.crumbs.length - 1; i >= 0; i--) {
+        const c = state.crumbs[i];
+        c.life -= dt; if (c.life <= 0) { state.crumbs.splice(i, 1); continue; }
+        c.x += c.vx * dt; c.y += c.vy * dt; c.vx *= 0.9; c.vy *= 0.9;
+    }
+    for (let i = state.pops.length - 1; i >= 0; i--) {
+        const o = state.pops[i];
+        o.life -= dt; if (o.life <= 0) { state.pops.splice(i, 1); continue; }
+        o.y -= 34 * dt;
+    }
+    for (const br of state.bricks) if (br.shake > 0) br.shake -= dt;
+}
+
+/* -------------------------------------------------------------- render -- */
+function render() {
+    ctx.save();
+    if (state.shake > 0) {
+        const s = state.shake * 16;
+        ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+    }
+
+    ctx.fillStyle = '#2b1d12';
+    ctx.fillRect(-20, -20, VW + 40, VH + 40);
+
+    drawFloor();
+    drawCrates();
+    drawFood();
+    drawPowers();
+    drawWall();
+    for (const r of state.rats) drawRat(r);
+    drawPlayer();
+    drawBits();
+
+    ctx.restore();
+
+    drawHUD();
+
+    if (state.flash > 0) {
+        ctx.fillStyle = 'rgba(255,80,50,' + (state.flash * 0.4).toFixed(3) + ')';
+        ctx.fillRect(0, 0, VW, VH);
+    }
+}
+
+function drawFloor() {
+    const b = state.board, f = floorRect();
+    ctx.fillStyle = '#f6e6c9';
+    ctx.fillRect(f.x, f.y, f.w, f.h);
+    // kitchen tiles
+    const T = 54;
+    ctx.fillStyle = '#efdcb8';
+    for (let y = 0; y < f.h; y += T)
+        for (let x = 0; x < f.w; x += T)
+            if (((x / T | 0) + (y / T | 0)) % 2 === 0)
+                ctx.fillRect(f.x + x, f.y + y, Math.min(T, f.w - x), Math.min(T, f.h - y));
+    ctx.strokeStyle = 'rgba(150,115,70,0.16)'; ctx.lineWidth = 1;
+    for (let x = T; x < f.w; x += T) { ctx.beginPath(); ctx.moveTo(f.x + x, f.y); ctx.lineTo(f.x + x, f.y + f.h); ctx.stroke(); }
+    for (let y = T; y < f.h; y += T) { ctx.beginPath(); ctx.moveTo(f.x, f.y + y); ctx.lineTo(f.x + f.w, f.y + y); ctx.stroke(); }
+
+    ctx.strokeStyle = '#7a5228'; ctx.lineWidth = 5;
+    ctx.strokeRect(b.x + 2.5, b.y + 2.5, b.w - 5, b.h - 5);
+}
+
+function drawCrates() {
+    for (const c of state.crates) {
+        ctx.fillStyle = 'rgba(60,35,15,0.22)';
+        ctx.fillRect(c.x + 4, c.y + 6, c.w, c.h);
+        ctx.fillStyle = '#c58b4e';
+        ctx.fillRect(c.x, c.y, c.w, c.h);
+        ctx.strokeStyle = '#8a5a26'; ctx.lineWidth = 3;
+        ctx.strokeRect(c.x + 1.5, c.y + 1.5, c.w - 3, c.h - 3);
+        ctx.beginPath();
+        ctx.moveTo(c.x + 3, c.y + 3); ctx.lineTo(c.x + c.w - 3, c.y + c.h - 3);
+        ctx.moveTo(c.x + c.w - 3, c.y + 3); ctx.lineTo(c.x + 3, c.y + c.h - 3);
+        ctx.stroke();
+    }
+}
+
+function drawFood() {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const f of state.food) {
+        const lift = Math.sin(f.bob) * 2;
+        const pop = f.pop > 0 ? 1 + f.pop * 1.2 : 1;
+        ctx.fillStyle = 'rgba(60,35,15,0.18)';
+        ctx.beginPath(); ctx.ellipse(f.x, f.y + 11, 11, 4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.font = Math.round(27 * pop) + 'px serif';
+        ctx.fillText(f.kind.g, f.x, f.y + lift);
+    }
+}
+
+function drawPowers() {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const u of state.powers) {
+        const lift = Math.sin(u.bob) * 3;
+        const fade = u.life < 3 ? (Math.sin(u.life * 14) * 0.4 + 0.6) : 1;
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = '#fff6d8';
+        ctx.strokeStyle = '#c4562f'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(u.x, u.y + lift, PU_R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.font = '19px serif';
+        ctx.fillText(u.p.g, u.x, u.y + lift + 1);
+        ctx.globalAlpha = 1;
+    }
+}
+
+function drawWall() {
+    const b = state.board;
+    // the stonework above and below the doorway
+    ctx.fillStyle = '#8b8b93';
+    ctx.fillRect(b.wallX, b.y, WALL_T, b.doorY - b.y);
+    ctx.fillRect(b.wallX, b.doorY + b.doorH, WALL_T, b.y + b.h - (b.doorY + b.doorH));
+    ctx.strokeStyle = 'rgba(45,45,52,0.5)'; ctx.lineWidth = 2;
+    for (let y = b.y; y < b.y + b.h; y += 26) {
+        if (y > b.doorY - 26 && y < b.doorY + b.doorH) continue;
+        ctx.beginPath(); ctx.moveTo(b.wallX, y); ctx.lineTo(b.wallX + WALL_T, y); ctx.stroke();
+    }
+    ctx.strokeStyle = '#5f5f68'; ctx.lineWidth = 4;
+    ctx.strokeRect(b.wallX + 2, b.y + 2, WALL_T - 4, b.h - 4);
+
+    // the doorway: dark beyond, then whatever bricks are still in the way
+    const open = bricksLeft() === 0;
+    const g = ctx.createLinearGradient(b.wallX, 0, b.wallX + WALL_T, 0);
+    g.addColorStop(0, open ? '#3c6b2a' : '#231a12');
+    g.addColorStop(1, open ? '#8fd06a' : '#100c08');
+    ctx.fillStyle = g;
+    ctx.fillRect(b.wallX, b.doorY, WALL_T, b.doorH);
+
+    if (open) {
+        ctx.save();
+        ctx.globalAlpha = 0.5 + Math.sin(state.t * 5) * 0.25;
+        ctx.fillStyle = '#eaffd8';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = 'bold 15px Segoe UI';
+        ctx.translate(b.wallX + WALL_T / 2, b.doorY + b.doorH / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('THIS WAY OUT →', 0, 0);
+        ctx.restore();
+    }
+
+    for (const br of state.bricks) {
+        if (br.hp <= 0) continue;
+        const jx = br.shake > 0 ? (Math.random() - 0.5) * 6 : 0;
+        const bh = state.brickH;
+        ctx.fillStyle = '#b04a26';
+        ctx.fillRect(br.x + jx, br.y, WALL_T, bh);
+        ctx.fillStyle = '#c65c33';
+        ctx.fillRect(br.x + jx + 2, br.y + 2, WALL_T - 4, bh - 6);
+        ctx.strokeStyle = '#efe2cc'; ctx.lineWidth = 2.5;
+        ctx.strokeRect(br.x + jx + 1.25, br.y + 1.25, WALL_T - 2.5, bh - 2.5);
+        ctx.fillStyle = 'rgba(255,255,255,0.16)';
+        ctx.fillRect(br.x + jx + 4, br.y + 4, WALL_T - 8, Math.min(5, bh * 0.15));
+    }
+}
+
+function drawPlayer() {
+    const p = state.player;
+    const blink = p.invuln > 0 && Math.floor(p.invuln * 14) % 2 === 0;
+    ctx.save();
+    if (blink) ctx.globalAlpha = 0.45;
+
+    ctx.fillStyle = 'rgba(60,35,15,0.25)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y + p.r * 0.85, p.r * 0.95, p.r * 0.36, 0, 0, Math.PI * 2); ctx.fill();
+
+    if (p.dash > 0) {
+        ctx.strokeStyle = 'rgba(255,214,120,0.85)'; ctx.lineWidth = 4;
+        for (let i = 1; i <= 3; i++) {
+            ctx.globalAlpha = (blink ? 0.45 : 1) * (0.4 - i * 0.1);
+            ctx.beginPath();
+            ctx.arc(p.x - Math.cos(p.face) * i * 13, p.y - Math.sin(p.face) * i * 13, p.r * 0.9, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = blink ? 0.45 : 1;
+    }
+
+    // little feet
+    ctx.fillStyle = '#d08320';
+    const step = Math.sin(state.t * 13) * (Math.hypot(p.vx, p.vy) > 30 ? 4 : 0);
+    ctx.beginPath(); ctx.ellipse(p.x - p.r * 0.45, p.y + p.r * 0.72 + step, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(p.x + p.r * 0.45, p.y + p.r * 0.72 - step, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
+
+    // body, rounder the fuller it is
+    const squash = 1 + (p.chew > 0 ? p.chew * 0.5 : 0);
+    ctx.fillStyle = p.speedT > 0 ? '#ffd15c' : '#ffb03a';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, p.r * squash, p.r / (squash * 0.9), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#c47a10'; ctx.lineWidth = 3.5; ctx.stroke();
+
+    // belly patch grows with what is in it
+    ctx.fillStyle = 'rgba(255,247,220,0.9)';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y + p.r * 0.22, p.r * 0.6, p.r * 0.45 * (0.5 + p.belly / BELLY_MAX * 0.7), 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // mouth, open while chewing and while charging
+    const open = p.chew > 0 || p.dash > 0;
+    ctx.fillStyle = '#7a2f10';
+    ctx.save();
+    ctx.translate(p.x + Math.cos(p.face) * p.r * 0.55, p.y + Math.sin(p.face) * p.r * 0.55);
+    ctx.rotate(p.face);
+    ctx.beginPath();
+    if (open) ctx.ellipse(0, 0, p.r * 0.42, p.r * 0.36, 0, 0, Math.PI * 2);
+    else ctx.ellipse(0, 0, p.r * 0.34, p.r * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // eyes
+    const ex = Math.cos(p.face), ey = Math.sin(p.face);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(p.x + ex * 5 - ey * 8, p.y + ey * 5 + ex * 8, 5.6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x + ex * 5 + ey * 8, p.y + ey * 5 - ex * 8, 5.6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2a2318';
+    ctx.beginPath(); ctx.arc(p.x + ex * 7 - ey * 8, p.y + ey * 7 + ex * 8, 2.6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x + ex * 7 + ey * 8, p.y + ey * 7 - ex * 8, 2.6, 0, Math.PI * 2); ctx.fill();
+
+    if (p.magnetT > 0) {
+        ctx.strokeStyle = 'rgba(120,190,255,' + (0.35 + Math.sin(state.t * 8) * 0.15).toFixed(2) + ')';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 190, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (p.strong > 0) {
+        ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('💪', p.x + p.r + 6, p.y - p.r - 4);
+    }
+    ctx.restore();
+}
+
+function drawRat(r) {
+    ctx.save();
+    if (r.stun > 0) ctx.globalAlpha = 0.6;
+    ctx.fillStyle = 'rgba(60,35,15,0.22)';
+    ctx.beginPath(); ctx.ellipse(r.x, r.y + r.r * 0.8, r.r * 0.9, r.r * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+
+    const a = Math.atan2(r.vy, r.vx);
+    ctx.save();
+    ctx.translate(r.x, r.y); ctx.rotate(a);
+    ctx.strokeStyle = '#9a8fa8'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-r.r * 0.8, 0);
+    ctx.quadraticCurveTo(-r.r * 1.8, Math.sin(r.wob) * 7, -r.r * 2.4, 0); ctx.stroke();
+    ctx.restore();
+
+    ctx.fillStyle = '#f0b6c8';
+    ctx.beginPath(); ctx.arc(r.x - 6, r.y - r.r * 0.7, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r.x + 6, r.y - r.r * 0.7, 5, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = '#8b8194';
+    ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r, r.r * 0.85, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#6b6274'; ctx.lineWidth = 2.5; ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(r.x - 4, r.y - 2, 3.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r.x + 4, r.y - 2, 3.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2a2318';
+    ctx.beginPath(); ctx.arc(r.x - 4, r.y - 2, 1.6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r.x + 4, r.y - 2, 1.6, 0, Math.PI * 2); ctx.fill();
+
+    if (r.stun > 0) {
+        ctx.fillStyle = '#ffd23a'; ctx.font = '13px serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('💫', r.x, r.y - r.r - 9);
+    }
+    ctx.restore();
+}
+
+function drawBits() {
+    for (const b of state.bits) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, b.life * 2);
+        ctx.translate(b.x, b.y); ctx.rotate(b.a);
+        ctx.fillStyle = '#b04a26';
+        ctx.fillRect(-b.r, -b.r * 0.7, b.r * 2, b.r * 1.4);
+        ctx.restore();
+    }
+    for (const c of state.crumbs) {
+        ctx.globalAlpha = Math.min(1, c.life * 3);
+        ctx.fillStyle = c.colour;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const o of state.pops) {
+        ctx.globalAlpha = Math.min(1, o.life * 1.6);
+        ctx.font = 'bold ' + o.size + 'px Segoe UI';
+        ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(40,24,10,0.65)';
+        ctx.strokeText(o.text, o.x, o.y);
+        ctx.fillStyle = o.colour;
+        ctx.fillText(o.text, o.x, o.y);
+        ctx.globalAlpha = 1;
+    }
+}
+
+/* ----------------------------------------------------------------- HUD -- */
+function drawHUD() {
+    const p = state.player;
+
+    ctx.fillStyle = 'rgba(255,250,240,0.92)';
+    ctx.fillRect(0, 0, VW, HUD_H - 8);
+    ctx.strokeStyle = 'rgba(122,82,40,0.45)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, HUD_H - 8); ctx.lineTo(VW, HUD_H - 8); ctx.stroke();
+
+    // belly meter, with the line you have to get past to smash
+    const bx = 168, by = 16, bw = Math.max(180, VW - bx - 300), bh = 26;
+    ctx.fillStyle = 'rgba(0,0,0,0.09)';
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill();
+
+    const fill = p.belly / BELLY_MAX;
+    const ready = p.belly >= SMASH_MIN;
+    const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+    g.addColorStop(0, ready ? '#ffb03a' : '#d9a86a');
+    g.addColorStop(1, ready ? '#ff7a2f' : '#c69a68');
+    ctx.fillStyle = g;
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.clip();
+    ctx.fillRect(bx, by, bw * fill, bh);
+    ctx.restore();
+
+    const lineX = bx + bw * (SMASH_MIN / BELLY_MAX);
+    ctx.strokeStyle = ready ? '#2f7d16' : '#8a3512';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(lineX, by - 4); ctx.lineTo(lineX, by + bh + 4); ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(122,82,40,0.5)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.stroke();
+
+    ctx.fillStyle = '#4a3418'; ctx.font = 'bold 13px Segoe UI';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText('BELLY', 12, by + bh / 2);
+    ctx.font = 'bold 19px Segoe UI';
+    ctx.fillText(Math.round(p.belly) + '%', 74, by + bh / 2);
+
+    ctx.textAlign = 'center'; ctx.font = 'bold 12px Segoe UI';
+    ctx.fillStyle = ready ? '#2f7d16' : '#8a3512';
+    ctx.fillText(ready ? 'READY TO SMASH — SPACE' : 'SMASH LINE', lineX, by + bh + 15);
+
+    // hearts, floor, score
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.font = '18px serif';
+    let hx = VW - 14;
+    for (let i = 0; i < HEARTS; i++) {
+        ctx.globalAlpha = i < p.hearts ? 1 : 0.22;
+        ctx.fillText('❤️', hx, by + 4);
+        hx -= 24;
+        ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = '#4a3418'; ctx.font = 'bold 13px Segoe UI';
+    ctx.fillText('FLOOR ' + state.level + '  ·  ' + bricksLeft() + ' BRICK' + (bricksLeft() === 1 ? '' : 'S') + ' LEFT',
+                 VW - 14, by + bh + 14);
+    ctx.font = 'bold 17px Segoe UI';
+    ctx.textAlign = 'left';
+    ctx.fillText(state.score.toLocaleString(), VW - 190, by + 4);
+    ctx.font = 'bold 11px Segoe UI'; ctx.fillStyle = '#7b6a56';
+    ctx.fillText('SCORE', VW - 190, by + 20);
+
+    // whatever we last had to say
+    if (state.msgT > 0) {
+        ctx.globalAlpha = Math.min(1, state.msgT * 1.6);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = 'bold 15px Segoe UI';
+        const w = ctx.measureText(state.msg).width + 28;
+        ctx.fillStyle = 'rgba(42,35,24,0.82)';
+        ctx.beginPath(); ctx.roundRect(VW / 2 - w / 2, VH - 62, w, 32, 9); ctx.fill();
+        ctx.fillStyle = '#fff4dd';
+        ctx.fillText(state.msg, VW / 2, VH - 46);
+        ctx.globalAlpha = 1;
+    }
+}
+
+/* ---------------------------------------------------------- the finish -- */
+function levelClear() {
+    if (state.done) return;
+    state.done = true;
+    running = false;
+
+    const bonus = Math.round((60 + state.level * 25 + state.player.hearts * 30) * DIFFS[diff].pay);
+    state.score += bonus;
+    if (state.level + 1 > best.level) best.level = state.level + 1;
+    if (state.score > best.score) best.score = state.score;
+    storeSave();
+
+    document.getElementById('clearTitle').textContent = 'THROUGH THE WALL';
+    document.getElementById('clearSub').textContent =
+        'Floor ' + state.level + ' eaten clean. Floor ' + (state.level + 1) + ' is thicker.';
+    document.getElementById('clearFood').innerHTML = tallyRow();
+    document.getElementById('clearTally').innerHTML =
+        line('Eaten on this floor', state.levelEaten + ' item' + (state.levelEaten === 1 ? '' : 's')) +
+        line('Bricks knocked out', state.levelBricks) +
+        line('Hearts still going', '❤️'.repeat(state.player.hearts) || 'none') +
+        line('Floor bonus', '+' + bonus.toLocaleString()) +
+        line('Score', state.score.toLocaleString());
+    document.getElementById('clearOv').classList.remove('hidden');
+    beep(660, 0.14, 'sine', 0.06);
+    setTimeout(() => beep(880, 0.22, 'sine', 0.06), 130);
+}
+
+function gameOver() {
+    if (state.over) return;
+    state.over = true;
+    running = false;
+
+    if (state.score > best.score) best.score = state.score;
+    if (state.level > best.level) best.level = state.level;
+    storeSave();
+
+    document.getElementById('overSub').textContent =
+        'The rats got the better of you on floor ' + state.level + '.';
+    document.getElementById('overTally').innerHTML =
+        line('Floor reached', state.level) +
+        line('Food eaten', state.eaten) +
+        line('Bricks knocked out', state.bricksDone) +
+        line('Score', state.score.toLocaleString());
+    document.getElementById('overBest').textContent =
+        'Best so far: floor ' + best.level + ', ' + best.score.toLocaleString() + ' points.';
+    document.getElementById('overOv').classList.remove('hidden');
+    beep(200, 0.5, 'sawtooth', 0.06);
+}
+
+function line(k, v) { return '<div class="line"><span>' + k + '</span><b>' + v + '</b></div>'; }
+
+function tallyRow() {
+    const ks = Object.keys(state.tally);
+    if (!ks.length) return '&nbsp;';
+    ks.sort((a, b) => state.tally[b] - state.tally[a]);
+    return ks.slice(0, 8).map(g => g + '<span style="font-size:13px;color:#7b6a56">×' + state.tally[g] + '</span>').join(' ');
+}
+
+/* ---------------------------------------------------------------- loop -- */
+function loop(now) {
+    requestAnimationFrame(loop);
+    if (!running || paused || !state) { last = now; return; }
+    const dt = Math.min((now - last) / 1000, 0.033);
+    last = now;
+    update(dt);
+    if (state) render();
+}
+
+/* ---------------------------------------------------------------- menu -- */
+function bestText() {
+    return 'Best so far: floor ' + best.level + ', ' + best.score.toLocaleString() + ' points.';
+}
+
+function paintDiffs() {
+    const row = document.getElementById('diffRow');
+    row.innerHTML = '';
+    for (const k of Object.keys(DIFFS)) {
+        const b = document.createElement('button');
+        b.className = 'btn small' + (k === diff ? ' sel' : '');
+        b.textContent = DIFFS[k].name;
+        b.addEventListener('click', () => { diff = k; storeSave(); paintDiffs(); });
+        row.appendChild(b);
+    }
+}
+
+function hideAll() {
+    for (const id of ['titleOv', 'pauseOv', 'clearOv', 'overOv'])
+        document.getElementById(id).classList.add('hidden');
+}
+
+function newGame() {
+    hideAll();
+    startLevel(1, null);
+}
+
+function nextLevel() {
+    const carry = {
+        hearts: state.player.hearts,
+        score: state.score,
+        eaten: state.eaten,
+        bricks: state.bricksDone,
+    };
+    hideAll();
+    startLevel(state.level + 1, carry);
+}
+
+function toMenu() {
+    running = false; paused = false;
+    hideAll();
+    document.getElementById('titleBest').textContent = bestText();
+    document.getElementById('titleOv').classList.remove('hidden');
+}
+
+document.getElementById('startBtn').addEventListener('click', newGame);
+document.getElementById('nextBtn').addEventListener('click', nextLevel);
+document.getElementById('againBtn').addEventListener('click', newGame);
+document.getElementById('menuBtn').addEventListener('click', toMenu);
+document.getElementById('quitBtn').addEventListener('click', toMenu);
+document.getElementById('resumeBtn').addEventListener('click', () => {
+    paused = false;
+    document.getElementById('pauseOv').classList.add('hidden');
+    last = performance.now();
+});
+
+/* --------------------------------------------------------------- input -- */
+addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    keys[k] = true;
+    if ([' ', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown'].indexOf(k) >= 0) e.preventDefault();
+    if (!running) return;
+    if (k === ' ') dash();
+    if (k === 'p' || k === 'escape') {
+        paused = !paused;
+        document.getElementById('pauseOv').classList.toggle('hidden', !paused);
+        if (!paused) last = performance.now();
+    }
+});
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+addEventListener('blur', () => { keys = {}; pointer.on = false; });
+
+function dash() {
+    const p = state.player;
+    if (p.dashCd > 0 || p.dash > 0 || p.stun > 0) return;
+    p.dash = DASH_T; p.dashCd = DASH_CD;
+    beep(430, 0.09, 'square', 0.035);
+}
+
+cv.addEventListener('pointerdown', e => {
+    pointer.on = true; pointer.x = e.clientX; pointer.y = e.clientY;
+    if (running && e.clientY > HUD_H) {
+        // a tap right by the wall is a charge at it
+        const p = state.player;
+        if (Math.hypot(e.clientX - p.x, e.clientY - p.y) < p.r + 30) dash();
+    }
+});
+cv.addEventListener('pointermove', e => { if (pointer.on) { pointer.x = e.clientX; pointer.y = e.clientY; } });
+addEventListener('pointerup', () => { pointer.on = false; });
+addEventListener('pointercancel', () => { pointer.on = false; });
+
+window.addEventListener('resize', layout);
+
+/* --------------------------------------------------------------- start -- */
+storeLoad();
+VW = cv.width = window.innerWidth;
+VH = cv.height = window.innerHeight;
+paintDiffs();
+document.getElementById('titleBest').textContent = bestText();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
