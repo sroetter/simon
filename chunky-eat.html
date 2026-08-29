@@ -307,7 +307,7 @@ function levelPlan(n) {
         bricks: Math.min(9, 3 + n),                              // how many are in the way
         food:   Math.min(30, 13 + n * 2),                        // how much lies about at once
         rats:   Math.round(Math.min(4, Math.max(0, n - 3)) * d.rats),   // none until floor 4
-        chilli: n <= 1 ? 0 : Math.min(0.22, 0.05 * (n - 1)) * d.chilli,
+        chilli: n <= 3 ? 0 : Math.min(0.10, 0.025 * (n - 3)) * d.chilli,   // none until floor 4
         crates: Math.min(8, n),
         drain:  (0.85 + n * 0.12) * d.drain,                     // belly lost per second
     };
