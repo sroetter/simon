@@ -95,8 +95,9 @@
       There is a catch. The fuller you get the <b>bigger and slower</b> you are, and hunger
       slowly eats into your meter the whole time. Later floors have <b>rats</b> that get to
       the food before you do, and <b>chillies</b> that undo a lot of good eating.<br><br>
-      The rats <b>cannot hurt you</b> — barge straight through them, or charge one to send
-      it flying. Nothing can end your run, so keep going as long as you like.
+      The rats are only ever after the food — they never come looking for you. But they
+      will not move out of your way either, so <b>walk into one and it nips you</b> and
+      you lose a heart. Charge one to send it flying instead. Three hearts and you are out.
     </div>
     <div class="keys">
       <div><kbd>W A S D</kbd> or <kbd>← ↑ ↓ →</kbd> — waddle about</div>
@@ -177,6 +178,7 @@ const P_R_MIN = 16, P_R_MAX = 28;       // you grow as you fill up...
 const P_SPD_MAX = 258, P_SPD_MIN = 168; // ...and slow down with it
 const DASH_T = 0.22, DASH_SPD = 640, DASH_CD = 0.46;
 
+const HEARTS = 3, HURT_INVULN = 1.4;
 const RAT_R = 13, RAT_SPD = 152, RAT_STUN = 1.1, RAT_EAT = 0.55;
 const FOOD_R = 15, RESTOCK = 2.1;
 const CRATE_MIN = 34, CRATE_MAX = 62;
@@ -296,7 +298,7 @@ function levelPlan(n) {
     return {
         bricks: Math.min(9, 3 + n),                              // how many are in the way
         food:   Math.min(30, 13 + n * 2),                        // how much lies about at once
-        rats:   Math.round(Math.min(6, Math.max(0, n - 1)) * d.rats),
+        rats:   Math.round(Math.min(6, Math.max(0, n - 3)) * d.rats),   // none until floor 4
         chilli: n <= 1 ? 0 : Math.min(0.22, 0.05 * (n - 1)) * d.chilli,
         crates: Math.min(8, n),
         drain:  (0.85 + n * 0.12) * d.drain,                     // belly lost per second
@@ -305,7 +307,7 @@ function levelPlan(n) {
 
 function startLevel(n, carry) {
     const plan = levelPlan(n);
-    const keep = carry || { score:0, eaten:0, bricks:0 };
+    const keep = carry || { hearts:HEARTS, score:0, eaten:0, bricks:0 };
 
     state = {
         level: n, plan,
@@ -315,7 +317,7 @@ function startLevel(n, carry) {
         bits: [], pops: [], crumbs: [],
         player: {
             x:0, y:0, vx:0, vy:0, face:0, r:P_R_MIN,
-            belly:0,
+            belly:0, hearts:keep.hearts, invuln:0,
             dash:0, dashCd:0, chew:0, stun:0,
             speedT:0, magnetT:0, strong:0,
         },
@@ -406,7 +408,7 @@ function makeRat() {
         const y = f.y + 40 + Math.random() * (f.h - 80);
         if (inCrate(x, y, RAT_R + 4)) continue;
         if (Math.hypot(state.player.x - x, state.player.y - y) < 220) continue;
-        state.rats.push({ x, y, vx:0, vy:0, r:RAT_R, stun:0, target:null, munch:0,
+        state.rats.push({ x, y, vx:0, vy:0, r:RAT_R, stun:0, munch:0, roam:null, roamT:0,
                           wob:Math.random() * 6.28, bump:0 });
         return;
     }
@@ -532,6 +534,7 @@ function update(dt) {
     let spd = P_SPD_MAX - (P_SPD_MAX - P_SPD_MIN) * fill;
     if (p.speedT > 0) { spd *= 1.4; p.speedT -= dt; }
     if (p.magnetT > 0) p.magnetT -= dt;
+    if (p.invuln > 0) p.invuln -= dt;
     if (p.chew > 0) p.chew -= dt;
     if (p.stun > 0) p.stun -= dt;
     if (p.dashCd > 0) p.dashCd -= dt;
@@ -663,18 +666,26 @@ function updateRats(dt) {
             continue;
         }
 
-        // a rat wants the nearest food, and will crowd you when you are carrying a lot
+        // a rat is only ever after the food. it never comes looking for you — if you
+        // get hurt it is because you walked into one, not because it hunted you down.
         const dp = Math.hypot(p.x - r.x, p.y - r.y);
-        let tx = null, ty = null;
-        if (dp < 150 && p.belly > 45) { tx = p.x; ty = p.y; }
-        else {
-            let bd = 1e9;
-            for (const f of state.food) {
-                const d = Math.hypot(f.x - r.x, f.y - r.y);
-                if (d < bd) { bd = d; tx = f.x; ty = f.y; }
-            }
+        let tx = null, ty = null, bd = 1e9;
+        for (const f of state.food) {
+            if (f.kind.hot) continue;
+            const d = Math.hypot(f.x - r.x, f.y - r.y);
+            if (d < bd) { bd = d; tx = f.x; ty = f.y; }
         }
-        if (tx === null) { tx = p.x; ty = p.y; }
+        if (tx === null) {
+            // nothing worth having on the floor: potter about until there is
+            r.roamT -= dt;
+            if (!r.roam || r.roamT <= 0 || Math.hypot(r.roam.x - r.x, r.roam.y - r.y) < 30) {
+                const fl = floorRect();
+                r.roam = { x: fl.x + 30 + Math.random() * (fl.w - 60),
+                           y: fl.y + 30 + Math.random() * (fl.h - 60) };
+                r.roamT = 3 + Math.random() * 3;
+            }
+            tx = r.roam.x; ty = r.roam.y;
+        }
 
         const dx = tx - r.x, dy = ty - r.y, d = Math.hypot(dx, dy) || 1;
         const wob = Math.sin(r.wob) * 0.25;
@@ -700,22 +711,36 @@ function updateRats(dt) {
             }
         }
 
-        // a rat can never hurt you. a charge sends it flying; walk into one and
-        // you just barge past each other.
+        // a charge sends it flying; blunder into one and it nips you
         if (dp < p.r + r.r) {
-            const a2 = Math.atan2(r.y - p.y, r.x - p.x);
             if (p.dash > 0) {
+                const a2 = Math.atan2(r.y - p.y, r.x - p.x);
                 r.vx = Math.cos(a2) * 460; r.vy = Math.sin(a2) * 460;
                 r.stun = RAT_STUN;
                 popup(r.x, r.y - 16, 'SHOVED', '#ffffff', 14);
                 beep(200, 0.09, 'triangle', 0.04);
-            } else if (r.bump <= 0) {
-                r.vx = Math.cos(a2) * 250; r.vy = Math.sin(a2) * 250;
-                r.bump = 0.5;
-                beep(300, 0.05, 'triangle', 0.02);
+            } else if (p.invuln <= 0 && r.bump <= 0) {
+                bite(r);
             }
         }
     }
+}
+
+function bite(r) {
+    const p = state.player;
+    p.hearts--;
+    p.belly = Math.max(0, p.belly - 12);
+    p.invuln = HURT_INVULN;
+    r.bump = 1.0;
+    const a = Math.atan2(p.y - r.y, p.x - r.x);
+    p.vx = Math.cos(a) * 320; p.vy = Math.sin(a) * 320;
+    // shove the rat off too, so it is not left sitting on your toes
+    r.vx = -Math.cos(a) * 240; r.vy = -Math.sin(a) * 240;
+    state.shake = 0.3; state.flash = 0.35;
+    popup(p.x, p.y - p.r - 18, '−1 ♥', '#ff5a5a', 20);
+    beep(160, 0.25, 'sawtooth', 0.06);
+    if (p.hearts <= 0) endRun('out');
+    else say('You walked into a rat — they do not move for anyone');
 }
 
 /* --------------------------------------------------------------- bits --- */
@@ -880,7 +905,9 @@ function drawWall() {
 
 function drawPlayer() {
     const p = state.player;
+    const blink = p.invuln > 0 && Math.floor(p.invuln * 14) % 2 === 0;
     ctx.save();
+    if (blink) ctx.globalAlpha = 0.45;
 
     ctx.fillStyle = 'rgba(60,35,15,0.25)';
     ctx.beginPath(); ctx.ellipse(p.x, p.y + p.r * 0.85, p.r * 0.95, p.r * 0.36, 0, 0, Math.PI * 2); ctx.fill();
@@ -888,12 +915,12 @@ function drawPlayer() {
     if (p.dash > 0) {
         ctx.strokeStyle = 'rgba(255,214,120,0.85)'; ctx.lineWidth = 4;
         for (let i = 1; i <= 3; i++) {
-            ctx.globalAlpha = 0.4 - i * 0.1;
+            ctx.globalAlpha = (blink ? 0.45 : 1) * (0.4 - i * 0.1);
             ctx.beginPath();
             ctx.arc(p.x - Math.cos(p.face) * i * 13, p.y - Math.sin(p.face) * i * 13, p.r * 0.9, 0, Math.PI * 2);
             ctx.stroke();
         }
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = blink ? 0.45 : 1;
     }
 
     // little feet
@@ -1056,8 +1083,16 @@ function drawHUD() {
     ctx.fillStyle = ready ? '#2f7d16' : '#8a3512';
     ctx.fillText(ready ? 'READY TO SMASH — SPACE' : 'SMASH LINE', lineX, by + bh + 15);
 
-    // floor and score. nothing can end a run, so there is nothing to count down.
+    // hearts, floor, score
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.font = '18px serif';
+    let hx = VW - 14;
+    for (let i = 0; i < HEARTS; i++) {
+        ctx.globalAlpha = i < p.hearts ? 1 : 0.22;
+        ctx.fillText('❤️', hx, by + 4);
+        hx -= 24;
+        ctx.globalAlpha = 1;
+    }
     ctx.fillStyle = '#4a3418'; ctx.font = 'bold 13px Segoe UI';
     ctx.fillText('FLOOR ' + state.level + '  ·  ' + bricksLeft() + ' BRICK' + (bricksLeft() === 1 ? '' : 'S') + ' LEFT',
                  VW - 14, by + bh + 14);
@@ -1087,7 +1122,7 @@ function levelClear() {
     state.done = true;
     running = false;
 
-    const bonus = Math.round((150 + state.level * 25) * DIFFS[diff].pay);
+    const bonus = Math.round((60 + state.level * 25 + state.player.hearts * 30) * DIFFS[diff].pay);
     state.score += bonus;
     if (state.level + 1 > best.level) best.level = state.level + 1;
     if (state.score > best.score) best.score = state.score;
@@ -1100,6 +1135,7 @@ function levelClear() {
     document.getElementById('clearTally').innerHTML =
         line('Eaten on this floor', state.levelEaten + ' item' + (state.levelEaten === 1 ? '' : 's')) +
         line('Bricks knocked out', state.levelBricks) +
+        line('Hearts still going', '❤️'.repeat(state.player.hearts) || 'none') +
         line('Floor bonus', '+' + bonus.toLocaleString()) +
         line('Score', state.score.toLocaleString());
     document.getElementById('clearOv').classList.remove('hidden');
@@ -1107,9 +1143,8 @@ function levelClear() {
     setTimeout(() => beep(880, 0.22, 'sine', 0.06), 130);
 }
 
-// nothing can end a run any more, so this is the summary you get when you
-// choose to stop rather than one you are handed
-function endRun() {
+// a run ends two ways: the rats finally get you, or you decide you have had enough
+function endRun(why) {
     if (state.over) return;
     state.over = true;
     running = false;
@@ -1118,8 +1153,11 @@ function endRun() {
     if (state.level > best.level) best.level = state.level;
     storeSave();
 
-    document.getElementById('overSub').textContent =
-        'You gave up eating on floor ' + state.level + '. Here is how far you got.';
+    document.getElementById('overTitle').textContent =
+        why === 'out' ? 'ALL OUT OF PUFF' : 'THAT WILL DO';
+    document.getElementById('overSub').textContent = why === 'out'
+        ? 'One rat too many on floor ' + state.level + '.'
+        : 'You stopped eating on floor ' + state.level + '. Here is how far you got.';
     document.getElementById('overTally').innerHTML =
         line('Floor reached', state.level) +
         line('Food eaten', state.eaten) +
@@ -1179,6 +1217,7 @@ function newGame() {
 
 function nextLevel() {
     const carry = {
+        hearts: state.player.hearts,
         score: state.score,
         eaten: state.eaten,
         bricks: state.bricksDone,
@@ -1201,7 +1240,7 @@ document.getElementById('menuBtn').addEventListener('click', toMenu);
 document.getElementById('quitBtn').addEventListener('click', () => {
     paused = false;
     document.getElementById('pauseOv').classList.add('hidden');
-    endRun();
+    endRun('quit');
 });
 document.getElementById('resumeBtn').addEventListener('click', () => {
     paused = false;
