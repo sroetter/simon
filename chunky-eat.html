@@ -170,7 +170,10 @@
     <div id="shopList"></div>
     <div class="note">Crumbs come from everything you eat, every brick you shift and every floor
       you finish. What you buy here lasts the rest of the run.</div>
-    <div class="row" style="margin-top:14px;"><button class="btn" id="shopGo">BACK TO IT</button></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn small" id="shopUndo">↩ NOTHING TO UNDO</button>
+      <button class="btn" id="shopGo">BACK TO IT</button>
+    </div>
   </div>
 </div>
 
@@ -273,17 +276,17 @@ const POWERS = [
 // as you go; what you buy lasts the rest of the run.
 const SHOP_EVERY = 5;
 const SHOP = [
-    { key:'belly', g:'🫃', name:'Roomier belly',  max:2, cost:[40, 95],
+    { key:'belly', g:'🫃', name:'Roomier belly',  max:2, cost:[120, 285],
       desc:'+25 on the belly meter, so one trip carries another brick.' },
-    { key:'cheap', g:'🔨', name:'Better shoulder', max:3, cost:[35, 80, 170],
+    { key:'cheap', g:'🔨', name:'Better shoulder', max:3, cost:[105, 240, 510],
       desc:'Every brick costs 4 less belly to shift.' },
-    { key:'heart', g:'❤️', name:'One more heart', max:2, cost:[70, 160],
+    { key:'heart', g:'❤️', name:'One more heart', max:2, cost:[210, 480],
       desc:'An extra heart for the rest of the run.' },
-    { key:'feet',  g:'👟', name:'Quick feet',     max:2, cost:[45, 105],
+    { key:'feet',  g:'👟', name:'Quick feet',     max:2, cost:[135, 315],
       desc:'Waddle 12% faster on any belly.' },
-    { key:'power', g:'⏳', name:'Deeper pockets', max:2, cost:[40, 90],
+    { key:'power', g:'⏳', name:'Deeper pockets', max:2, cost:[120, 270],
       desc:'Every power-up lasts half again as long.' },
-    { key:'luck',  g:'🍀', name:'Good nose',      max:2, cost:[50, 120],
+    { key:'luck',  g:'🍀', name:'Good nose',      max:2, cost:[150, 360],
       desc:'More honey and ice cream about, and fewer chillies.' },
 ];
 const NO_UP = { belly:0, cheap:0, heart:0, feet:0, power:0, luck:0 };
@@ -423,6 +426,7 @@ function startLevel(n, carry) {
         },
         score: keep.score, eaten: keep.eaten, bricksDone: keep.bricks,
         coins: keep.coins, up: keep.up,
+        buys: [],                    // what was bought this visit, newest last
         tally: {},                    // what got eaten this level, by glyph
         levelEaten: 0, levelBricks: 0,
         t: 0, restock: 0, puT: PU_EVERY, shake: 0, flash: 0,
@@ -1474,6 +1478,7 @@ function buildShop() {
                 state.up[it.key] = lvl + 1;
                 // a heart bought is a heart in hand, not just a bigger row of them
                 if (it.key === 'heart') state.player.hearts++;
+                state.buys.push({ key: it.key, price });
                 buildShop();
                 beep(760, 0.12, 'sine', 0.05);
             });
@@ -1481,6 +1486,24 @@ function buildShop() {
         row.appendChild(b);
         list.appendChild(row);
     }
+
+    // changed your mind? anything bought this visit can go straight back
+    const undo = document.getElementById('shopUndo');
+    const last = state.buys[state.buys.length - 1];
+    undo.disabled = !last;
+    undo.textContent = last
+        ? '↩ UNDO ' + SHOP.find(x => x.key === last.key).name.toUpperCase() + ' (🪙 ' + last.price.toLocaleString() + ' back)'
+        : '↩ NOTHING TO UNDO';
+}
+
+function undoBuy() {
+    const last = state.buys.pop();
+    if (!last) return;
+    state.up[last.key]--;
+    state.coins += last.price;
+    if (last.key === 'heart') state.player.hearts--;
+    buildShop();
+    beep(320, 0.12, 'triangle', 0.045);
 }
 
 function tallyRow() {
@@ -1561,6 +1584,7 @@ function toMenu() {
 document.getElementById('startBtn').addEventListener('click', newGame);
 document.getElementById('nextBtn').addEventListener('click', afterClear);
 document.getElementById('shopGo').addEventListener('click', nextLevel);
+document.getElementById('shopUndo').addEventListener('click', undoBuy);
 document.getElementById('againBtn').addEventListener('click', newGame);
 document.getElementById('menuBtn').addEventListener('click', toMenu);
 document.getElementById('quitBtn').addEventListener('click', () => {
