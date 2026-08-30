@@ -73,6 +73,25 @@
                    border-radius:8px; padding:7px 12px; margin:5px 0; text-align:left; }
     .tally .line b { font-variant-numeric:tabular-nums; color:#c4562f; font-size:16px; }
     .foodrow { font-size:26px; letter-spacing:4px; margin:6px 0 2px; }
+    .crumbs { font-size:16px; color:#8a6a05; margin:6px 0 2px; }
+    .crumbs b { font-size:23px; color:#c4562f; }
+    .buy {
+        display:flex; align-items:center; gap:12px; text-align:left;
+        background:rgba(255,255,255,0.82); border:1px solid rgba(196,86,47,0.35);
+        border-radius:10px; padding:9px 12px; margin:6px 0;
+    }
+    .buy .g { font-size:23px; width:30px; text-align:center; }
+    .buy .t { flex:1; }
+    .buy .n { font-weight:bold; font-size:14.5px; }
+    .buy .d { font-size:12.5px; color:#6d6151; line-height:1.4; }
+    .buy .l { font-size:11.5px; color:#2f7d16; font-weight:bold; letter-spacing:0.5px; }
+    .buy button {
+        background:linear-gradient(135deg,#ffa63a,#c4562f); color:#fff; border:2px solid #ffd9a8;
+        border-radius:9px; cursor:pointer; padding:8px 13px; font-size:13px; font-weight:bold;
+        white-space:nowrap; min-width:92px; font-family:inherit;
+    }
+    .buy button[disabled] { background:#e5dccf; border-color:#cbbba6; color:#93897c; cursor:default; }
+    .buy.maxed { border-color:rgba(47,125,22,0.5); background:rgba(232,246,220,0.85); }
 </style>
 </head>
 <body>
@@ -92,6 +111,14 @@
       <b>charge the wall</b> and knock a brick out — but every brick you break costs you a
       good chunk of what you have eaten. Break them all, walk through the gap, and you are
       on to the next level.<br><br>
+      Watch for <b>🍦 ice cream</b>, worth more than anything else but melting while you look
+      at it, and <b>🍲 covered dishes</b> — could be a feast, could be all chilli. From floor 5
+      there are <b>🪤 mousetraps</b> baited with the good stuff: walk onto one and it gets you,
+      <b>charge</b> it and it snaps on nothing and the bait is yours.<br><br>
+      Not every brick is the same brick. <b>Cracked</b> ones go for half the belly, <b>steel</b>
+      takes two goes, and <b>jelly</b> springs you back and wants three — but costs you nothing.<br><br>
+      Every fifth floor there is a <b>🍰 cafe on the landing</b>. Spend the crumbs you have picked
+      up on a roomier belly, an extra heart, quicker feet — it lasts the rest of the run.<br><br>
       There is a catch. The fuller you get the <b>bigger and slower</b> you are, and hunger
       slowly eats into your meter the whole time. Later floors have <b>rats</b> that get to
       the food before you do, and <b>chillies</b> that undo a lot of good eating.<br><br>
@@ -99,8 +126,8 @@
       will not move out of your way either, so <b>walk into one and it nips you</b> and
       you lose a heart. Charge one to send it flying instead. Three hearts and you are out.<br><br>
       A rat is a nuisance rather than a rival. It only notices food it is nearly stood on, it
-      is slower than you are even on a full belly, and it can only put away <b>two helpings a
-      floor</b> — after that it is stuffed and just waddles about getting in the way.
+      pootles along at a <b>quarter of your speed</b>, and it sits chewing for a good three
+      seconds after every theft — so the floor fills back up faster than they can clear it.
     </div>
     <div class="keys">
       <div><kbd>W A S D</kbd> or <kbd>← ↑ ↓ →</kbd> — waddle about</div>
@@ -132,6 +159,18 @@
     <div class="foodrow" id="clearFood"></div>
     <div class="tally" id="clearTally"></div>
     <div class="row" style="margin-top:8px;"><button class="btn" id="nextBtn">NEXT FLOOR</button></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="shopOv">
+  <div class="panel">
+    <h1>🍰 THE LANDING CAFE</h1>
+    <h2 id="shopSub"></h2>
+    <div class="crumbs" id="shopCrumbs"></div>
+    <div id="shopList"></div>
+    <div class="note">Crumbs come from everything you eat, every brick you shift and every floor
+      you finish. What you buy here lasts the rest of the run.</div>
+    <div class="row" style="margin-top:14px;"><button class="btn" id="shopGo">BACK TO IT</button></div>
   </div>
 </div>
 
@@ -172,6 +211,14 @@ const WALL_T = 60;                      // how thick the bricked-up wall is
 // matters: you are stopped dead at the wall face until the way is clear, so a
 // brick sitting behind another brick could never be reached at all.
 const DOOR_MIN = 150, DOOR_MAX = 300, DOOR_SHARE = 0.46;
+// Not every brick is the same brick. All four can be broken — nothing in the
+// doorway is ever permanent, or the way out would be shut for good.
+const BRICKS = {
+    plain:   { hp:1, cost:1,   face:'#c65c33', edge:'#b04a26', name:'' },
+    cracked: { hp:1, cost:0.5, face:'#d98a5c', edge:'#bb6a3c', name:'CRACKED' },
+    steel:   { hp:2, cost:1,   face:'#9aa3ad', edge:'#6f7883', name:'STEEL' },
+    jelly:   { hp:3, cost:0,   face:'#e0559b', edge:'#b03477', name:'JELLY' },
+};
 
 const BELLY_MAX = 100;
 const SMASH_MIN = 28;                   // below this a charge just bounces off
@@ -182,15 +229,18 @@ const P_SPD_MAX = 258, P_SPD_MIN = 168; // ...and slow down with it
 const DASH_T = 0.22, DASH_SPD = 640, DASH_CD = 0.46;
 
 const HEARTS = 3, HURT_INVULN = 1.4;
-const RAT_R = 13, RAT_SPD = 108, RAT_STUN = 1.1, RAT_EAT = 1.8;
-// A rat is a nuisance, not a rival. It only notices food it is nearly stood on,
-// it is slower than you are even on a full belly, it sits and chews for a good
-// while after each theft, and two helpings is its lot for the whole floor.
-const RAT_SIGHT = 240;
-const RAT_FILL = 2, RAT_FULL_SPD = 0.55, RAT_CHEW_SPD = 0.35;
-const FOOD_R = 15, RESTOCK = 2.1;
+const RAT_R = 13, RAT_SPD = 60, RAT_STUN = 1.1, RAT_EAT = 3.2;
+// A rat never fills up and never gives up — it just is not very good at this.
+// It only notices food it is nearly stood on, it pootles along at a quarter of
+// your speed, and it sits chewing for over three seconds after every theft, so
+// the floor restocks faster than a whole pack of them can clear it.
+const RAT_SIGHT = 200, RAT_CHEW_SPD = 0.35;
+const FOOD_R = 15, RESTOCK = 1.7;
 const CRATE_MIN = 34, CRATE_MAX = 62;
 const PU_EVERY = 13, PU_R = 16, PU_LIFE = 11;
+// A mousetrap is baited with the best thing on the floor. Walk onto it and it
+// gets you; charge it and it snaps on nothing and the bait is yours.
+const TRAP_R = 22, TRAP_BELLY = 14;
 
 // what is lying about on the floor. the value is what it does to your belly.
 const FOODS = [
@@ -200,12 +250,52 @@ const FOODS = [
 ];
 const GOLDEN = { g:'🍯', v:26, gold:true };
 const CHILLI = { g:'🌶️', v:-18, hot:true };
+// worth more than anything on the floor, and going off while you look at it
+const ICE = { g:'🍦', v:26, melt:true };
+const MELT_RATE = 2.6, MELT_FLOOR = 5;   // belly points a second, and when it is a puddle
+// no telling what is under the lid until you have eaten it
+const DISH = { g:'🍲', v:0, dish:true };
+const DISH_ODDS = [
+    { v: 30, text:'A FEAST!',   colour:'#ffd23a', weight:3 },
+    { v: 14, text:'not bad',    colour:'#ffffff', weight:4 },
+    { v:  6, text:'a bit dry',  colour:'#d8c3a5', weight:3 },
+    { v:-16, text:'ALL CHILLI', colour:'#ff5a3c', weight:2 },
+];
 
 const POWERS = [
     { key:'speed',  g:'⚡', name:'QUICK FEET',  t:6.5 },
     { key:'magnet', g:'🧲', name:'MAGNET',      t:7.5 },
     { key:'strong', g:'💪', name:'FREE SMASH',  t:0 },   // one brick on the house
+    { key:'fizzy',  g:'🥤', name:'BURP-DASH',   t:0 },   // a long free charge, brick included
 ];
+
+// Every fifth floor there is a cafe on the landing. Crumbs are what you pick up
+// as you go; what you buy lasts the rest of the run.
+const SHOP_EVERY = 5;
+const SHOP = [
+    { key:'belly', g:'🫃', name:'Roomier belly',  max:2, cost:[40, 95],
+      desc:'+25 on the belly meter, so one trip carries another brick.' },
+    { key:'cheap', g:'🔨', name:'Better shoulder', max:3, cost:[35, 80, 170],
+      desc:'Every brick costs 4 less belly to shift.' },
+    { key:'heart', g:'❤️', name:'One more heart', max:2, cost:[70, 160],
+      desc:'An extra heart for the rest of the run.' },
+    { key:'feet',  g:'👟', name:'Quick feet',     max:2, cost:[45, 105],
+      desc:'Waddle 12% faster on any belly.' },
+    { key:'power', g:'⏳', name:'Deeper pockets', max:2, cost:[40, 90],
+      desc:'Every power-up lasts half again as long.' },
+    { key:'luck',  g:'🍀', name:'Good nose',      max:2, cost:[50, 120],
+      desc:'More honey and ice cream about, and fewer chillies.' },
+];
+const NO_UP = { belly:0, cheap:0, heart:0, feet:0, power:0, luck:0 };
+
+// what the shop has done to you, read wherever the plain number used to be
+function up(k)        { return state ? (state.up[k] || 0) : 0; }
+function bellyMax()   { return BELLY_MAX + up('belly') * 25; }
+function smashCost()  { return Math.max(6, SMASH_COST - up('cheap') * 4); }
+function heartsMax()  { return HEARTS + up('heart'); }
+function feetMult()   { return 1 + up('feet') * 0.12; }
+function powerMult()  { return 1 + up('power') * 0.5; }
+function luck()       { return up('luck'); }
 
 const DIFFS = {
     peckish: { name:'PECKISH', drain:0.55, rats:0.6, chilli:0.5, pay:1.0 },
@@ -309,27 +399,30 @@ function levelPlan(n) {
         rats:   Math.round(Math.min(4, Math.max(0, n - 3)) * d.rats),   // none until floor 4
         chilli: n <= 3 ? 0 : Math.min(0.10, 0.025 * (n - 3)) * d.chilli,   // none until floor 4
         crates: Math.min(8, n),
+        traps:  n <= 4 ? 0 : Math.min(4, n - 4),                   // none until floor 5
         drain:  (0.85 + n * 0.12) * d.drain,                     // belly lost per second
     };
 }
 
 function startLevel(n, carry) {
     const plan = levelPlan(n);
-    const keep = carry || { hearts:HEARTS, score:0, eaten:0, bricks:0 };
+    const keep = carry || { hearts:HEARTS, score:0, eaten:0, bricks:0, coins:0,
+                            up:Object.assign({}, NO_UP) };
 
     state = {
         level: n, plan,
         board: { x:0, y:0, w:0, h:0, wallX:0, doorY:0, doorH:0 },
         brickH: 40,
-        bricks: [], food: [], rats: [], crates: [], powers: [],
+        bricks: [], food: [], rats: [], crates: [], powers: [], traps: [],
         bits: [], pops: [], crumbs: [],
         player: {
             x:0, y:0, vx:0, vy:0, face:0, r:P_R_MIN,
             belly:0, hearts:keep.hearts, invuln:0,
             dash:0, dashCd:0, chew:0, stun:0,
-            speedT:0, magnetT:0, strong:0,
+            speedT:0, magnetT:0, strong:0, fizz:0,
         },
         score: keep.score, eaten: keep.eaten, bricksDone: keep.bricks,
+        coins: keep.coins, up: keep.up,
         tally: {},                    // what got eaten this level, by glyph
         levelEaten: 0, levelBricks: 0,
         t: 0, restock: 0, puT: PU_EVERY, shake: 0, flash: 0,
@@ -337,8 +430,10 @@ function startLevel(n, carry) {
         done: false, over: false,
     };
 
-    for (let r = 0; r < plan.bricks; r++)
-        state.bricks.push({ row:r, x:0, y:0, hp:1, shake:0 });
+    for (let r = 0; r < plan.bricks; r++) {
+        const t = pickBrick(n, r);
+        state.bricks.push({ row:r, x:0, y:0, type:t, hp:BRICKS[t].hp, shake:0, wob:0 });
+    }
 
     fitBoard();
 
@@ -347,6 +442,7 @@ function startLevel(n, carry) {
     state.player.y = f.y + f.h / 2;
 
     makeCrates(plan.crates);
+    for (let i = 0; i < plan.traps; i++) makeTrap();
     for (let i = 0; i < plan.food; i++) dropFood();
     for (let i = 0; i < plan.rats; i++) makeRat();
 
@@ -354,6 +450,17 @@ function startLevel(n, carry) {
                 : 'Floor ' + n + ' — more wall, and it will not eat itself');
     running = true; paused = false;
     last = performance.now();
+}
+
+// the odd brick out shows up more the deeper you go, but the top one is always
+// plain so there is never a floor that opens with a three-hit jelly
+function pickBrick(level, row) {
+    if (level < 2 || row === 0) return 'plain';
+    const r = Math.random();
+    if (r < Math.min(0.18, 0.04 * level)) return 'steel';
+    if (r < Math.min(0.30, 0.04 * level + 0.10)) return 'cracked';
+    if (level >= 4 && r < Math.min(0.40, 0.04 * level + 0.16)) return 'jelly';
+    return 'plain';
 }
 
 function makeCrates(n) {
@@ -389,9 +496,20 @@ function inCrate(x, y, r) {
 
 /* ---------------------------------------------------------- food drops -- */
 function pickFood() {
-    if (Math.random() < 0.045) return GOLDEN;
-    if (Math.random() < state.plan.chilli) return CHILLI;
+    const l = luck();
+    if (Math.random() < 0.045 + l * 0.03) return GOLDEN;
+    if (Math.random() < 0.05 + l * 0.025) return ICE;
+    if (Math.random() < 0.045) return DISH;
+    if (Math.random() < state.plan.chilli * (1 - l * 0.35)) return CHILLI;
     return FOODS[Math.floor(Math.random() * FOODS.length)];
+}
+
+function rollDish() {
+    let total = 0;
+    for (const o of DISH_ODDS) total += o.weight;
+    let r = Math.random() * total;
+    for (const o of DISH_ODDS) { r -= o.weight; if (r <= 0) return o; }
+    return DISH_ODDS[0];
 }
 
 function dropFood(kind) {
@@ -403,10 +521,26 @@ function dropFood(kind) {
         const p = state.player;
         if (Math.hypot(p.x - x, p.y - y) < 70) continue;    // never right under your nose
         const k = kind || pickFood();
-        state.food.push({ x, y, kind:k, bob:Math.random() * 6.28, spin:(Math.random() - 0.5) * 0.6, pop:0.35 });
+        state.food.push({ x, y, kind:k, v:k.v, bob:Math.random() * 6.28,
+                          spin:(Math.random() - 0.5) * 0.6, pop:0.35 });
         return true;
     }
     return false;
+}
+
+function makeTrap() {
+    const f = floorRect();
+    for (let a = 0; a < 40; a++) {
+        // never within reach of the wall: lining up a charge should not be a gamble
+        const x = f.x + 50 + Math.random() * (f.w - 160);
+        const y = f.y + 50 + Math.random() * (f.h - 100);
+        if (inCrate(x, y, TRAP_R + 6)) continue;
+        if (x > state.board.wallX - 110) continue;
+        if (Math.hypot(state.player.x - x, state.player.y - y) < 200) continue;
+        if (state.traps.some(t => Math.hypot(t.x - x, t.y - y) < 120)) continue;
+        state.traps.push({ x, y, sprung:0, bait: Math.random() < 0.5 ? GOLDEN : ICE, wob:Math.random() * 6.28 });
+        return;
+    }
 }
 
 function makeRat() {
@@ -417,7 +551,7 @@ function makeRat() {
         if (inCrate(x, y, RAT_R + 4)) continue;
         if (Math.hypot(state.player.x - x, state.player.y - y) < 220) continue;
         state.rats.push({ x, y, vx:0, vy:0, r:RAT_R, stun:0, munch:0, roam:null, roamT:0,
-                          ate:0, full:false, wob:Math.random() * 6.28, bump:0 });
+                          took:0, wob:Math.random() * 6.28, bump:0 });
         return;
     }
 }
@@ -440,27 +574,37 @@ function eat(f, i) {
     const p = state.player, k = f.kind;
     state.food.splice(i, 1);
 
-    if (k.hot) {
-        p.belly = Math.max(0, p.belly + k.v);
+    // a covered dish is only worth whatever turns out to be under the lid
+    let v = f.v, hot = k.hot, gold = k.gold;
+    if (k.dish) {
+        const o = rollDish();
+        v = o.v; hot = v < 0; gold = v >= 30;
+        popup(f.x, f.y - 34, o.text, o.colour, 18);
+    }
+
+    if (hot) {
+        p.belly = Math.max(0, p.belly + v);
         p.stun = 0.45;
         state.flash = 0.5;
         popup(f.x, f.y - 20, 'HOT!', '#ff5a3c', 20);
         crumbs(f.x, f.y, 12, '#ff6a3c');
         beep(150, 0.28, 'sawtooth', 0.05);
-        say('That was a chilli. Wrong sort of full.');
+        say(k.dish ? 'The whole dish was chillies.' : 'That was a chilli. Wrong sort of full.');
         return;
     }
 
-    p.belly = Math.min(BELLY_MAX, p.belly + k.v);
+    p.belly = Math.min(bellyMax(), p.belly + v);
     p.chew = 0.22;
-    const worth = Math.round(k.v * (k.gold ? 6 : 2) * DIFFS[diff].pay);
+    const worth = Math.round(v * (gold ? 6 : 2) * DIFFS[diff].pay);
     state.score += worth;
+    state.coins += 1;
     state.eaten++; state.levelEaten++;
     state.tally[k.g] = (state.tally[k.g] || 0) + 1;
-    popup(f.x, f.y - 18, '+' + k.v, k.gold ? '#ffd23a' : '#ffffff', k.gold ? 22 : 16);
-    crumbs(f.x, f.y, k.gold ? 16 : 7, k.gold ? '#ffd23a' : '#d8a25e');
-    chompSound(k.v);
+    popup(f.x, f.y - 18, '+' + Math.round(v), gold ? '#ffd23a' : '#ffffff', gold ? 22 : 16);
+    crumbs(f.x, f.y, gold ? 16 : 7, gold ? '#ffd23a' : '#d8a25e');
+    chompSound(v);
     if (k.gold) { beep(880, 0.16, 'sine', 0.05); say('A whole pot of honey!'); }
+    if (k.melt) say('Got the ice cream before it went!');
 
     if (p.belly >= SMASH_MIN && !state.readySaid) {
         state.readySaid = true;
@@ -483,7 +627,8 @@ function smashAt(p) {
     }
     if (!hit) return false;
 
-    const free = p.strong > 0;
+    const kind = BRICKS[hit.type];
+    const free = p.strong > 0 || p.fizz > 0 || kind.cost === 0;
     if (!free && p.belly < SMASH_MIN) {
         hit.shake = 0.25;
         p.vx = -90; p.dash = 0;
@@ -493,14 +638,29 @@ function smashAt(p) {
         return true;
     }
 
-    hit.hp = 0;
-    if (free) { p.strong = 0; popup(p.x, p.y - p.r - 18, 'FREE SMASH!', '#7ee06a', 18); }
-    else p.belly = Math.max(0, p.belly - SMASH_COST);
+    hit.hp--;
+    if (p.fizz > 0) { p.fizz = 0; popup(p.x, p.y - p.r - 18, 'BURP!', '#9fe08a', 20); }
+    else if (p.strong > 0) { p.strong = 0; popup(p.x, p.y - p.r - 18, 'FREE SMASH!', '#7ee06a', 18); }
+    else if (kind.cost > 0) p.belly = Math.max(0, p.belly - smashCost() * kind.cost);
+
+    p.dash = 0; p.vx *= -0.35; p.vy *= -0.35;
+
+    // still standing: it wobbles, throws you back, and that is all
+    if (hit.hp > 0) {
+        hit.shake = 0.3; hit.wob = 0.5;
+        const springy = hit.type === 'jelly';
+        p.vx = springy ? -520 : -260;
+        state.shake = springy ? 0.3 : 0.2;
+        popup(hit.x + WALL_T / 2, hit.y - 6, springy ? 'BOING! ' + hit.hp + ' MORE' : hit.hp + ' MORE GO' + (hit.hp === 1 ? '' : 'ES'),
+              springy ? '#ffb0d8' : '#dfe6ee', 15);
+        beep(springy ? 520 : 170, springy ? 0.16 : 0.12, springy ? 'sine' : 'triangle', 0.05);
+        return true;
+    }
 
     state.bricksDone++; state.levelBricks++;
+    state.coins += 5;
     state.score += Math.round(30 * DIFFS[diff].pay);
     state.shake = 0.42;
-    p.dash = 0; p.vx *= -0.35; p.vy *= -0.35;
     brickBits(hit);
     beep(90, 0.3, 'sawtooth', 0.07);
     beep(300, 0.12, 'square', 0.03);
@@ -537,9 +697,9 @@ function update(dt) {
     if (p.belly < SMASH_MIN) state.readySaid = false;
 
     /* --- how big and how quick you are right now --- */
-    const fill = p.belly / BELLY_MAX;
+    const fill = p.belly / bellyMax();
     p.r = P_R_MIN + (P_R_MAX - P_R_MIN) * fill;
-    let spd = P_SPD_MAX - (P_SPD_MAX - P_SPD_MIN) * fill;
+    let spd = (P_SPD_MAX - (P_SPD_MAX - P_SPD_MIN) * fill) * feetMult();
     if (p.speedT > 0) { spd *= 1.4; p.speedT -= dt; }
     if (p.magnetT > 0) p.magnetT -= dt;
     if (p.invuln > 0) p.invuln -= dt;
@@ -562,8 +722,9 @@ function update(dt) {
 
     if (p.dash > 0) {
         p.dash -= dt;
-        p.vx = Math.cos(p.face) * DASH_SPD;
-        p.vy = Math.sin(p.face) * DASH_SPD;
+        const ds = DASH_SPD * (p.dashFizz ? 1.3 : 1);
+        p.vx = Math.cos(p.face) * ds;
+        p.vy = Math.sin(p.face) * ds;
     } else if (p.stun > 0) {
         p.vx *= 0.82; p.vy *= 0.82;
     } else {
@@ -584,6 +745,15 @@ function update(dt) {
         const f = state.food[i];
         f.bob += dt * 3;
         if (f.pop > 0) f.pop -= dt;
+        if (f.kind.melt) {
+            f.v -= MELT_RATE * dt;
+            if (f.v <= MELT_FLOOR) {                 // nothing left but a puddle
+                popup(f.x, f.y - 10, 'melted', '#bcd4e6', 13);
+                crumbs(f.x, f.y, 6, '#cfe3f2');
+                state.food.splice(i, 1);
+                continue;
+            }
+        }
         if (p.magnetT > 0) {
             const dx = p.x - f.x, dy = p.y - f.y, d = Math.hypot(dx, dy);
             if (d < 190 && d > 1) { f.x += (dx / d) * 260 * dt; f.y += (dy / d) * 260 * dt; }
@@ -614,6 +784,7 @@ function update(dt) {
         }
     }
 
+    updateTraps(dt);
     updateRats(dt);
     updateBits(dt);
 }
@@ -654,11 +825,77 @@ function dropPower() {
 
 function takePower(pu) {
     const p = state.player;
-    if (pu.key === 'speed') p.speedT = pu.t;
-    else if (pu.key === 'magnet') p.magnetT = pu.t;
+    if (pu.key === 'speed') p.speedT = pu.t * powerMult();
+    else if (pu.key === 'magnet') p.magnetT = pu.t * powerMult();
+    else if (pu.key === 'fizzy') p.fizz = 1;
     else p.strong = 1;
     popup(p.x, p.y - p.r - 20, pu.g + ' ' + pu.name, '#7ee06a', 18);
     beep(720, 0.16, 'sine', 0.05);
+}
+
+/* ----------------------------------------------------------- mousetraps -- */
+function updateTraps(dt) {
+    const p = state.player;
+    for (let i = state.traps.length - 1; i >= 0; i--) {
+        const t = state.traps[i];
+        t.wob += dt * 3;
+        if (t.sprung > 0) { t.sprung -= dt; if (t.sprung <= 0) state.traps.splice(i, 1); continue; }
+        if (Math.hypot(p.x - t.x, p.y - t.y) > p.r + TRAP_R * 0.7) continue;
+
+        if (p.dash > 0) {
+            // charge it and it snaps shut on nothing at all
+            t.sprung = 0.9;
+            p.belly = Math.min(bellyMax(), p.belly + t.bait.v);
+            state.score += Math.round(t.bait.v * 5 * DIFFS[diff].pay);
+            state.coins += 3;
+            state.eaten++; state.levelEaten++;
+            state.tally[t.bait.g] = (state.tally[t.bait.g] || 0) + 1;
+            popup(t.x, t.y - 26, 'SNAP! +' + t.bait.v, '#7ee06a', 19);
+            crumbs(t.x, t.y, 14, '#ffd23a');
+            beep(880, 0.14, 'sine', 0.05);
+            say('Sprung it with a charge — the bait is yours');
+        } else if (p.invuln <= 0) {
+            t.sprung = 0.9;
+            p.hearts--;
+            p.belly = Math.max(0, p.belly - TRAP_BELLY);
+            p.invuln = HURT_INVULN;
+            p.stun = 0.35;
+            const a = Math.atan2(p.y - t.y, p.x - t.x);
+            p.vx = Math.cos(a) * 280; p.vy = Math.sin(a) * 280;
+            state.shake = 0.4; state.flash = 0.45;
+            popup(p.x, p.y - p.r - 18, 'SNAP! −1 ♥', '#ff5a5a', 20);
+            beep(120, 0.3, 'square', 0.06);
+            if (p.hearts <= 0) endRun('out');
+            else say('Straight onto a mousetrap — charge them next time');
+        }
+    }
+}
+
+function drawTraps() {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const t of state.traps) {
+        const shut = t.sprung > 0;
+        ctx.fillStyle = 'rgba(60,35,15,0.2)';
+        ctx.beginPath(); ctx.ellipse(t.x, t.y + 8, TRAP_R, TRAP_R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+        // the wooden base
+        ctx.fillStyle = '#b98a52';
+        ctx.beginPath(); ctx.roundRect(t.x - TRAP_R, t.y - TRAP_R * 0.72, TRAP_R * 2, TRAP_R * 1.44, 5); ctx.fill();
+        ctx.strokeStyle = '#7d5a2e'; ctx.lineWidth = 2.5; ctx.stroke();
+        // the bar, up and waiting or slammed flat
+        ctx.strokeStyle = shut ? '#4a4a52' : '#9aa3ad'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+        ctx.beginPath();
+        if (shut) { ctx.moveTo(t.x - TRAP_R * 0.8, t.y); ctx.lineTo(t.x + TRAP_R * 0.8, t.y); }
+        else {
+            ctx.moveTo(t.x - TRAP_R * 0.8, t.y + TRAP_R * 0.5);
+            ctx.lineTo(t.x - TRAP_R * 0.2, t.y - TRAP_R * 0.9);
+            ctx.lineTo(t.x + TRAP_R * 0.8, t.y - TRAP_R * 0.5);
+        }
+        ctx.stroke(); ctx.lineCap = 'butt';
+        if (!shut) {
+            ctx.font = '17px serif';
+            ctx.fillText(t.bait.g, t.x, t.y + 3 + Math.sin(t.wob) * 1.5);
+        }
+    }
 }
 
 /* ---------------------------------------------------------------- rats -- */
@@ -678,7 +915,7 @@ function updateRats(dt) {
         // get hurt it is because you walked into one, not because it hunted you down.
         const dp = Math.hypot(p.x - r.x, p.y - r.y);
         let tx = null, ty = null, bd = 1e9;
-        if (!r.full && r.munch <= 0) {
+        if (r.munch <= 0) {
             for (const f of state.food) {
                 if (f.kind.hot) continue;
                 const d = Math.hypot(f.x - r.x, f.y - r.y);
@@ -700,30 +937,24 @@ function updateRats(dt) {
         const dx = tx - r.x, dy = ty - r.y, d = Math.hypot(dx, dy) || 1;
         const wob = Math.sin(r.wob) * 0.25;
         const a = Math.atan2(dy, dx) + wob;
-        const spd = RAT_SPD * (r.full ? RAT_FULL_SPD : r.munch > 0 ? RAT_CHEW_SPD : 1);
+        const spd = RAT_SPD * (r.munch > 0 ? RAT_CHEW_SPD : 1);
         r.vx += (Math.cos(a) * spd - r.vx) * Math.min(1, dt * 8);
         r.vy += (Math.sin(a) * spd - r.vy) * Math.min(1, dt * 8);
         moveWithWalls(r, dt);
 
-        // beat you to the crumbs — but only until it has had its fill
+        // beat you to the crumbs, slowly
         r.munch -= dt;
-        if (r.munch <= 0 && !r.full) {
+        if (r.munch <= 0) {
             for (let i = state.food.length - 1; i >= 0; i--) {
                 const f = state.food[i];
                 if (Math.hypot(f.x - r.x, f.y - r.y) < r.r + FOOD_R * 0.7) {
                     if (f.kind.hot) continue;              // even a rat knows better
                     state.food.splice(i, 1);
                     r.munch = RAT_EAT;
-                    r.ate++;
+                    r.took++;
                     crumbs(f.x, f.y, 5, '#b09070');
+                    popup(f.x, f.y - 14, 'nicked!', '#d8c3a5', 13);
                     beep(420, 0.05, 'square', 0.02);
-                    if (r.ate >= RAT_FILL) {
-                        r.full = true;
-                        popup(r.x, r.y - 18, 'STUFFED', '#9fe08a', 15);
-                        say('That one has had its fill — it cannot take any more');
-                    } else {
-                        popup(f.x, f.y - 14, 'nicked! (' + (RAT_FILL - r.ate) + ' left in it)', '#d8c3a5', 13);
-                    }
                     break;
                 }
             }
@@ -796,6 +1027,7 @@ function render() {
     drawCrates();
     drawFood();
     drawPowers();
+    drawTraps();
     drawWall();
     for (const r of state.rats) drawRat(r);
     drawPlayer();
@@ -849,7 +1081,8 @@ function drawFood() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const f of state.food) {
         const lift = Math.sin(f.bob) * 2;
-        const pop = f.pop > 0 ? 1 + f.pop * 1.2 : 1;
+        const melt = f.kind.melt ? 0.55 + 0.45 * (f.v / f.kind.v) : 1;
+        const pop = (f.pop > 0 ? 1 + f.pop * 1.2 : 1) * melt;
         ctx.fillStyle = 'rgba(60,35,15,0.18)';
         ctx.beginPath(); ctx.ellipse(f.x, f.y + 11, 11, 4, 0, 0, Math.PI * 2); ctx.fill();
         ctx.font = Math.round(27 * pop) + 'px serif';
@@ -909,15 +1142,31 @@ function drawWall() {
     for (const br of state.bricks) {
         if (br.hp <= 0) continue;
         const jx = br.shake > 0 ? (Math.random() - 0.5) * 6 : 0;
-        const bh = state.brickH;
-        ctx.fillStyle = '#b04a26';
+        const bh = state.brickH, k = BRICKS[br.type];
+        if (br.wob > 0) br.wob -= 0.02;
+        const squish = br.type === 'jelly' ? 1 + Math.max(0, br.wob) * 0.5 : 1;
+        ctx.fillStyle = k.edge;
         ctx.fillRect(br.x + jx, br.y, WALL_T, bh);
-        ctx.fillStyle = '#c65c33';
-        ctx.fillRect(br.x + jx + 2, br.y + 2, WALL_T - 4, bh - 6);
+        ctx.fillStyle = k.face;
+        ctx.fillRect(br.x + jx + 2, br.y + 2, WALL_T - 4, (bh - 6) / squish);
         ctx.strokeStyle = '#efe2cc'; ctx.lineWidth = 2.5;
         ctx.strokeRect(br.x + jx + 1.25, br.y + 1.25, WALL_T - 2.5, bh - 2.5);
         ctx.fillStyle = 'rgba(255,255,255,0.16)';
         ctx.fillRect(br.x + jx + 4, br.y + 4, WALL_T - 8, Math.min(5, bh * 0.15));
+        // how many more goes it wants, and what sort it is
+        if (k.hp > 1) {
+            ctx.fillStyle = '#fff6e6';
+            for (let d = 0; d < br.hp; d++) {
+                ctx.beginPath();
+                ctx.arc(br.x + jx + WALL_T / 2 + (d - (br.hp - 1) / 2) * 11, br.y + bh / 2 + 5, 3.4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        if (k.name && bh > 22) {
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.font = 'bold 8px Segoe UI'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(k.name, br.x + jx + WALL_T / 2, br.y + 11);
+        }
     }
 }
 
@@ -958,7 +1207,7 @@ function drawPlayer() {
     // belly patch grows with what is in it
     ctx.fillStyle = 'rgba(255,247,220,0.9)';
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y + p.r * 0.22, p.r * 0.6, p.r * 0.45 * (0.5 + p.belly / BELLY_MAX * 0.7), 0, 0, Math.PI * 2);
+    ctx.ellipse(p.x, p.y + p.r * 0.22, p.r * 0.6, p.r * 0.45 * (0.5 + p.belly / bellyMax() * 0.7), 0, 0, Math.PI * 2);
     ctx.fill();
 
     // mouth, open while chewing and while charging
@@ -987,9 +1236,9 @@ function drawPlayer() {
         ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(p.x, p.y, 190, 0, Math.PI * 2); ctx.stroke();
     }
-    if (p.strong > 0) {
+    if (p.strong > 0 || p.fizz > 0) {
         ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('💪', p.x + p.r + 6, p.y - p.r - 4);
+        ctx.fillText(p.fizz > 0 ? '🥤' : '💪', p.x + p.r + 6, p.y - p.r - 4);
     }
     ctx.restore();
 }
@@ -1012,14 +1261,9 @@ function drawRat(r) {
     ctx.beginPath(); ctx.arc(r.x - 6, r.y - r.r * 0.7, 5, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(r.x + 6, r.y - r.r * 0.7, 5, 0, Math.PI * 2); ctx.fill();
 
-    const fat = r.full ? 1.28 : 1;
-    ctx.fillStyle = r.full ? '#a297ad' : '#8b8194';
-    ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r * fat, r.r * 0.85 * fat, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8b8194';
+    ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r, r.r * 0.85, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#6b6274'; ctx.lineWidth = 2.5; ctx.stroke();
-    if (r.full) {
-        ctx.fillStyle = 'rgba(255,247,220,0.85)';
-        ctx.beginPath(); ctx.ellipse(r.x, r.y + r.r * 0.3, r.r * 0.62, r.r * 0.42, 0, 0, Math.PI * 2); ctx.fill();
-    }
 
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.arc(r.x - 4, r.y - 2, 3.2, 0, Math.PI * 2); ctx.fill();
@@ -1032,9 +1276,9 @@ function drawRat(r) {
     if (r.stun > 0) {
         ctx.fillStyle = '#ffd23a'; ctx.font = '13px serif';
         ctx.fillText('💫', r.x, r.y - r.r - 9);
-    } else if (r.full) {
-        ctx.font = '12px serif';
-        ctx.fillText('💤', r.x + r.r * 0.9, r.y - r.r - 6);
+    } else if (r.munch > 0) {
+        ctx.font = '11px serif';
+        ctx.fillText('😋', r.x + r.r * 0.9, r.y - r.r - 6);
     }
     ctx.restore();
 }
@@ -1080,7 +1324,7 @@ function drawHUD() {
     ctx.fillStyle = 'rgba(0,0,0,0.09)';
     ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill();
 
-    const fill = p.belly / BELLY_MAX;
+    const fill = p.belly / bellyMax();
     const ready = p.belly >= SMASH_MIN;
     const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
     g.addColorStop(0, ready ? '#ffb03a' : '#d9a86a');
@@ -1091,7 +1335,7 @@ function drawHUD() {
     ctx.fillRect(bx, by, bw * fill, bh);
     ctx.restore();
 
-    const lineX = bx + bw * (SMASH_MIN / BELLY_MAX);
+    const lineX = bx + bw * (SMASH_MIN / bellyMax());
     ctx.strokeStyle = ready ? '#2f7d16' : '#8a3512';
     ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(lineX, by - 4); ctx.lineTo(lineX, by + bh + 4); ctx.stroke();
@@ -1113,7 +1357,7 @@ function drawHUD() {
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     ctx.font = '18px serif';
     let hx = VW - 14;
-    for (let i = 0; i < HEARTS; i++) {
+    for (let i = 0; i < heartsMax(); i++) {
         ctx.globalAlpha = i < p.hearts ? 1 : 0.22;
         ctx.fillText('❤️', hx, by + 4);
         hx -= 24;
@@ -1150,6 +1394,7 @@ function levelClear() {
 
     const bonus = Math.round((60 + state.level * 25 + state.player.hearts * 30) * DIFFS[diff].pay);
     state.score += bonus;
+    state.coins += 25;
     if (state.level + 1 > best.level) best.level = state.level + 1;
     if (state.score > best.score) best.score = state.score;
     storeSave();
@@ -1163,7 +1408,10 @@ function levelClear() {
         line('Bricks knocked out', state.levelBricks) +
         line('Hearts still going', '❤️'.repeat(state.player.hearts) || 'none') +
         line('Floor bonus', '+' + bonus.toLocaleString()) +
+        line('Crumbs in your pocket', '🪙 ' + state.coins.toLocaleString()) +
         line('Score', state.score.toLocaleString());
+    document.getElementById('nextBtn').textContent =
+        state.level % SHOP_EVERY === 0 ? '🍰 THE LANDING CAFE' : 'NEXT FLOOR';
     document.getElementById('clearOv').classList.remove('hidden');
     beep(660, 0.14, 'sine', 0.06);
     setTimeout(() => beep(880, 0.22, 'sine', 0.06), 130);
@@ -1196,6 +1444,44 @@ function endRun(why) {
 }
 
 function line(k, v) { return '<div class="line"><span>' + k + '</span><b>' + v + '</b></div>'; }
+
+/* ---------------------------------------------------- the landing cafe -- */
+function buildShop() {
+    document.getElementById('shopSub').textContent =
+        'Floor ' + state.level + ' done. Put your crumbs towards something before floor ' + (state.level + 1) + '.';
+    document.getElementById('shopCrumbs').innerHTML = '🪙 <b>' + state.coins.toLocaleString() + '</b> crumbs';
+    const list = document.getElementById('shopList');
+    list.innerHTML = '';
+    for (const it of SHOP) {
+        const lvl = state.up[it.key] || 0;
+        const maxed = lvl >= it.max;
+        const price = maxed ? 0 : it.cost[lvl];
+        const row = document.createElement('div');
+        row.className = 'buy' + (maxed ? ' maxed' : '');
+        row.innerHTML =
+            '<div class="g">' + it.g + '</div>' +
+            '<div class="t"><div class="n">' + it.name + '</div>' +
+            '<div class="d">' + it.desc + '</div>' +
+            '<div class="l">' + (maxed ? 'ALL YOURS' : it.max > 1 ? 'bought ' + lvl + ' of ' + it.max : 'not yet') + '</div></div>';
+        const b = document.createElement('button');
+        if (maxed) { b.textContent = 'DONE'; b.disabled = true; }
+        else {
+            b.textContent = '🪙 ' + price.toLocaleString();
+            b.disabled = state.coins < price;
+            b.addEventListener('click', () => {
+                if (state.coins < price) return;
+                state.coins -= price;
+                state.up[it.key] = lvl + 1;
+                // a heart bought is a heart in hand, not just a bigger row of them
+                if (it.key === 'heart') state.player.hearts++;
+                buildShop();
+                beep(760, 0.12, 'sine', 0.05);
+            });
+        }
+        row.appendChild(b);
+        list.appendChild(row);
+    }
+}
 
 function tallyRow() {
     const ks = Object.keys(state.tally);
@@ -1232,7 +1518,7 @@ function paintDiffs() {
 }
 
 function hideAll() {
-    for (const id of ['titleOv', 'pauseOv', 'clearOv', 'overOv'])
+    for (const id of ['titleOv', 'pauseOv', 'clearOv', 'shopOv', 'overOv'])
         document.getElementById(id).classList.add('hidden');
 }
 
@@ -1241,9 +1527,22 @@ function newGame() {
     startLevel(1, null);
 }
 
+// the cafe sits between the clear screen and the next floor, every fifth time
+function afterClear() {
+    if (state.level % SHOP_EVERY === 0) {
+        hideAll();
+        buildShop();
+        document.getElementById('shopOv').classList.remove('hidden');
+        return;
+    }
+    nextLevel();
+}
+
 function nextLevel() {
     const carry = {
         hearts: state.player.hearts,
+        coins: state.coins,
+        up: state.up,
         score: state.score,
         eaten: state.eaten,
         bricks: state.bricksDone,
@@ -1260,7 +1559,8 @@ function toMenu() {
 }
 
 document.getElementById('startBtn').addEventListener('click', newGame);
-document.getElementById('nextBtn').addEventListener('click', nextLevel);
+document.getElementById('nextBtn').addEventListener('click', afterClear);
+document.getElementById('shopGo').addEventListener('click', nextLevel);
 document.getElementById('againBtn').addEventListener('click', newGame);
 document.getElementById('menuBtn').addEventListener('click', toMenu);
 document.getElementById('quitBtn').addEventListener('click', () => {
@@ -1293,8 +1593,11 @@ addEventListener('blur', () => { keys = {}; pointer.on = false; });
 function dash() {
     const p = state.player;
     if (p.dashCd > 0 || p.dash > 0 || p.stun > 0) return;
-    p.dash = DASH_T; p.dashCd = DASH_CD;
-    beep(430, 0.09, 'square', 0.035);
+    // a fizzy drink makes the next charge twice as long and half again as quick
+    p.dashFizz = p.fizz > 0;
+    p.dash = DASH_T * (p.dashFizz ? 2 : 1);
+    p.dashCd = DASH_CD;
+    beep(p.dashFizz ? 620 : 430, p.dashFizz ? 0.16 : 0.09, 'square', 0.035);
 }
 
 cv.addEventListener('pointerdown', e => {
