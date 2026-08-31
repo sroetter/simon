@@ -262,14 +262,22 @@ const PU_EVERY = 13, PU_R = 16, PU_LIFE = 11;
 // gets you; charge it and it snaps on nothing and the bait is yours.
 const TRAP_R = 22, TRAP_BELLY = 14;
 
+// ---------------------------------------------------------------------------
+// Once in a while something comes through the skirting that is not after the
+// food at all. It wants nothing to do with you and it is quicker than you are.
+// Nobody is told it exists; you either notice the glitter or you do not.
+const GR_ODDS = 0.24;                    // floors it turns up on, from the second
+const GR_WAIT = [7, 24];                  // how long into a floor it appears
+const GR_LIFE = 13, GR_R = 15, GR_SPD = 296, GR_PAY = 180;
+// ---------------------------------------------------------------------------
+
 // What is lying about on the floor. The junkier a thing is, the more it puts in
 // your belly — a stick of celery barely registers, a slice of cake nearly fills
 // you. But greens pay far better in crumbs and points, so a floor picked clean
 // of salad buys you more at the cafe than one picked clean of doughnuts.
 // junk 1 = you could run a marathon on it, 5 = you can hear your arteries.
 const FOODS = [
-    { g:'🥦', v:3,  junk:1 }, { g:'🥕', v:3,  junk:1 }, { g:'🥗', v:4,  junk:1 },
-    { g:'🍌', v:6,  junk:2 }, { g:'🍞', v:7,  junk:2, stale:true },
+    { g:'🥦', v:3,  junk:1 }, { g:'🍞', v:7,  junk:2, stale:true },
     { g:'🧀', v:9,  junk:3 }, { g:'🥨', v:9,  junk:3 }, { g:'🥪', v:10, junk:3 },
     { g:'🌮', v:11, junk:3 },
     { g:'🍪', v:12, junk:4, cookie:true }, { g:'🍗', v:12, junk:4 },
@@ -357,17 +365,44 @@ let coins = 0;
 let owned = Object.assign({}, NO_UP);
 let buys = [];                       // bought this visit, newest last, for the undo
 
+// Nothing in the game ever clears your crumbs or your shopping. The one way it
+// could go is by accident: if the save cannot be read this once — storage
+// blocked, a half-written record — everything would still be sitting at zero,
+// and the next save would write those zeros straight over a perfectly good
+// record. So a save that could not be read is never written over.
+let loadOk = false;
+
 function storeLoad() {
     try {
-        const d = JSON.parse(localStorage.getItem('chunkyEat') || '{}');
-        best.level = d.level || 1;
-        best.score = d.score || 0;
-        coins = d.coins || 0;
-        owned = Object.assign({}, NO_UP, d.owned || {});
-        if (d.diff && DIFFS[d.diff]) diff = d.diff;
-    } catch (e) {}
+        const raw = localStorage.getItem('chunkyEat');
+        if (raw) {
+            const d = JSON.parse(raw);
+            best.level = d.level || 1;
+            best.score = d.score || 0;
+            coins = d.coins || 0;
+            owned = Object.assign({}, NO_UP, d.owned || {});
+            if (d.diff && DIFFS[d.diff]) diff = d.diff;
+        }
+        loadOk = true;                  // nothing there yet counts as read fine
+    } catch (e) {
+        loadOk = false;
+    }
 }
+// Crumbs come in a few at a time all the way through a floor, and used to sit
+// in memory until the floor ended — close the tab halfway up and the lot went.
+// So they are also written down every few seconds, and on the way out.
+let saveT = 0, savedCoins = -1;
+
+function tickSave(dt) {
+    saveT -= dt;
+    if (saveT > 0 || coins === savedCoins) return;
+    saveT = 3;
+    storeSave();
+}
+
 function storeSave() {
+    if (!loadOk) return;                // see storeLoad — never overwrite what we could not read
+    savedCoins = coins;
     try { localStorage.setItem('chunkyEat', JSON.stringify({ level:best.level, score:best.score,
                                                              coins, owned, diff })); }
     catch (e) {}
@@ -462,6 +497,8 @@ function startLevel(n, carry) {
         board: { x:0, y:0, w:0, h:0, wallX:0, doorY:0, doorH:0 },
         brickH: 40,
         bricks: [], food: [], rats: [], crates: [], powers: [], traps: [],
+        gr: null, grT: n >= 2 && Math.random() < GR_ODDS
+                      ? GR_WAIT[0] + Math.random() * (GR_WAIT[1] - GR_WAIT[0]) : -1,
         bits: [], pops: [], crumbs: [],
         player: {
             x:0, y:0, vx:0, vy:0, face:0, r:P_R_MIN,
@@ -855,7 +892,9 @@ function update(dt) {
         }
     }
 
+    tickSave(dt);
     updateTraps(dt);
+    updateGlint(dt);
     updateRats(dt);
     updateBits(dt);
 }
@@ -902,6 +941,130 @@ function takePower(pu) {
     else p.strong = 1;
     popup(p.x, p.y - p.r - 20, pu.g + ' ' + pu.name, '#7ee06a', 18);
     beep(720, 0.16, 'sine', 0.05);
+}
+
+/* ------------------------------------------------------------------------ */
+function spawnGlint() {
+    const f = floorRect();
+    for (let a = 0; a < 40; a++) {
+        const x = f.x + 40 + Math.random() * (f.w - 80);
+        const y = f.y + 40 + Math.random() * (f.h - 80);
+        if (inCrate(x, y, GR_R + 6)) continue;
+        if (Math.hypot(state.player.x - x, state.player.y - y) < 240) continue;
+        state.gr = { x, y, vx:0, vy:0, r:GR_R, life:GR_LIFE, spin:0, wob:Math.random() * 6.28,
+                     puff:0, sparks:[] };
+        state.pops.push({ x, y:y - 30, text:'✨', colour:'#ffe07a', life:1.6, size:26 });
+        beep(1180, 0.09, 'sine', 0.045);
+        beep(1560, 0.07, 'sine', 0.035);
+        return;
+    }
+}
+
+function updateGlint(dt) {
+    if (state.grT > 0) { state.grT -= dt; if (state.grT <= 0) spawnGlint(); return; }
+    const g = state.gr;
+    if (!g) return;
+    const p = state.player, b = state.board;
+
+    g.wob += dt * 11; g.spin += dt * 7;
+    for (let i = g.sparks.length - 1; i >= 0; i--) {
+        const s = g.sparks[i];
+        s.life -= dt; s.x += s.vx * dt; s.y += s.vy * dt;
+        if (s.life <= 0) g.sparks.splice(i, 1);
+    }
+    if (Math.random() < 0.5) g.sparks.push({ x:g.x + (Math.random()-0.5)*20, y:g.y + (Math.random()-0.5)*20,
+        vx:(Math.random()-0.5)*30, vy:-20 - Math.random()*30, life:0.4 + Math.random()*0.3 });
+
+    g.life -= dt;
+    if (g.life <= 0) {                       // gone, and it takes its secret with it
+        for (let i = 0; i < 12; i++) crumbs(g.x, g.y, 1, '#ffe07a');
+        state.pops.push({ x:g.x, y:g.y - 20, text:'gone', colour:'#c9b07a', life:1.0, size:15 });
+        beep(300, 0.16, 'sine', 0.03);
+        state.gr = null;
+        return;
+    }
+
+    // it wants to be anywhere you are not, and it will not be cornered
+    const away = Math.atan2(g.y - p.y, g.x - p.x);
+    const f = floorRect();
+    const mid = Math.atan2(f.y + f.h / 2 - g.y, f.x + f.w / 2 - g.x);
+    const edge = Math.min(g.x - f.x, f.x + f.w - g.x, g.y - f.y, f.y + f.h - g.y);
+    const pull = edge < 90 ? 0.75 : 0;      // hug the middle rather than get trapped
+    const a = Math.atan2(Math.sin(away) * (1 - pull) + Math.sin(mid) * pull,
+                         Math.cos(away) * (1 - pull) + Math.cos(mid) * pull)
+              + Math.sin(g.wob) * 0.3;
+    g.vx += (Math.cos(a) * GR_SPD - g.vx) * Math.min(1, dt * 7);
+    g.vy += (Math.sin(a) * GR_SPD - g.vy) * Math.min(1, dt * 7);
+    moveWithWalls(g, dt);
+
+    // only a charge is quick enough to lay a hand on it
+    if (Math.hypot(p.x - g.x, p.y - g.y) < p.r + g.r && p.dash > 0) catchGlint(g);
+}
+
+function catchGlint(g) {
+    coins += GR_PAY;
+    state.score += Math.round(GR_PAY * 4 * DIFFS[diff].pay);
+    state.shake = 0.6;
+    storeSave();
+    for (let i = 0; i < 40; i++) crumbs(g.x, g.y, 1, i % 2 ? '#ffe07a' : '#fff6d0');
+    // it was carrying rather a lot
+    for (let i = 0; i < 5; i++) {
+        const a = Math.random() * Math.PI * 2, d = 40 + Math.random() * 90;
+        const x = Math.max(state.board.x + 30, Math.min(state.board.wallX - 30, g.x + Math.cos(a) * d));
+        const y = Math.max(state.board.y + 30, Math.min(state.board.y + state.board.h - 30, g.y + Math.sin(a) * d));
+        state.food.push({ x, y, kind:GOLDEN, v:GOLDEN.v, junk:GOLDEN.junk, age:0, stale:false,
+                          bob:Math.random() * 6.28, spin:0, pop:0.6 });
+    }
+    popup(g.x, g.y - 34, '🪙 +' + GR_PAY, '#ffe07a', 26);
+    popup(g.x, g.y - 58, 'YOU CAUGHT IT!', '#fff6d0', 20);
+    say('You actually caught it. Nobody catches it.');
+    beep(880, 0.1, 'sine', 0.06);
+    setTimeout(() => beep(1180, 0.1, 'sine', 0.06), 90);
+    setTimeout(() => beep(1560, 0.26, 'sine', 0.06), 180);
+    state.gr = null;
+}
+
+function drawGlint() {
+    const g = state.gr;
+    if (!g) return;
+    for (const s of g.sparks) {
+        ctx.globalAlpha = Math.min(1, s.life * 2.5);
+        ctx.fillStyle = '#fff2b8';
+        ctx.beginPath(); ctx.arc(s.x, s.y, 2.2, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = g.life < 3 ? 0.55 + Math.sin(g.life * 16) * 0.4 : 1;
+
+    ctx.fillStyle = 'rgba(60,35,15,0.22)';
+    ctx.beginPath(); ctx.ellipse(g.x, g.y + g.r * 0.8, g.r * 0.9, g.r * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+
+    const a = Math.atan2(g.vy, g.vx);
+    ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(a);
+    ctx.strokeStyle = '#e0b23a'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-g.r * 0.8, 0);
+    ctx.quadraticCurveTo(-g.r * 1.9, Math.sin(g.wob) * 8, -g.r * 2.6, 0); ctx.stroke();
+    ctx.restore(); ctx.lineCap = 'butt';
+
+    ctx.fillStyle = '#ffe9a8';
+    ctx.beginPath(); ctx.arc(g.x - 6, g.y - g.r * 0.72, 5.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(g.x + 6, g.y - g.r * 0.72, 5.4, 0, Math.PI * 2); ctx.fill();
+
+    const shine = ctx.createLinearGradient(g.x - g.r, g.y - g.r, g.x + g.r, g.y + g.r);
+    shine.addColorStop(0, '#fff6cf'); shine.addColorStop(0.5, '#ffd23a'); shine.addColorStop(1, '#d99a10');
+    ctx.fillStyle = shine;
+    ctx.beginPath(); ctx.ellipse(g.x, g.y, g.r, g.r * 0.85, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#a8760a'; ctx.lineWidth = 2.5; ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(g.x - 4, g.y - 2, 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(g.x + 4, g.y - 2, 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2a2318';
+    ctx.beginPath(); ctx.arc(g.x - 4, g.y - 2, 1.7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(g.x + 4, g.y - 2, 1.7, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = '#fff6d0';
+    ctx.font = '13px ' + EMOJI; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('✨', g.x + g.r * 0.9 + Math.sin(g.spin) * 2, g.y - g.r - 7);
+    ctx.globalAlpha = 1;
 }
 
 /* ----------------------------------------------------------- mousetraps -- */
@@ -1102,6 +1265,7 @@ function render() {
     drawTraps();
     drawWall();
     for (const r of state.rats) drawRat(r);
+    drawGlint();
     drawPlayer();
     drawBits();
 
@@ -1739,6 +1903,9 @@ addEventListener('pointerup', () => { pointer.on = false; });
 addEventListener('pointercancel', () => { pointer.on = false; });
 
 window.addEventListener('resize', layout);
+// last chance to write the crumbs down before the page goes away
+addEventListener('pagehide', storeSave);
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') storeSave(); });
 
 /* --------------------------------------------------------------- start -- */
 storeLoad();
