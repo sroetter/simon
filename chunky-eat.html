@@ -103,7 +103,7 @@
   <div class="panel">
     <h1>🍗 CHUNKY EAT</h1>
     <h2>Eat everything on the floor. Then eat your way through the wall.</h2>
-    <div class="foodrow">🍎 🍕 🍔 🍩 🍗 🧀 🍰 🥨</div>
+    <div class="foodrow">🥦 🥪 🍪 🍕 🍔 🌯 🍫 🎂</div>
     <div class="rules">
       Food is scattered all over the floor. Walk over it and you eat it, and your
       <b>belly meter</b> fills up.<br><br>
@@ -111,14 +111,22 @@
       <b>charge the wall</b> and knock a brick out — but every brick you break costs you a
       good chunk of what you have eaten. Break them all, walk through the gap, and you are
       on to the next level.<br><br>
-      Watch for <b>🍦 ice cream</b>, worth more than anything else but melting while you look
-      at it, and <b>🍲 covered dishes</b> — could be a feast, could be all chilli. From floor 5
+      The junkier a thing is the more it fills you — a stick of <b>🥦 broccoli</b> is 3 and a
+      <b>🍰 slice of cake</b> is 17 — but greens pay far better in crumbs, so a floor picked
+      clean of salad buys you more at the cafe.<br><br>
+      Watch for <b>🍦 ice cream</b> and <b>🍫 chocolate</b>, worth a lot but melting while you look
+      at them, a rare <b>🎂 whole cake</b> that nearly fills you in one go, and <b>🍲 covered
+      dishes</b> — could be a feast, could be all chilli. A <b>🌯 burrito</b> sits heavy and slows
+      you down, a <b>🧋 milkshake</b> gives you brain freeze, <b>🍞 bread</b> goes stale where it
+      lies, and rats will cross the whole floor for a <b>🍪 biscuit</b>. From floor 5
       there are <b>🪤 mousetraps</b> baited with the good stuff: walk onto one and it gets you,
       <b>charge</b> it and it snaps on nothing and the bait is yours.<br><br>
       Not every brick is the same brick. <b>Cracked</b> ones go for half the belly, <b>steel</b>
       takes two goes, and <b>jelly</b> springs you back and wants three — but costs you nothing.<br><br>
-      Every fifth floor there is a <b>🍰 cafe on the landing</b>. Spend the crumbs you have picked
-      up on a roomier belly, an extra heart, quicker feet — it lasts the rest of the run.<br><br>
+      Every third floor there is a <b>🍰 cafe on the landing</b>, and you can walk into it from the
+      menu or a pause whenever you like. Spend the crumbs you have picked up on a roomier belly,
+      an extra heart, quicker feet — <b>crumbs and everything you buy are yours for keeps</b>, so
+      they are waiting for you the next time you play.<br><br>
       There is a catch. The fuller you get the <b>bigger and slower</b> you are, and hunger
       slowly eats into your meter the whole time. Later floors have <b>rats</b> that get to
       the food before you do, and <b>chillies</b> that undo a lot of good eating.<br><br>
@@ -137,7 +145,10 @@
     </div>
     <div class="label">HOW HUNGRY ARE YOU</div>
     <div class="row" id="diffRow"></div>
-    <div class="row" style="margin-top:16px;"><button class="btn" id="startBtn">START EATING</button></div>
+    <div class="row" style="margin-top:16px;">
+      <button class="btn" id="startBtn">START EATING</button>
+      <button class="btn" id="titleShopBtn">🍰 CAFE</button>
+    </div>
     <div class="note" id="titleBest"></div>
   </div>
 </div>
@@ -147,6 +158,7 @@
     <h1>PAUSED</h1>
     <div class="row" style="margin-top:14px;">
       <button class="btn" id="resumeBtn">KEEP EATING</button>
+      <button class="btn" id="pauseShopBtn">🍰 CAFE</button>
       <button class="btn" id="quitBtn">GIVE UP</button>
     </div>
   </div>
@@ -185,6 +197,7 @@
     <div class="note" id="overBest"></div>
     <div class="row" style="margin-top:14px;">
       <button class="btn" id="againBtn">START OVER</button>
+      <button class="btn" id="overShopBtn">🍰 CAFE</button>
       <button class="btn" id="menuBtn">MENU</button>
     </div>
   </div>
@@ -256,12 +269,21 @@ const TRAP_R = 22, TRAP_BELLY = 14;
 // junk 1 = you could run a marathon on it, 5 = you can hear your arteries.
 const FOODS = [
     { g:'🥦', v:3,  junk:1 }, { g:'🥕', v:3,  junk:1 }, { g:'🥗', v:4,  junk:1 },
-    { g:'🍎', v:5,  junk:2 }, { g:'🍇', v:5,  junk:2 }, { g:'🍌', v:6,  junk:2 },
-    { g:'🧀', v:9,  junk:3 }, { g:'🥨', v:9,  junk:3 }, { g:'🌮', v:11, junk:3 },
-    { g:'🍗', v:12, junk:4 }, { g:'🌭', v:13, junk:4 }, { g:'🍟', v:14, junk:4 },
+    { g:'🍌', v:6,  junk:2 }, { g:'🍞', v:7,  junk:2, stale:true },
+    { g:'🧀', v:9,  junk:3 }, { g:'🥨', v:9,  junk:3 }, { g:'🥪', v:10, junk:3 },
+    { g:'🌮', v:11, junk:3 },
+    { g:'🍪', v:12, junk:4, cookie:true }, { g:'🍗', v:12, junk:4 },
+    { g:'🌭', v:13, junk:4 }, { g:'🌯', v:13, junk:4, heavy:true },
+    { g:'🍟', v:14, junk:4 },
     { g:'🍕', v:15, junk:5 }, { g:'🍔', v:16, junk:5 }, { g:'🍩', v:16, junk:5 },
-    { g:'🍰', v:17, junk:5 },
+    { g:'🍰', v:17, junk:5 }, { g:'🍫', v:17, junk:5, melt:true, meltRate:1.0 },
+    { g:'🧋', v:18, junk:5, freeze:true },
 ];
+// a loaf left lying about goes hard: far less to eat, but worth picking up for
+// the crumbs, so a stale one turns from a meal into money
+const STALE_T = 10, STALE_V = 2, STALE_JUNK = 1;
+const HEAVY_T = 3.5, HEAVY_SPD = 0.72;   // a burrito sits on you for a bit
+const FREEZE_T = 0.9;                     // brain freeze off a cold one
 // greens are worth the picking up: crumbs and points both climb as junk falls
 const JUNK_PAY  = [0, 7.2, 4.1, 2.1, 1.5, 1.2];   // score, per belly point
 const JUNK_CRUMB= [0, 4,   3,   2,   1,   1  ];   // crumbs an item is worth
@@ -269,8 +291,9 @@ const JUNK_TINT = [0, '#7ee06a', '#a8e06a', '#ffd23a', '#ffa63a', '#ff6a3c'];
 const GOLDEN = { g:'🍯', v:26, junk:4, gold:true };
 const CHILLI = { g:'🌶️', v:-18, junk:0, hot:true };
 // worth more than anything on the floor, and going off while you look at it
-const ICE = { g:'🍦', v:26, junk:5, melt:true };
-const MELT_RATE = 2.6, MELT_FLOOR = 5;   // belly points a second, and when it is a puddle
+const ICE = { g:'🍦', v:26, junk:5, melt:true, meltRate:2.6 };
+const CAKE = { g:'🎂', v:24, junk:5, cake:true };   // rare, and nearly fills you
+const MELT_FLOOR = 5;                    // when a melting thing is only a puddle
 // no telling what is under the lid until you have eaten it
 const DISH = { g:'🍲', v:0, junk:3, dish:true };
 const DISH_ODDS = [
@@ -289,7 +312,7 @@ const POWERS = [
 
 // Every fifth floor there is a cafe on the landing. Crumbs are what you pick up
 // as you go; what you buy lasts the rest of the run.
-const SHOP_EVERY = 5;
+const SHOP_EVERY = 3;
 const SHOP = [
     { key:'belly', g:'🫃', name:'Roomier belly',  max:2, cost:[120, 285],
       desc:'+25 on the belly meter, so one trip carries another brick.' },
@@ -307,7 +330,7 @@ const SHOP = [
 const NO_UP = { belly:0, cheap:0, heart:0, feet:0, power:0, luck:0 };
 
 // what the shop has done to you, read wherever the plain number used to be
-function up(k)        { return state ? (state.up[k] || 0) : 0; }
+function up(k)        { return owned[k] || 0; }
 function bellyMax()   { return BELLY_MAX + up('belly') * 25; }
 function smashCost()  { return Math.max(6, SMASH_COST - up('cheap') * 4); }
 function heartsMax()  { return HEARTS + up('heart'); }
@@ -328,17 +351,25 @@ let running = false, paused = false, last = 0;
 let keys = {};
 let pointer = { on:false, x:0, y:0 };
 let best = { level:1, score:0 };
+// Crumbs and what they bought are yours for good — the cafe can be walked into
+// from the menu between runs, so neither can live on the run's state object.
+let coins = 0;
+let owned = Object.assign({}, NO_UP);
+let buys = [];                       // bought this visit, newest last, for the undo
 
 function storeLoad() {
     try {
         const d = JSON.parse(localStorage.getItem('chunkyEat') || '{}');
         best.level = d.level || 1;
         best.score = d.score || 0;
+        coins = d.coins || 0;
+        owned = Object.assign({}, NO_UP, d.owned || {});
         if (d.diff && DIFFS[d.diff]) diff = d.diff;
     } catch (e) {}
 }
 function storeSave() {
-    try { localStorage.setItem('chunkyEat', JSON.stringify({ level:best.level, score:best.score, diff })); }
+    try { localStorage.setItem('chunkyEat', JSON.stringify({ level:best.level, score:best.score,
+                                                             coins, owned, diff })); }
     catch (e) {}
 }
 
@@ -424,8 +455,7 @@ function levelPlan(n) {
 
 function startLevel(n, carry) {
     const plan = levelPlan(n);
-    const keep = carry || { hearts:HEARTS, score:0, eaten:0, bricks:0, coins:0,
-                            up:Object.assign({}, NO_UP) };
+    const keep = carry || { hearts:heartsMax(), score:0, eaten:0, bricks:0 };
 
     state = {
         level: n, plan,
@@ -437,11 +467,9 @@ function startLevel(n, carry) {
             x:0, y:0, vx:0, vy:0, face:0, r:P_R_MIN,
             belly:0, hearts:keep.hearts, invuln:0,
             dash:0, dashCd:0, chew:0, stun:0,
-            speedT:0, magnetT:0, strong:0, fizz:0,
+            speedT:0, magnetT:0, strong:0, fizz:0, heavy:0,
         },
         score: keep.score, eaten: keep.eaten, bricksDone: keep.bricks,
-        coins: keep.coins, up: keep.up,
-        buys: [],                    // what was bought this visit, newest last
         tally: {},                    // what got eaten this level, by glyph
         levelEaten: 0, levelBricks: 0,
         t: 0, restock: 0, puT: PU_EVERY, shake: 0, flash: 0,
@@ -517,6 +545,7 @@ function inCrate(x, y, r) {
 function pickFood() {
     const l = luck();
     if (Math.random() < 0.045 + l * 0.03) return GOLDEN;
+    if (Math.random() < 0.03 + l * 0.015) return CAKE;
     if (Math.random() < 0.05 + l * 0.025) return ICE;
     if (Math.random() < 0.045) return DISH;
     if (Math.random() < state.plan.chilli * (1 - l * 0.35)) return CHILLI;
@@ -540,8 +569,8 @@ function dropFood(kind) {
         const p = state.player;
         if (Math.hypot(p.x - x, p.y - y) < 70) continue;    // never right under your nose
         const k = kind || pickFood();
-        state.food.push({ x, y, kind:k, v:k.v, bob:Math.random() * 6.28,
-                          spin:(Math.random() - 0.5) * 0.6, pop:0.35 });
+        state.food.push({ x, y, kind:k, v:k.v, junk:k.junk, age:0, stale:false,
+                          bob:Math.random() * 6.28, spin:(Math.random() - 0.5) * 0.6, pop:0.35 });
         return true;
     }
     return false;
@@ -614,10 +643,10 @@ function eat(f, i) {
 
     p.belly = Math.min(bellyMax(), p.belly + v);
     p.chew = 0.22;
-    const j = k.junk || 3;
+    const j = f.junk || k.junk || 3;
     const worth = Math.round(v * (gold ? 6 : JUNK_PAY[j]) * DIFFS[diff].pay);
     state.score += worth;
-    state.coins += gold ? 6 : JUNK_CRUMB[j];
+    coins += gold ? 6 : JUNK_CRUMB[j];
     state.eaten++; state.levelEaten++;
     state.tally[k.g] = (state.tally[k.g] || 0) + 1;
     popup(f.x, f.y - 18, '+' + Math.round(v), gold ? '#ffd23a' : JUNK_TINT[j] || '#ffffff', gold ? 22 : 16);
@@ -625,7 +654,21 @@ function eat(f, i) {
     crumbs(f.x, f.y, gold ? 16 : 7, gold ? '#ffd23a' : '#d8a25e');
     chompSound(v);
     if (k.gold) { beep(880, 0.16, 'sine', 0.05); say('A whole pot of honey!'); }
-    if (k.melt) say('Got the ice cream before it went!');
+    if (k.cake) { beep(760, 0.2, 'sine', 0.055); say('A whole cake to yourself!'); }
+    if (k.melt && !f.stale) say(k.g === '🍫' ? 'Chocolate, before it went soft' : 'Got the ice cream before it went!');
+    if (f.stale) say('Stale, but the crumbs are worth having');
+    // a burrito sits heavy, and a cold one goes straight to your head
+    if (k.heavy) {
+        p.heavy = HEAVY_T;
+        popup(f.x, f.y - 34, 'HEAVY', '#c9a06a', 15);
+        beep(140, 0.2, 'triangle', 0.04);
+    }
+    if (k.freeze) {
+        p.stun = FREEZE_T;
+        popup(f.x, f.y - 34, 'BRAIN FREEZE!', '#8fd0ff', 17);
+        beep(1100, 0.22, 'sine', 0.04);
+        say('Straight down in one — give it a second');
+    }
 
     if (p.belly >= SMASH_MIN && !state.readySaid) {
         state.readySaid = true;
@@ -679,7 +722,7 @@ function smashAt(p) {
     }
 
     state.bricksDone++; state.levelBricks++;
-    state.coins += 5;
+    coins += 5;
     state.score += Math.round(30 * DIFFS[diff].pay);
     state.shake = 0.42;
     brickBits(hit);
@@ -722,6 +765,7 @@ function update(dt) {
     p.r = P_R_MIN + (P_R_MAX - P_R_MIN) * fill;
     let spd = (P_SPD_MAX - (P_SPD_MAX - P_SPD_MIN) * fill) * feetMult();
     if (p.speedT > 0) { spd *= 1.4; p.speedT -= dt; }
+    if (p.heavy > 0) { spd *= HEAVY_SPD; p.heavy -= dt; }
     if (p.magnetT > 0) p.magnetT -= dt;
     if (p.invuln > 0) p.invuln -= dt;
     if (p.chew > 0) p.chew -= dt;
@@ -766,8 +810,14 @@ function update(dt) {
         const f = state.food[i];
         f.bob += dt * 3;
         if (f.pop > 0) f.pop -= dt;
+        f.age += dt;
+        // a loaf goes hard where it lies
+        if (f.kind.stale && !f.stale && f.age > STALE_T) {
+            f.stale = true; f.v = STALE_V; f.junk = STALE_JUNK;
+            popup(f.x, f.y - 12, 'gone stale', '#b9a88a', 12);
+        }
         if (f.kind.melt) {
-            f.v -= MELT_RATE * dt;
+            f.v -= (f.kind.meltRate || 2.6) * dt;
             if (f.v <= MELT_FLOOR) {                 // nothing left but a puddle
                 popup(f.x, f.y - 10, 'melted', '#bcd4e6', 13);
                 crumbs(f.x, f.y, 6, '#cfe3f2');
@@ -868,7 +918,7 @@ function updateTraps(dt) {
             t.sprung = 0.9;
             p.belly = Math.min(bellyMax(), p.belly + t.bait.v);
             state.score += Math.round(t.bait.v * 5 * DIFFS[diff].pay);
-            state.coins += 3;
+            coins += 3;
             state.eaten++; state.levelEaten++;
             state.tally[t.bait.g] = (state.tally[t.bait.g] || 0) + 1;
             popup(t.x, t.y - 26, 'SNAP! +' + t.bait.v, '#7ee06a', 19);
@@ -939,8 +989,9 @@ function updateRats(dt) {
         if (r.munch <= 0) {
             for (const f of state.food) {
                 if (f.kind.hot) continue;
-                const d = Math.hypot(f.x - r.x, f.y - r.y);
-                if (d < bd && d < RAT_SIGHT) { bd = d; tx = f.x; ty = f.y; }
+                // a biscuit is the one thing worth crossing the room for
+                const d = Math.hypot(f.x - r.x, f.y - r.y) * (f.kind.cookie ? 0.15 : 1);
+                if (d < bd && (d < RAT_SIGHT || f.kind.cookie)) { bd = d; tx = f.x; ty = f.y; }
             }
         }
         if (tx === null) {
@@ -1107,11 +1158,13 @@ function drawFood() {
         ctx.fillStyle = 'rgba(50,28,10,0.3)';
         ctx.beginPath(); ctx.ellipse(f.x, f.y + 12, 12, 4.5, 0, 0, Math.PI * 2); ctx.fill();
         // a pale plate under every item, so nothing is lost against the tiles
-        ctx.fillStyle = 'rgba(255,252,244,0.72)';
+        ctx.fillStyle = f.stale ? 'rgba(214,204,186,0.72)' : 'rgba(255,252,244,0.72)';
         ctx.beginPath(); ctx.arc(f.x, f.y + lift, 16 * pop, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = 'rgba(92,58,23,0.35)'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.globalAlpha = f.stale ? 0.62 : 1;
         ctx.font = Math.round(29 * pop) + 'px ' + EMOJI;
         ctx.fillText(f.kind.g, f.x, f.y + lift);
+        ctx.globalAlpha = 1;
     }
 }
 
@@ -1419,7 +1472,7 @@ function levelClear() {
 
     const bonus = Math.round((60 + state.level * 25 + state.player.hearts * 30) * DIFFS[diff].pay);
     state.score += bonus;
-    state.coins += 25;
+    coins += 25;
     if (state.level + 1 > best.level) best.level = state.level + 1;
     if (state.score > best.score) best.score = state.score;
     storeSave();
@@ -1433,7 +1486,7 @@ function levelClear() {
         line('Bricks knocked out', state.levelBricks) +
         line('Hearts still going', '❤️'.repeat(state.player.hearts) || 'none') +
         line('Floor bonus', '+' + bonus.toLocaleString()) +
-        line('Crumbs in your pocket', '🪙 ' + state.coins.toLocaleString()) +
+        line('Crumbs in your pocket', '🪙 ' + coins.toLocaleString()) +
         line('Score', state.score.toLocaleString());
     document.getElementById('nextBtn').textContent =
         state.level % SHOP_EVERY === 0 ? '🍰 THE LANDING CAFE' : 'NEXT FLOOR';
@@ -1472,13 +1525,17 @@ function line(k, v) { return '<div class="line"><span>' + k + '</span><b>' + v +
 
 /* ---------------------------------------------------- the landing cafe -- */
 function buildShop() {
+    // three ways in, and they want three different things said
     document.getElementById('shopSub').textContent =
-        'Floor ' + state.level + ' done. Put your crumbs towards something before floor ' + (state.level + 1) + '.';
-    document.getElementById('shopCrumbs').innerHTML = '🪙 <b>' + state.coins.toLocaleString() + '</b> crumbs';
+        cafeFrom === 'pauseOv' ? 'Paused halfway up floor ' + state.level + '. Anything you buy takes effect the moment you go back.'
+      : !cafeFrom && state && !state.over
+            ? 'Floor ' + state.level + ' done. Put your crumbs towards something before floor ' + (state.level + 1) + '.'
+      : 'Open whenever you like. What you buy is waiting for you next time you play.';
+    document.getElementById('shopCrumbs').innerHTML = '🪙 <b>' + coins.toLocaleString() + '</b> crumbs';
     const list = document.getElementById('shopList');
     list.innerHTML = '';
     for (const it of SHOP) {
-        const lvl = state.up[it.key] || 0;
+        const lvl = owned[it.key] || 0;
         const maxed = lvl >= it.max;
         const price = maxed ? 0 : it.cost[lvl];
         const row = document.createElement('div');
@@ -1492,14 +1549,15 @@ function buildShop() {
         if (maxed) { b.textContent = 'DONE'; b.disabled = true; }
         else {
             b.textContent = '🪙 ' + price.toLocaleString();
-            b.disabled = state.coins < price;
+            b.disabled = coins < price;
             b.addEventListener('click', () => {
-                if (state.coins < price) return;
-                state.coins -= price;
-                state.up[it.key] = lvl + 1;
-                // a heart bought is a heart in hand, not just a bigger row of them
-                if (it.key === 'heart') state.player.hearts++;
-                state.buys.push({ key: it.key, price });
+                if (coins < price) return;
+                coins -= price;
+                owned[it.key] = lvl + 1;
+                // mid-run, a heart bought is a heart in hand and not just a bigger row
+                if (it.key === 'heart' && state && !state.over) state.player.hearts++;
+                buys.push({ key: it.key, price });
+                storeSave();
                 buildShop();
                 beep(760, 0.12, 'sine', 0.05);
             });
@@ -1510,7 +1568,7 @@ function buildShop() {
 
     // changed your mind? anything bought this visit can go straight back
     const undo = document.getElementById('shopUndo');
-    const last = state.buys[state.buys.length - 1];
+    const last = buys[buys.length - 1];
     undo.disabled = !last;
     undo.textContent = last
         ? '↩ UNDO ' + SHOP.find(x => x.key === last.key).name.toUpperCase() + ' (🪙 ' + last.price.toLocaleString() + ' back)'
@@ -1518,11 +1576,12 @@ function buildShop() {
 }
 
 function undoBuy() {
-    const last = state.buys.pop();
+    const last = buys.pop();
     if (!last) return;
-    state.up[last.key]--;
-    state.coins += last.price;
-    if (last.key === 'heart') state.player.hearts--;
+    owned[last.key]--;
+    coins += last.price;
+    if (last.key === 'heart' && state && !state.over) state.player.hearts--;
+    storeSave();
     buildShop();
     beep(320, 0.12, 'triangle', 0.045);
 }
@@ -1546,7 +1605,10 @@ function loop(now) {
 
 /* ---------------------------------------------------------------- menu -- */
 function bestText() {
-    return 'Best so far: floor ' + best.level + ', ' + best.score.toLocaleString() + ' points.';
+    const bought = SHOP.reduce((a, it) => a + (owned[it.key] || 0), 0);
+    return 'Best so far: floor ' + best.level + ', ' + best.score.toLocaleString() + ' points.' +
+           '  🪙 ' + coins.toLocaleString() + ' crumbs' +
+           (bought ? ', ' + bought + ' thing' + (bought === 1 ? '' : 's') + ' bought.' : '.');
 }
 
 function paintDiffs() {
@@ -1571,22 +1633,38 @@ function newGame() {
     startLevel(1, null);
 }
 
-// the cafe sits between the clear screen and the next floor, every fifth time
+// The cafe sits between the clear screen and the next floor every third time,
+// and can also be walked into from the menu or a pause. It puts away whatever it
+// was opened from and hands it back on the way out — every overlay shares a
+// z-index, so two of them on screen at once would fight over DOM order.
+let cafeFrom = null;
+
+function openCafe(from) {
+    buys = [];                       // the undo only ever covers this visit
+    cafeFrom = from || null;
+    hideAll();
+    buildShop();
+    document.getElementById('shopGo').textContent = from ? 'BACK' : 'BACK TO IT';
+    document.getElementById('shopOv').classList.remove('hidden');
+}
+
+function leaveCafe() {
+    if (!cafeFrom) return nextLevel();          // came from a finished floor
+    const back = cafeFrom;
+    cafeFrom = null;
+    hideAll();
+    if (back === 'titleOv') document.getElementById('titleBest').textContent = bestText();
+    document.getElementById(back).classList.remove('hidden');
+}
+
 function afterClear() {
-    if (state.level % SHOP_EVERY === 0) {
-        hideAll();
-        buildShop();
-        document.getElementById('shopOv').classList.remove('hidden');
-        return;
-    }
+    if (state.level % SHOP_EVERY === 0) return openCafe(null);
     nextLevel();
 }
 
 function nextLevel() {
     const carry = {
         hearts: state.player.hearts,
-        coins: state.coins,
-        up: state.up,
         score: state.score,
         eaten: state.eaten,
         bricks: state.bricksDone,
@@ -1603,8 +1681,11 @@ function toMenu() {
 }
 
 document.getElementById('startBtn').addEventListener('click', newGame);
+document.getElementById('titleShopBtn').addEventListener('click', () => openCafe('titleOv'));
+document.getElementById('pauseShopBtn').addEventListener('click', () => openCafe('pauseOv'));
+document.getElementById('overShopBtn').addEventListener('click', () => openCafe('overOv'));
 document.getElementById('nextBtn').addEventListener('click', afterClear);
-document.getElementById('shopGo').addEventListener('click', nextLevel);
+document.getElementById('shopGo').addEventListener('click', leaveCafe);
 document.getElementById('shopUndo').addEventListener('click', undoBuy);
 document.getElementById('againBtn').addEventListener('click', newGame);
 document.getElementById('menuBtn').addEventListener('click', toMenu);
