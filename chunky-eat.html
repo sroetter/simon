@@ -123,6 +123,10 @@
       <b>charge</b> it and it snaps on nothing and the bait is yours.<br><br>
       Not every brick is the same brick. <b>Cracked</b> ones go for half the belly, <b>steel</b>
       takes two goes, and <b>jelly</b> springs you back and wants three — but costs you nothing.<br><br>
+      Every fourth floor there is a <b>🥋 sumo ring</b> on the landing. All that weight finally
+      counts for something: <b>your belly is your fighting weight</b>, and every shove spends a
+      little of it. Barge the others out and you walk off with crumbs and a floor laid out with
+      the good stuff.<br><br>
       Every third floor there is a <b>🍰 cafe on the landing</b>, and you can walk into it from the
       menu or a pause whenever you like. Spend the crumbs you have picked up on a roomier belly,
       an extra heart, quicker feet — <b>crumbs and everything you buy are yours for keeps</b>, so
@@ -170,7 +174,10 @@
     <h2 id="clearSub"></h2>
     <div class="foodrow" id="clearFood"></div>
     <div class="tally" id="clearTally"></div>
-    <div class="row" style="margin-top:8px;"><button class="btn" id="nextBtn">NEXT FLOOR</button></div>
+    <div class="row" style="margin-top:8px;">
+      <button class="btn" id="sumoBtn">🥋 SUMO RING</button>
+      <button class="btn" id="nextBtn">NEXT FLOOR</button>
+    </div>
   </div>
 </div>
 
@@ -186,6 +193,17 @@
       <button class="btn small" id="shopUndo">↩ NOTHING TO UNDO</button>
       <button class="btn" id="shopGo">BACK TO IT</button>
     </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="sumoOv">
+  <div class="panel">
+    <h1 id="sumoTitle">LAST ONE STANDING</h1>
+    <h2 id="sumoSub"></h2>
+    <div class="tally" id="sumoTally"></div>
+    <div class="note">Your belly is your fighting weight, and every shove spends a little of it.
+      Whatever you walk out with is what you carry on to the next floor.</div>
+    <div class="row" style="margin-top:8px;"><button class="btn" id="sumoGo">ON YOU GO</button></div>
   </div>
 </div>
 
@@ -321,6 +339,47 @@ const POWERS = [
 // Every fifth floor there is a cafe on the landing. Crumbs are what you pick up
 // as you go; what you buy lasts the rest of the run.
 const SHOP_EVERY = 3;
+
+// ---------------------------------------------------------------- SUMO ----
+// Every fourth floor there is a ring on the landing. All that weight you have
+// been carrying about finally counts for something: your belly IS your fighting
+// weight, and every shove you throw spends a little of it. Barge the others out
+// of the ring, and the last one standing walks off with crumbs and a floor
+// stocked with the good stuff.
+const SUMO_EVERY = 4;
+const SUMO_FOES = 3;
+const SUMO_R0 = 0.40;                  // ring radius, as a share of the short side
+const SUMO_SHRINK_AT = 12;             // seconds before the ring starts closing in
+const SUMO_SHRINK = 0.030;             // and how fast, per second
+const SUMO_MIN_R = 92;
+// The ring alone cannot be trusted to settle it — four wrestlers who all keep
+// their distance can circle a small ring for as long as they like. So after a
+// while the judges start calling out whoever is furthest from the middle.
+// It has to be position and not weight: shoving is what the whole bout is for,
+// and every shove costs fat, so calling out the lightest would mean punishing
+// somebody for playing. Ring control is the thing worth rewarding.
+const SUMO_JUDGE_AT = 40, SUMO_JUDGE_EVERY = 4;
+const SUMO_CHARGE = 6;                 // fat points a shove costs
+const SUMO_CD = 0.5, SUMO_CHARGE_T = 0.26;
+const SUMO_BOT_CD = 2.6;               // they pick their moments rather than spam
+const SUMO_BOT_AIM = 0.34;             // and they are not surgeons about it
+const SUMO_RESERVE = 30;               // and nobody sensible spends down to nothing
+// A shove costs fat, so somebody who actually fights would end the bout lighter
+// than somebody who stood about hoarding — and would lose to them. So landing a
+// shove gives part of the cost back, and putting somebody out you take a share
+// of what they were carrying. Fighting has to pay for itself.
+// A landed shove very nearly pays for itself; a miss is what actually costs you.
+// Anything less and one shove leaves you permanently lighter than an equal
+// opponent, and since body-to-body contests go on weight alone, you would then
+// lose every exchange after it — which made shoving pure self-harm.
+const SUMO_REFUND = 0.85, SUMO_SPOILS = 0.3;
+const SUMO_LUNGE = 3.4;                // what a charge is worth against dead weight
+const SUMO_SPD = 210, SUMO_PUSH = 620;
+const SUMO_W_MIN = 40, SUMO_W_MAX = 150;   // the weight range everyone is drawn from
+const SUMO_PAY = [220, 90, 35, 0];         // crumbs for finishing 1st, 2nd, 3rd, last
+const SUMO_FOOD = [8, 4, 2, 0];            // and how much good stuff waits on the next floor
+const SUMO_NAMES = ['BIG KEV', 'THE DUMPLING', 'AUNTIE MO', 'ROLY', 'TUBBS', 'GRAN'];
+const SUMO_HUES = ['#e05a5a', '#5a9ae0', '#7ec95a', '#c47ae0', '#e0a84a'];
 const SHOP = [
     { key:'belly', g:'🫃', name:'Roomier belly',  max:2, cost:[120, 285],
       desc:'+25 on the belly meter, so one trip carries another brick.' },
@@ -490,7 +549,7 @@ function levelPlan(n) {
 
 function startLevel(n, carry) {
     const plan = levelPlan(n);
-    const keep = carry || { hearts:heartsMax(), score:0, eaten:0, bricks:0 };
+    const keep = carry || { hearts:heartsMax(), score:0, eaten:0, bricks:0, sumoFood:0 };
 
     state = {
         level: n, plan,
@@ -509,6 +568,7 @@ function startLevel(n, carry) {
         score: keep.score, eaten: keep.eaten, bricksDone: keep.bricks,
         tally: {},                    // what got eaten this level, by glyph
         levelEaten: 0, levelBricks: 0,
+        sumoFood: 0,
         t: 0, restock: 0, puT: PU_EVERY, shake: 0, flash: 0,
         msg: '', msgT: 0,
         done: false, over: false,
@@ -528,6 +588,10 @@ function startLevel(n, carry) {
     makeCrates(plan.crates);
     for (let i = 0; i < plan.traps; i++) makeTrap();
     for (let i = 0; i < plan.food; i++) dropFood();
+    // anything won in the ring is laid out for you the moment you arrive
+    const won = keep.sumoFood || 0;
+    for (let i = 0; i < won; i++) dropFood(Math.random() < 0.5 ? GOLDEN : CAKE);
+    if (won) say('Your winnings from the ring are on the floor — help yourself');
     for (let i = 0; i < plan.rats; i++) makeRat();
 
     say(n === 1 ? 'Eat what is on the floor — fill the belly meter'
@@ -1654,6 +1718,9 @@ function levelClear() {
         line('Score', state.score.toLocaleString());
     document.getElementById('nextBtn').textContent =
         state.level % SHOP_EVERY === 0 ? '🍰 THE LANDING CAFE' : 'NEXT FLOOR';
+    // the ring only turns up every so often, and only if you are worth weighing
+    const ringUp = state.level % SUMO_EVERY === 0 && state.player.belly >= SUMO_W_MIN;
+    document.getElementById('sumoBtn').style.display = ringUp ? '' : 'none';
     document.getElementById('clearOv').classList.remove('hidden');
     beep(660, 0.14, 'sine', 0.06);
     setTimeout(() => beep(880, 0.22, 'sine', 0.06), 130);
@@ -1763,8 +1830,492 @@ function loop(now) {
     if (!running || paused || !state) { last = now; return; }
     const dt = Math.min((now - last) / 1000, 0.033);
     last = now;
+    if (sumo) { updateSumo(dt); if (sumo) drawSumo(); return; }
     update(dt);
     if (state) render();
+}
+
+/* ================================================================ SUMO ====
+   A round of sumo on the landing. Weight is everything: the heavier wrestler
+   wins the shove, and your weight is whatever you have managed to eat. Every
+   charge spends fat, so you cannot simply barge all night.
+   ========================================================================== */
+let sumo = null;
+
+function startSumo() {
+    const R = Math.min(VW, VH) * SUMO_R0;
+    const cx = VW / 2, cy = VH / 2 + 10;
+    // you bring your belly to the ring; a light eater is in real trouble here
+    const mine = Math.max(SUMO_W_MIN, Math.min(SUMO_W_MAX, state.player.belly));
+    const wrestlers = [{
+        you:true, name:'YOU', hue:'#ffb03a',
+        x:cx, y:cy + R * 0.55, vx:0, vy:0, w:mine, face:-Math.PI/2,
+        charge:0, cd:0, out:false, place:0, flash:0, gained:0, hitBy:null, wob:Math.random()*6.28,
+    }];
+    for (let i = 0; i < SUMO_FOES; i++) {
+        // they are drawn around your weight, so the fight is always a real one
+        // drawn around your weight, but a shade under it — you have spent the whole
+        // game eating and it ought to show, without making the bout a formality
+        const w = Math.max(SUMO_W_MIN, Math.min(SUMO_W_MAX,
+                  mine * (0.60 + Math.random() * 0.58) + (Math.random() - 0.5) * 14));
+        const a = -Math.PI / 2 + (i + 1) * (Math.PI * 2 / (SUMO_FOES + 1));
+        wrestlers.push({
+            you:false, name:SUMO_NAMES[i % SUMO_NAMES.length], hue:SUMO_HUES[i % SUMO_HUES.length],
+            x:cx + Math.cos(a) * R * 0.55, y:cy + Math.sin(a) * R * 0.55, vx:0, vy:0,
+            w, face:a + Math.PI, charge:0, cd:Math.random(), out:false, place:0,
+            flash:0, gained:0, hitBy:null, grudge:null, wob:Math.random()*6.28, think:0, aim:null,
+        });
+    }
+    sumo = {
+        cx, cy, R, R0:R, t:0, over:false, left:wrestlers.length,
+        ring:wrestlers, bits:[], pops:[], shake:0, msg:'', msgT:0, judgeT:SUMO_JUDGE_EVERY,
+        result:null, ended:0,
+    };
+    running = true; paused = false;
+    last = performance.now();
+    hideAll();
+    saySumo('Heaviest wins. Every shove costs you fat.');
+    beep(180, 0.3, 'sawtooth', 0.06);
+}
+
+function saySumo(t) { sumo.msg = t; sumo.msgT = 3.0; }
+
+function sumoR(p) { return 15 + p.w * 0.20; }          // how wide a wrestler stands
+
+function sumoCharge(p) {
+    if (p.cd > 0 || p.charge > 0 || p.out) return;
+    if (p.w <= SUMO_W_MIN + 2) {                       // nothing left to spend
+        if (p.you) { saySumo('Too light to shove — stay on your feet'); beep(120, 0.12, 'triangle', 0.04); }
+        return;
+    }
+    p.charge = SUMO_CHARGE_T;
+    p.cd = p.you ? SUMO_CD : SUMO_BOT_CD;
+    p.w = Math.max(SUMO_W_MIN, p.w - SUMO_CHARGE);     // the fat you spend to throw it
+    for (let i = 0; i < 7; i++) {
+        const a = p.face + Math.PI + (Math.random() - 0.5);
+        sumo.bits.push({ x:p.x, y:p.y, vx:Math.cos(a)*160, vy:Math.sin(a)*160,
+                         life:0.35, r:2 + Math.random()*3, c:p.hue });
+    }
+    beep(p.you ? 420 : 300, 0.08, 'square', 0.03);
+}
+
+function updateSumo(dt) {
+    sumo.t += dt;
+    if (sumo.msgT > 0) sumo.msgT -= dt;
+    if (sumo.shake > 0) sumo.shake -= dt;
+
+    // the ring closes in, so nobody can simply stand off and wait
+    if (sumo.t > SUMO_SHRINK_AT)
+        sumo.R = Math.max(SUMO_MIN_R, sumo.R - sumo.R0 * SUMO_SHRINK * dt);
+
+    const alive = sumo.ring.filter(p => !p.out);
+
+    // and if it is still going on long after that, the judges settle it
+    if (!sumo.over && sumo.t > SUMO_JUDGE_AT && alive.length > 1) {
+        sumo.judgeT = (sumo.judgeT || 0) - dt;
+        if (sumo.judgeT <= 0) {
+            sumo.judgeT = SUMO_JUDGE_EVERY;
+            const worst = alive.slice().sort((a, b) =>
+                Math.hypot(b.x - sumo.cx, b.y - sumo.cy) - Math.hypot(a.x - sumo.cx, a.y - sumo.cy))[0];
+            worst.out = true;
+            worst.place = sumo.left--;
+            const a = Math.atan2(worst.y - sumo.cy, worst.x - sumo.cx);
+            worst.vx = Math.cos(a) * 420; worst.vy = Math.sin(a) * 420;
+            sumo.pops.push({ x:worst.x, y:worst.y - 34,
+                             text:(worst.you ? 'YOU WERE FURTHEST OUT' : worst.name + ' WAS FURTHEST OUT'),
+                             c:worst.you ? '#ff5a5a' : '#ffffff', life:1.8, size:worst.you ? 21 : 15 });
+            saySumo('Time — whoever is furthest out goes');
+            beep(worst.you ? 110 : 560, 0.28, 'triangle', 0.05);
+        }
+    }
+
+    for (const p of sumo.ring) {
+        if (p.out) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.96; p.vy *= 0.96; continue; }
+        if (p.cd > 0) p.cd -= dt;
+        if (p.flash > 0) p.flash -= dt;
+        if (p.gained > 0) p.gained -= dt;
+        p.wob += dt * 6;
+
+        let mx = 0, my = 0;
+        if (p.you) {
+            if (keys['arrowleft'] || keys['a']) mx -= 1;
+            if (keys['arrowright'] || keys['d']) mx += 1;
+            if (keys['arrowup'] || keys['w']) my -= 1;
+            if (keys['arrowdown'] || keys['s']) my += 1;
+            if (!mx && !my && pointer.on) {
+                const dx = pointer.x - p.x, dy = pointer.y - p.y, d = Math.hypot(dx, dy);
+                if (d > 14) { mx = dx / d; my = dy / d; }
+            }
+        } else {
+            mx = my = 0;
+            p.think -= dt;
+            if (p.think <= 0) {
+                p.think = 0.25 + Math.random() * 0.3;
+                // pick on somebody lighter if there is one, otherwise the nearest
+                let best = null, bs = -1e9;
+                for (const q of alive) {
+                    if (q === p) continue;
+                    const d = Math.hypot(q.x - p.x, q.y - p.y);
+                    // they all used to pile onto whoever was nearest the rim, which
+                    // meant three of them converging on you the moment you got
+                    // nudged out wide. Weight it far less, and give each of them a
+                    // grudge of their own so they spread out.
+                    const score = (p.w - q.w) * 2 - d * 0.3
+                                + (Math.hypot(q.x - sumo.cx, q.y - sumo.cy) / sumo.R) * 30
+                                + (p.grudge === q ? 45 : 0);
+                    if (score > bs) { bs = score; best = q; }
+                }
+                if (Math.random() < 0.25) p.grudge = best;
+                p.aim = best;
+            }
+            const centre = Math.hypot(p.x - sumo.cx, p.y - sumo.cy) / sumo.R;
+            if (centre > 0.72) {                       // get away from the edge first
+                mx = (sumo.cx - p.x); my = (sumo.cy - p.y);
+            } else if (p.aim && !p.aim.out) {
+                mx = (p.aim.x - p.x); my = (p.aim.y - p.y);
+                const d = Math.hypot(mx, my);
+                // only worth a shove if they are close, you are the heavier, and
+                // you can spare it — a wrestler who spends down to nothing is done for
+                if (d < sumoR(p) + sumoR(p.aim) + 30 && p.cd <= 0 &&
+                    p.w - SUMO_CHARGE > SUMO_W_MIN + SUMO_RESERVE &&
+                    p.w > p.aim.w + 6) {
+                    // they shove off a rough eye, not a straight line
+                    p.face = Math.atan2(p.aim.y - p.y, p.aim.x - p.x)
+                             + (Math.random() - 0.5) * SUMO_BOT_AIM;
+                    sumoCharge(p);
+                }
+            }
+            const m = Math.hypot(mx, my) || 1;
+            mx /= m; my /= m;
+        }
+
+        const m = Math.hypot(mx, my);
+        if (m > 0) { mx /= m; my /= m; p.face = Math.atan2(my, mx); }
+
+        if (p.charge > 0) {
+            p.charge -= dt;
+            if (p.charge <= 0) {
+                // The lunge is spent, so you stop dead. Without this you keep the
+                // full 620 and sail on past whatever you hit, straight out of the
+                // ring — which made shoving at all a losing move.
+                p.vx *= 0.18; p.vy *= 0.18;
+            } else {
+                p.vx = Math.cos(p.face) * SUMO_PUSH;
+                p.vy = Math.sin(p.face) * SUMO_PUSH;
+            }
+        } else {
+            // the heavier you are the harder you are to get going, and to stop
+            const spd = SUMO_SPD * (1.25 - p.w / SUMO_W_MAX * 0.45);
+            p.vx += (mx * spd - p.vx) * Math.min(1, dt * 6);
+            p.vy += (my * spd - p.vy) * Math.min(1, dt * 6);
+        }
+        p.x += p.vx * dt; p.y += p.vy * dt;
+    }
+
+    // ---- the shoving ----
+    for (let i = 0; i < sumo.ring.length; i++) {
+        const a = sumo.ring[i];
+        if (a.out) continue;
+        for (let j = i + 1; j < sumo.ring.length; j++) {
+            const b = sumo.ring[j];
+            if (b.out) continue;
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const d = Math.hypot(dx, dy) || 1;
+            const rr = sumoR(a) + sumoR(b);
+            if (d >= rr) continue;
+
+            const nx = dx / d, ny = dy / d;
+            const overlap = rr - d;
+            // weight decides how the overlap is shared out
+            const tw = a.w + b.w;
+            a.x -= nx * overlap * (b.w / tw); a.y -= ny * overlap * (b.w / tw);
+            b.x += nx * overlap * (a.w / tw); b.y += ny * overlap * (a.w / tw);
+
+            // Only a charge decides anything. Two wrestlers merely leaning on each
+            // other just slide apart, each moving as little as their weight allows.
+            // Deciding plain contact on weight alone made it a dominance order —
+            // one point lighter and you lost every exchange for the rest of the
+            // bout, with no way back. The lunge is what the fat is for.
+            const aC = a.charge > 0, bC = b.charge > 0;
+            let win = null, lose = null, ratio = 1;
+            if (aC || bC) {
+                if (aC && bC) {
+                    const aP = a.w * SUMO_LUNGE, bP = b.w * SUMO_LUNGE;
+                    win = aP >= bP ? a : b;
+                } else win = aC ? a : b;
+                lose = win === a ? b : a;
+                ratio = (win.w * SUMO_LUNGE) / Math.max(1, lose.w);
+            }
+            const s = win === a || (!win && true) ? 1 : -1;
+
+            if (win) {
+                // what a shove does to somebody is divided by what they weigh, so
+                // all that eating buys you the right to stand your ground
+                const force = (150 + 150 * Math.min(4, ratio)) * 62;
+                const lk = Math.min(900, force / lose.w);
+                const wk = Math.min(180, force * 0.12 / win.w);
+                const sg = win === a ? 1 : -1;
+                lose.vx += nx * lk * sg; lose.vy += ny * lk * sg;
+                win.vx -= nx * wk * sg; win.vy -= ny * wk * sg;
+                win.w = Math.min(SUMO_W_MAX, win.w + SUMO_CHARGE * SUMO_REFUND);
+                win.gained = 0.4;
+                win.vx *= 0.2; win.vy *= 0.2;
+                win.charge = 0;
+                lose.hitBy = win;
+                lose.flash = 0.25;
+                sumo.shake = Math.min(0.45, 0.14 + ratio * 0.05);
+            } else {
+                // a plain shoulder-to-shoulder: both give a little, the heavier less
+                const nudge = 210 * 62;
+                a.vx -= nx * Math.min(150, nudge / a.w); a.vy -= ny * Math.min(150, nudge / a.w);
+                b.vx += nx * Math.min(150, nudge / b.w); b.vy += ny * Math.min(150, nudge / b.w);
+                sumo.shake = Math.max(sumo.shake, 0.06);
+            }
+            if (win) {
+                for (let n = 0; n < 8; n++) {
+                    const ang = Math.atan2(ny, nx) + (Math.random() - 0.5) * 1.4;
+                    sumo.bits.push({ x:(a.x+b.x)/2, y:(a.y+b.y)/2, vx:Math.cos(ang)*220, vy:Math.sin(ang)*220,
+                                     life:0.4, r:2 + Math.random()*4, c:win.hue });
+                }
+                beep(150 + Math.min(4, ratio) * 40, 0.09, 'square', 0.04);
+                if (lose.you && ratio > 2.4) saySumo(win.name + ' is far heavier — do not stand and take it');
+            }
+        }
+    }
+
+    // ---- over the edge ----
+    for (const p of sumo.ring) {
+        if (p.out) continue;
+        if (Math.hypot(p.x - sumo.cx, p.y - sumo.cy) < sumo.R + sumoR(p) * 0.35) continue;
+        p.out = true;
+        p.place = sumo.left--;
+        // whoever put them there helps themselves to a share of the weight
+        const cred = p.hitBy;
+        if (cred && !cred.out) {
+            const spoils = Math.max(6, (p.w - SUMO_W_MIN) * SUMO_SPOILS);
+            cred.w = Math.min(SUMO_W_MAX, cred.w + spoils);
+            cred.gained = 0.7;
+            sumo.pops.push({ x:cred.x, y:cred.y - 46, text:'+' + Math.round(spoils) + ' WEIGHT',
+                             c:'#9fe08a', life:1.4, size:cred.you ? 20 : 14 });
+        }
+        sumo.pops.push({ x:p.x, y:p.y - 34, text:p.you ? 'OUT!' : p.name + ' IS OUT', 
+                         c:p.you ? '#ff5a5a' : '#ffffff', life:1.6, size:p.you ? 24 : 17 });
+        sumo.shake = 0.45;
+        beep(p.you ? 110 : 620, 0.3, p.you ? 'sawtooth' : 'sine', 0.06);
+        if (p.you) saySumo('Over the edge you go.');
+        else if (!sumo.over) saySumo(p.name + ' is out — ' + (sumo.left - 1) + ' to beat');
+    }
+
+    if (!sumo.over && sumo.left <= 1) {
+        const last = sumo.ring.find(p => !p.out);
+        if (last) last.place = 1;
+        sumo.over = true; sumo.ended = 0;
+    }
+    if (sumo.over) {
+        sumo.ended += dt;
+        if (sumo.ended > 1.5) return endSumo();
+    }
+
+    for (let i = sumo.bits.length - 1; i >= 0; i--) {
+        const b = sumo.bits[i];
+        b.life -= dt; if (b.life <= 0) { sumo.bits.splice(i, 1); continue; }
+        b.x += b.vx * dt; b.y += b.vy * dt; b.vx *= 0.92; b.vy *= 0.92;
+    }
+    for (let i = sumo.pops.length - 1; i >= 0; i--) {
+        const o = sumo.pops[i];
+        o.life -= dt; if (o.life <= 0) { sumo.pops.splice(i, 1); continue; }
+        o.y -= 26 * dt;
+    }
+}
+
+function endSumo() {
+    const me = sumo.ring[0];
+    const place = me.place || 1;
+    const pay = SUMO_PAY[Math.min(place - 1, SUMO_PAY.length - 1)];
+    const food = SUMO_FOOD[Math.min(place - 1, SUMO_FOOD.length - 1)];
+
+    coins += pay;
+    state.sumoFood = (state.sumoFood || 0) + food;
+    state.score += pay * 3;
+    // you leave the ring as heavy as you left it — the fat you spent is spent
+    state.player.belly = Math.min(bellyMax(), Math.max(0, me.w));
+    storeSave();
+
+    running = false;
+    sumo = null;
+
+    const ord = ['1st', '2nd', '3rd', '4th'][Math.min(place - 1, 3)];
+    document.getElementById('sumoTitle').textContent = place === 1 ? '🏆 LAST ONE STANDING' : 'SHOVED OUT';
+    document.getElementById('sumoTitle').style.color = place === 1 ? '#2f7d16' : '#c0392b';
+    document.getElementById('sumoSub').textContent = place === 1
+        ? 'You out-weighed the lot of them.'
+        : 'You went out ' + ord + ' of ' + (SUMO_FOES + 1) + '.';
+    document.getElementById('sumoTally').innerHTML =
+        line('Finished', ord + ' of ' + (SUMO_FOES + 1)) +
+        line('Crumbs won', pay ? '🪙 +' + pay : 'none') +
+        line('Waiting on the next floor', food ? food + ' of the good stuff' : 'nothing') +
+        line('Belly you walk out with', Math.round(state.player.belly) + '%');
+    document.getElementById('sumoOv').classList.remove('hidden');
+    beep(place === 1 ? 660 : 200, 0.35, place === 1 ? 'sine' : 'sawtooth', 0.06);
+    if (place === 1) setTimeout(() => beep(990, 0.3, 'sine', 0.06), 150);
+}
+
+function drawSumo() {
+    ctx.save();
+    if (sumo.shake > 0) {
+        const s = sumo.shake * 18;
+        ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+    }
+
+    ctx.fillStyle = '#241610';
+    ctx.fillRect(-20, -20, VW + 40, VH + 40);
+
+    // the ring: clay, a rope edge, and the sand inside
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.ellipse(sumo.cx, sumo.cy + 14, sumo.R + 26, (sumo.R + 26) * 0.94, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8a5a2a';
+    ctx.beginPath(); ctx.arc(sumo.cx, sumo.cy, sumo.R + 22, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8cf9a';
+    ctx.beginPath(); ctx.arc(sumo.cx, sumo.cy, sumo.R, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff6e0'; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.arc(sumo.cx, sumo.cy, sumo.R, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(140,100,55,0.35)'; ctx.lineWidth = 2;
+    for (let i = 1; i < 4; i++) {
+        ctx.beginPath(); ctx.arc(sumo.cx, sumo.cy, sumo.R * i / 4, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (sumo.t > SUMO_SHRINK_AT - 3 && sumo.R > SUMO_MIN_R) {
+        ctx.strokeStyle = 'rgba(220,70,40,' + (0.35 + Math.sin(sumo.t * 7) * 0.2).toFixed(2) + ')';
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(sumo.cx, sumo.cy, sumo.R - 6, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    for (const b of sumo.bits) {
+        ctx.globalAlpha = Math.min(1, b.life * 3);
+        ctx.fillStyle = b.c;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    const order = sumo.ring.slice().sort((a, b) => a.y - b.y);
+    for (const p of order) drawWrestler(p);
+
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const o of sumo.pops) {
+        ctx.globalAlpha = Math.min(1, o.life * 1.5);
+        ctx.font = 'bold ' + o.size + 'px Segoe UI';
+        ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(20,10,4,0.85)';
+        ctx.strokeText(o.text, o.x, o.y); ctx.fillStyle = o.c; ctx.fillText(o.text, o.x, o.y);
+        ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    drawSumoHUD();
+}
+
+function drawWrestler(p) {
+    const r = sumoR(p);
+    ctx.save();
+    if (p.out) ctx.globalAlpha = 0.4;
+
+    ctx.fillStyle = 'rgba(40,20,8,0.3)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y + r * 0.8, r * 0.95, r * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+
+    if (p.charge > 0) {
+        ctx.strokeStyle = 'rgba(255,220,140,0.8)'; ctx.lineWidth = 4;
+        for (let i = 1; i <= 3; i++) {
+            ctx.globalAlpha = (p.out ? 0.4 : 1) * (0.4 - i * 0.1);
+            ctx.beginPath();
+            ctx.arc(p.x - Math.cos(p.face) * i * 14, p.y - Math.sin(p.face) * i * 14, r * 0.9, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = p.out ? 0.4 : 1;
+    }
+
+    // feet
+    ctx.fillStyle = '#7a4a12';
+    const step = Math.sin(p.wob) * (Math.hypot(p.vx, p.vy) > 40 ? 4 : 0);
+    ctx.beginPath(); ctx.ellipse(p.x - r * 0.45, p.y + r * 0.72 + step, 8, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(p.x + r * 0.45, p.y + r * 0.72 - step, 8, 5, 0, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = p.flash > 0 ? '#ffffff' : p.gained > 0 ? '#c8f0a8' : p.hue;
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, r, r * 0.92, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(60,30,10,0.55)'; ctx.lineWidth = 3.5; ctx.stroke();
+
+    // the belt, and a belly to hang over it
+    ctx.fillStyle = 'rgba(255,252,240,0.9)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y + r * 0.2, r * 0.62, r * 0.46, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#3b2a16'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(p.x - r * 0.7, p.y + r * 0.42); ctx.lineTo(p.x + r * 0.7, p.y + r * 0.42); ctx.stroke();
+    ctx.lineCap = 'butt';
+
+    const ex = Math.cos(p.face), ey = Math.sin(p.face);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(p.x + ex * 5 - ey * 8, p.y + ey * 5 + ex * 8 - r * 0.2, 5.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x + ex * 5 + ey * 8, p.y + ey * 5 - ex * 8 - r * 0.2, 5.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2a2318';
+    ctx.beginPath(); ctx.arc(p.x + ex * 7 - ey * 8, p.y + ey * 7 + ex * 8 - r * 0.2, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x + ex * 7 + ey * 8, p.y + ey * 7 - ex * 8 - r * 0.2, 2.5, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = p.you ? '#fff6d0' : 'rgba(255,255,255,0.85)';
+    ctx.font = 'bold ' + (p.you ? 13 : 11) + 'px Segoe UI';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(20,10,4,0.7)';
+    const tag = p.name + '  ' + Math.round(p.w);
+    ctx.strokeText(tag, p.x, p.y - r - 12); ctx.fillText(tag, p.x, p.y - r - 12);
+    ctx.restore();
+}
+
+function drawSumoHUD() {
+    ctx.fillStyle = 'rgba(255,250,240,0.93)';
+    ctx.fillRect(0, 0, VW, 56);
+    ctx.strokeStyle = 'rgba(122,82,40,0.45)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, 56); ctx.lineTo(VW, 56); ctx.stroke();
+
+    const me = sumo.ring[0];
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#4a3418'; ctx.font = 'bold 13px Segoe UI';
+    ctx.fillText('YOUR WEIGHT', 12, 18);
+    ctx.font = 'bold 25px Segoe UI';
+    ctx.fillStyle = me.w > SUMO_W_MIN + 20 ? '#c4562f' : '#c0392b';
+    ctx.fillText(Math.round(me.w), 12, 40);
+
+    // everyone still in, heaviest first, so you know who to keep away from
+    const alive = sumo.ring.filter(p => !p.out).sort((a, b) => b.w - a.w);
+    let x = 128;
+    ctx.font = 'bold 12px Segoe UI';
+    for (const p of alive) {
+        ctx.fillStyle = p.hue;
+        ctx.beginPath(); ctx.roundRect(x, 12, 116, 32, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.fillText(p.name, x + 9, 22);
+        ctx.font = 'bold 16px Segoe UI';
+        ctx.fillText(Math.round(p.w), x + 9, 37);
+        ctx.font = 'bold 12px Segoe UI';
+        if (p.you) { ctx.strokeStyle = '#2a2318'; ctx.lineWidth = 2.5;
+                     ctx.beginPath(); ctx.roundRect(x, 12, 116, 32, 7); ctx.stroke(); }
+        x += 124;
+    }
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#7b6a56'; ctx.font = 'bold 12px Segoe UI';
+    ctx.fillText('SPACE to shove  ·  costs ' + SUMO_CHARGE + ' fat', VW - 12, 18);
+    ctx.fillStyle = sumo.t > SUMO_JUDGE_AT - 6 ? '#c0392b' : sumo.R <= SUMO_MIN_R ? '#c4562f' : '#4a3418';
+    ctx.fillText(
+        sumo.t > SUMO_JUDGE_AT ? 'JUDGES ARE CALLING OUT WHOEVER IS FURTHEST OUT'
+      : sumo.t > SUMO_JUDGE_AT - 8 ? 'judges step in in ' + Math.ceil(SUMO_JUDGE_AT - sumo.t) + 's'
+      : sumo.t > SUMO_SHRINK_AT ? 'THE RING IS CLOSING IN'
+      : 'ring closes in ' + Math.ceil(SUMO_SHRINK_AT - sumo.t) + 's', VW - 12, 38);
+
+    if (sumo.msgT > 0) {
+        ctx.globalAlpha = Math.min(1, sumo.msgT * 1.6);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = 'bold 15px Segoe UI';
+        const w = ctx.measureText(sumo.msg).width + 28;
+        ctx.fillStyle = 'rgba(42,35,24,0.85)';
+        ctx.beginPath(); ctx.roundRect(VW / 2 - w / 2, VH - 62, w, 32, 9); ctx.fill();
+        ctx.fillStyle = '#fff4dd';
+        ctx.fillText(sumo.msg, VW / 2, VH - 46);
+        ctx.globalAlpha = 1;
+    }
 }
 
 /* ---------------------------------------------------------------- menu -- */
@@ -1788,11 +2339,12 @@ function paintDiffs() {
 }
 
 function hideAll() {
-    for (const id of ['titleOv', 'pauseOv', 'clearOv', 'shopOv', 'overOv'])
+    for (const id of ['titleOv', 'pauseOv', 'clearOv', 'shopOv', 'sumoOv', 'overOv'])
         document.getElementById(id).classList.add('hidden');
 }
 
 function newGame() {
+    sumo = null;
     hideAll();
     startLevel(1, null);
 }
@@ -1829,6 +2381,7 @@ function afterClear() {
 function nextLevel() {
     const carry = {
         hearts: state.player.hearts,
+        sumoFood: state.sumoFood,
         score: state.score,
         eaten: state.eaten,
         bricks: state.bricksDone,
@@ -1838,7 +2391,7 @@ function nextLevel() {
 }
 
 function toMenu() {
-    running = false; paused = false;
+    running = false; paused = false; sumo = null;
     hideAll();
     document.getElementById('titleBest').textContent = bestText();
     document.getElementById('titleOv').classList.remove('hidden');
@@ -1849,6 +2402,13 @@ document.getElementById('titleShopBtn').addEventListener('click', () => openCafe
 document.getElementById('pauseShopBtn').addEventListener('click', () => openCafe('pauseOv'));
 document.getElementById('overShopBtn').addEventListener('click', () => openCafe('overOv'));
 document.getElementById('nextBtn').addEventListener('click', afterClear);
+document.getElementById('sumoBtn').addEventListener('click', startSumo);
+document.getElementById('sumoGo').addEventListener('click', () => {
+    hideAll();
+    // back to the floor-clear screen you came from, to carry on as normal
+    document.getElementById('clearOv').classList.remove('hidden');
+    document.getElementById('sumoBtn').style.display = 'none';
+});
 document.getElementById('shopGo').addEventListener('click', leaveCafe);
 document.getElementById('shopUndo').addEventListener('click', undoBuy);
 document.getElementById('againBtn').addEventListener('click', newGame);
@@ -1870,8 +2430,9 @@ addEventListener('keydown', e => {
     keys[k] = true;
     if ([' ', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown'].indexOf(k) >= 0) e.preventDefault();
     if (!running) return;
-    if (k === ' ') dash();
+    if (k === ' ') { if (sumo) sumoCharge(sumo.ring[0]); else dash(); }
     if (k === 'p' || k === 'escape') {
+        if (sumo) return;                 // no pausing out of a bout
         paused = !paused;
         document.getElementById('pauseOv').classList.toggle('hidden', !paused);
         if (!paused) last = performance.now();
@@ -1892,6 +2453,11 @@ function dash() {
 
 cv.addEventListener('pointerdown', e => {
     pointer.on = true; pointer.x = e.clientX; pointer.y = e.clientY;
+    if (running && sumo) {
+        const me = sumo.ring[0];
+        if (Math.hypot(e.clientX - me.x, e.clientY - me.y) < sumoR(me) + 34) sumoCharge(me);
+        return;
+    }
     if (running && e.clientY > HUD_H) {
         // a tap right by the wall is a charge at it
         const p = state.player;
