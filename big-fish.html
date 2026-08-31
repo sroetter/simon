@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Big Fish - Simon's Game Gallery</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+        font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background:#0a4a6e; color:#0d2b3a; overflow:hidden;
+        -webkit-user-select:none; user-select:none;
+    }
+    canvas { display:block; }
+    .back-btn {
+        position:fixed; top:14px; left:14px; z-index:99999; text-decoration:none;
+        color:#0d2b3a; background:rgba(255,255,255,0.93); border:1px solid rgba(10,60,90,0.35);
+        padding:8px 16px; border-radius:8px; font-size:14px; line-height:1.2;
+    }
+    .back-btn:hover { background:#fff; }
+    .footer-link {
+        position:fixed; bottom:8px; left:0; right:0; text-align:center;
+        font-size:12px; color:rgba(255,255,255,0.75); z-index:20; pointer-events:none;
+        text-shadow:0 1px 3px rgba(0,40,70,0.5);
+    }
+    .footer-link a { color:#fff; pointer-events:auto; }
+
+    .overlay {
+        position:fixed; inset:0; z-index:40; display:flex; align-items:center;
+        justify-content:center; padding:16px; overflow-y:auto;
+        background:linear-gradient(170deg, rgba(80,200,240,0.94), rgba(10,74,110,0.96));
+    }
+    .overlay.hidden { display:none; }
+    .panel {
+        background:linear-gradient(155deg,#ffffff,#e4f6ff);
+        border:3px solid #0f86c4; border-radius:20px; padding:22px 26px;
+        max-width:760px; width:95%; text-align:center; color:#0d2b3a;
+        max-height:calc(100vh - 32px); overflow-y:auto;
+        box-shadow:0 18px 50px rgba(0,40,70,0.4), 0 0 0 6px rgba(255,255,255,0.5);
+    }
+    h1 { font-size:clamp(28px,5.8vw,48px); letter-spacing:3px; margin-bottom:3px; color:#0f86c4;
+         text-shadow:0 2px 0 #bfe8ff; }
+    h2 { font-size:15px; font-weight:normal; color:#5e7a88; margin-bottom:10px; }
+    .rules { text-align:left; font-size:13.5px; line-height:1.65; color:#20404f;
+             background:rgba(15,134,196,0.07); border:1px solid rgba(15,134,196,0.25);
+             border-radius:10px; padding:13px 15px; margin:10px 0; }
+    .rules b { color:#0f86c4; }
+    .swatch { display:inline-block; width:13px; height:13px; border-radius:4px;
+              vertical-align:-2px; margin-right:4px; border:2px solid rgba(0,0,0,0.25); }
+    .keys { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:10px 0; font-size:13px; }
+    .keys div { background:rgba(15,134,196,0.07); border:1px solid rgba(15,134,196,0.2);
+                border-radius:8px; padding:8px 10px; text-align:left; color:#20404f; }
+    kbd { background:#e4f6ff; border:1px solid #7cc4e4; border-bottom-width:2px;
+          border-radius:5px; padding:1px 6px; font-size:12px; color:#0a5e8c; }
+    .label { font-size:12px; color:#5e7a88; margin:12px 0 4px; letter-spacing:2px; }
+    .row { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+    .btn {
+        background:linear-gradient(140deg,#3fc0f0,#0f86c4); color:#fff;
+        border:2px solid #bfe8ff; border-radius:11px; cursor:pointer;
+        padding:11px 26px; font-size:15px; font-weight:bold; font-family:inherit;
+        letter-spacing:1px; box-shadow:0 4px 0 #0a5e8c;
+    }
+    .btn:hover { filter:brightness(1.08); }
+    .btn:active { transform:translateY(2px); box-shadow:0 2px 0 #0a5e8c; }
+    .btn.small { padding:6px 13px; font-size:12.5px; min-width:60px; color:#20404f;
+                 background:linear-gradient(140deg,#ffffff,#dceef7); border-color:#a8cfe2;
+                 box-shadow:0 3px 0 #a8cfe2; letter-spacing:0.5px; }
+    .btn.small.sel { background:linear-gradient(140deg,#3fc0f0,#0f86c4); color:#fff;
+                     border-color:#bfe8ff; box-shadow:0 3px 0 #0a5e8c; }
+    .note { font-size:12.5px; color:#5e7a88; margin-top:10px; line-height:1.5; }
+
+    .cards { display:flex; gap:11px; justify-content:center; flex-wrap:wrap; margin:14px 0 4px; }
+    .card {
+        flex:1 1 195px; max-width:220px; cursor:pointer; text-align:left;
+        background:linear-gradient(165deg,#ffffff,#ddf1fb);
+        border:2px solid #7cc4e4; border-radius:12px; padding:13px 14px;
+        transition:transform 0.08s, border-color 0.12s;
+    }
+    .card:hover { transform:translateY(-3px); border-color:#0f86c4; }
+    .card .g { font-size:29px; line-height:1.1; }
+    .card .n { font-weight:bold; font-size:15px; color:#0a5e8c; margin-top:5px; }
+    .card .lv { font-size:10.5px; color:#1a9c4a; font-weight:bold; letter-spacing:1px; }
+    .card .d { font-size:12.5px; color:#3a5866; line-height:1.45; margin-top:5px; }
+    .card.new { border-color:#f0a93f; }
+    .card.new .n { color:#c47a10; }
+
+    .tally { margin:12px 0; font-size:14px; }
+    .tally .line {
+        display:flex; justify-content:space-between; align-items:center;
+        background:rgba(15,134,196,0.07); border:1px solid rgba(15,134,196,0.18);
+        border-radius:8px; padding:7px 12px; margin:5px 0; text-align:left; color:#20404f;
+    }
+    .tally .line b { font-variant-numeric:tabular-nums; color:#0f86c4; font-size:16px; }
+
+    .kit { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin:8px 0; font-size:25px; }
+    .kit span { position:relative; }
+    .kit i { position:absolute; right:-5px; bottom:-4px; font-style:normal; font-size:11px;
+             font-weight:bold; color:#fff; background:#0f86c4; border-radius:4px; padding:0 3px; }
+
+    .buy { display:flex; align-items:center; gap:12px; text-align:left;
+           background:rgba(15,134,196,0.06); border:1px solid rgba(15,134,196,0.22);
+           border-radius:10px; padding:9px 12px; margin:6px 0; }
+    .buy .g { font-size:24px; width:30px; text-align:center; }
+    .buy .t { flex:1; }
+    .buy .n { font-weight:bold; font-size:14px; color:#0a5e8c; }
+    .buy .d { font-size:12.5px; color:#3a5866; line-height:1.4; }
+    .buy .l { font-size:11px; color:#1a9c4a; font-weight:bold; letter-spacing:1px; }
+    .buy button { background:linear-gradient(140deg,#3fc0f0,#0f86c4); color:#fff;
+                  border:2px solid #bfe8ff; border-radius:8px; cursor:pointer;
+                  padding:8px 13px; font-size:12.5px; font-weight:bold; white-space:nowrap;
+                  min-width:96px; font-family:inherit; }
+    .buy button[disabled] { background:#dfe8ed; border-color:#c3d3db; color:#8ba0ab; cursor:default; }
+    .buy.maxed { border-color:rgba(26,156,74,0.5); background:rgba(26,156,74,0.09); }
+    .purse { font-size:15px; color:#0a5e8c; margin:8px 0 2px; }
+    .purse b { font-size:23px; color:#0f86c4; }
+</style>
+</head>
+<body>
+<a href="index.html" class="back-btn">&larr; Back to Games</a>
+<canvas id="game"></canvas>
+<div class="footer-link">You can also find this at <a href="index.html">Simon's Game Gallery</a></div>
+
+<div class="overlay" id="titleOv">
+  <div class="panel">
+    <h1>🐟 BIG FISH</h1>
+    <h2>Eat anything smaller. Keep away from anything bigger. Get big.</h2>
+    <div class="rules">
+      Swim about and <b>eat every fish smaller than you</b>. Every one you eat makes you a little
+      bigger, and the bigger you get the more of the reef is on the menu.<br><br>
+      You never have to guess what is safe. Every fish is ringed by what it is to you:<br>
+      <span class="swatch" style="background:#2fd06a"></span><b>green</b> — smaller than you, eat it.
+      &nbsp; <span class="swatch" style="background:#ffc02f"></span><b>amber</b> — about your size,
+      neither of you can swallow the other.
+      &nbsp; <span class="swatch" style="background:#ff4a4a"></span><b>red</b> — bigger than you,
+      it will take a bite out of <i>you</i>.<br><br>
+      A red fish catching you is not the end — it just <b>takes a chunk of your size</b> and you get
+      a moment to get clear. You only lose if it eats you down to nothing. There is no darkness,
+      no hidden anything: if it can reach you, you can see it coming.<br><br>
+      Every time you grow you pick <b>one of three</b> upgrades. Last <b>five minutes</b> and you
+      are the biggest thing on the reef. Pearls you collect are yours for keeps — the reef market
+      sells things that last for good.
+    </div>
+    <div class="keys">
+      <div><kbd>W A S D</kbd> or <kbd>← ↑ ↓ →</kbd> — swim</div>
+      <div><kbd>Shift</kbd> — <b>dash</b>, to catch or to escape</div>
+      <div><kbd>P</kbd> or <kbd>Esc</kbd> — pause</div>
+      <div>Or hold the mouse down to swim that way</div>
+    </div>
+    <div class="label">HOW ROUGH A REEF</div>
+    <div class="row" id="diffRow"></div>
+    <div class="row" style="margin-top:16px;">
+      <button class="btn" id="startBtn">DIVE IN</button>
+      <button class="btn" id="shopBtn">🐚 REEF MARKET</button>
+    </div>
+    <div class="note" id="titleBest"></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="pickOv">
+  <div class="panel">
+    <h1 id="pickTitle">YOU GREW</h1>
+    <h2 id="pickSub"></h2>
+    <div class="cards" id="pickCards"></div>
+    <div class="note">Take a card to carry on.</div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="pauseOv">
+  <div class="panel">
+    <h1>TREADING WATER</h1>
+    <div class="kit" id="pauseKit"></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="resumeBtn">SWIM ON</button>
+      <button class="btn" id="quitBtn">GIVE UP</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="shopOv">
+  <div class="panel">
+    <h1>🐚 THE REEF MARKET</h1>
+    <h2 id="shopSub">Open all hours. What you buy here is yours for good.</h2>
+    <div class="purse" id="shopPurse"></div>
+    <div id="shopList"></div>
+    <div class="note">Pearls come from everything you eat. They stay yours whatever happens out
+      there.</div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn small" id="shopUndo">↩ NOTHING TO UNDO</button>
+      <button class="btn" id="shopBack">BACK</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overOv">
+  <div class="panel">
+    <h1 id="overTitle">EATEN</h1>
+    <h2 id="overSub"></h2>
+    <div class="kit" id="overKit"></div>
+    <div class="tally" id="overTally"></div>
+    <div class="note" id="overBest"></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="againBtn">GO AGAIN</button>
+      <button class="btn" id="overShopBtn">🐚 MARKET</button>
+      <button class="btn" id="menuBtn">MENU</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ============================================================ BIG FISH ====
+   Eat anything smaller than you, keep away from anything bigger, get bigger.
+
+   The rule this game is built around is that you should never be surprised.
+   Nothing is hidden, nothing creeps up: every fish is ringed green, amber or
+   red saying exactly what it is to you right now, those rings update the
+   instant your size changes, and anything dangerous is arrowed at the edge of
+   the screen before it arrives. Being eaten costs you size and a scare, not
+   the run.
+   ========================================================================== */
+
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+let VW = 0, VH = 0;
+
+/* ---------------------------------------------------------------- reef -- */
+const AW = 3000, AH = 2200;
+const SWIM = 300;                      // five minutes and you have made it
+
+const SZ_START = 26, SZ_MIN = 12, SZ_CAP = 150;
+const EAT_EDGE = 1.10;                 // it must be this much smaller to swallow
+const BITE_LOSS = 0.11;                // what a bigger fish takes off you
+const GRACE = 1.6;                     // and how long you are left alone after
+
+const P_SPD = 250;
+const DASH_T = 0.3, DASH_MULT = 2.5, DASH_CD = 2.4;
+
+const PEARL_R = 11, PULL = 120, PULL_SPD = 520;
+const XP_BASE = 4, XP_STEP = 1.28;
+
+// Everything in the sea, smallest first. `size` is the whole of what a fish is:
+// it decides who eats who, how fast it is, and how big it is drawn.
+const SHOALS = [
+    { key:'fry',     g:'🐠', size:9,   spd:120, hue:'#ffd45e', xp:1,  pearl:1,  mind:'flee' },
+    { key:'minnow',  g:'🐟', size:15,  spd:135, hue:'#7fd4e0', xp:1,  pearl:1,  mind:'flee' },
+    { key:'perch',   g:'🐡', size:24,  spd:118, hue:'#f0913f', xp:2,  pearl:2,  mind:'wander' },
+    { key:'snapper', g:'🐠', size:34,  spd:132, hue:'#e0655a', xp:3,  pearl:3,  mind:'hunt' },
+    { key:'grouper', g:'🐟', size:48,  spd:112, hue:'#7a9c4a', xp:5,  pearl:5,  mind:'hunt' },
+    { key:'tuna',    g:'🐟', size:64,  spd:158, hue:'#4a72c4', xp:8,  pearl:9,  mind:'hunt' },
+    { key:'shark',   g:'🦈', size:92,  spd:150, hue:'#8a96a8', xp:14, pearl:18, mind:'hunt' },
+    { key:'whale',   g:'🐋', size:130, spd:96,  hue:'#5a6a9c', xp:26, pearl:40, mind:'hunt' },
+];
+const BY_KEY = {};
+for (const s of SHOALS) BY_KEY[s.key] = s;
+
+// Jellyfish are the one thing size does not settle — they sting whatever you are,
+// but they drift and never chase, so they are always avoidable.
+const JELLY = { key:'jelly', g:'🪼', size:26, spd:34, hue:'#d98ae0', xp:3, pearl:4, mind:'drift', stings:true };
+
+/* --------------------------------------------------------------- upgrades */
+const KIT = {
+    jaws:   { g:'🦷', name:'Wider jaws',  max:5,
+              desc:'Swallow things closer to your own size.' },
+    quick:  { g:'💨', name:'Quick fins',  max:5, desc:'Swim 10% faster.' },
+    dash:   { g:'⚡', name:'Sharper dash', max:4, desc:'Dash comes back a third sooner.' },
+    grow:   { g:'📈', name:'Good feeder', max:5, desc:'Every fish you eat grows you 25% more.' },
+    tough:  { g:'🛡', name:'Thick scales', max:4, desc:'A bite off you takes a quarter less.' },
+    pull:   { g:'🧲', name:'Sea-sense',   max:3, desc:'Pearls come to you from twice as far.' },
+    pearl:  { g:'🐚', name:'Pearl diver', max:4, desc:'Pearls are worth 30% more.' },
+    scare:  { g:'😠', name:'Fierce face', max:3,
+              desc:'Bigger fish keep further back before they commit.' },
+    school: { g:'🐟', name:'Little school', max:4,
+              desc:'Small fish swim with you and nibble what you are chasing.' },
+    spit:   { g:'💦', name:'Water jet',   max:5,
+              desc:'You spit a jet at whatever is nearest. It shrinks what it hits.' },
+};
+
+function lv(k) { return state.kit[k] || 0; }
+function eatEdge()   { return Math.max(0.94, EAT_EDGE - lv('jaws') * 0.032); }
+function speedMult() { return (1 + lv('quick') * 0.10) * (1 + up('fins') * 0.05); }
+function dashCd()    { return DASH_CD * Math.max(0.4, 1 - lv('dash') * 0.33); }
+function growMult()  { return (1 + lv('grow') * 0.25) * (1 + up('feed') * 0.12); }
+function biteLoss()  { return BITE_LOSS * Math.max(0.3, 1 - lv('tough') * 0.25) * (1 - up('scales') * 0.1); }
+function pullR()     { return PULL * (1 + lv('pull') * 1.0) * (1 + up('sense') * 0.4); }
+function pearlMult() { return (1 + lv('pearl') * 0.3) * (1 + up('diver') * 0.15); }
+function scareR()    { return lv('scare') * 55; }
+
+/* ----------------------------------------------------------- the market -- */
+const SHOP = [
+    { key:'start', g:'🐣', name:'A better start', max:4, cost:[50, 130, 280, 540],
+      desc:'Begin every dive 3 sizes bigger.' },
+    { key:'fins',  g:'💨', name:'Strong fins',   max:3, cost:[70, 180, 400],
+      desc:'Swim 5% faster, always.' },
+    { key:'feed',  g:'📈', name:'Big appetite',  max:3, cost:[80, 200, 460],
+      desc:'Eating grows you 12% more.' },
+    { key:'scales',g:'🛡', name:'Tough hide',    max:3, cost:[90, 230, 520],
+      desc:'Bites take 10% less off you.' },
+    { key:'sense', g:'🧲', name:'Sea-sense',     max:2, cost:[100, 260],
+      desc:'Pearls come to you from 40% further.' },
+    { key:'diver', g:'🐚', name:'Pearl diver',   max:3, cost:[110, 280, 620],
+      desc:'Pearls are worth 15% more.' },
+    { key:'lucky', g:'🍀', name:'Lucky fin',     max:2, cost:[300, 900],
+      desc:'When you would be eaten, you slip away instead. Once a dive, then twice.' },
+];
+const NO_UP = { start:0, fins:0, feed:0, scales:0, sense:0, diver:0, lucky:0 };
+
+let pearls = 0;
+let owned = Object.assign({}, NO_UP);
+let buys = [];
+function up(k) { return owned[k] || 0; }
+
+const DIFFS = {
+    shallow: { name:'SHALLOWS', crowd:0.75, big:0.7, pay:1.0 },
+    reef:    { name:'THE REEF', crowd:1.0,  big:1.0, pay:1.35 },
+    deep:    { name:'THE DEEP', crowd:1.35, big:1.4, pay:1.9 },
+};
+let diff = 'reef';
+
+let best = { size:0, time:0, dives:0 };
+
+let loadOk = false;
+function storeLoad() {
+    try {
+        const raw = localStorage.getItem('bigFish');
+        if (raw) {
+            const d = JSON.parse(raw);
+            best.size = d.size || 0;
+            best.time = d.time || 0;
+            best.dives = d.dives || 0;
+            pearls = d.pearls || 0;
+            owned = Object.assign({}, NO_UP, d.owned || {});
+            if (d.diff && DIFFS[d.diff]) diff = d.diff;
+        }
+        loadOk = true;
+    } catch (e) { loadOk = false; }
+}
+function storeSave() {
+    // A record we could not read is never written over: everything would still be
+    // sitting at zero and we would wipe a perfectly good save.
+    if (!loadOk) return;
+    savedPearls = pearls;
+    try { localStorage.setItem('bigFish', JSON.stringify({ size:best.size, time:best.time,
+        dives:best.dives, pearls, owned, diff })); } catch (e) {}
+}
+let saveT = 0, savedPearls = -1;
+function tickSave(dt) {
+    saveT -= dt;
+    if (saveT > 0 || pearls === savedPearls) return;
+    saveT = 4; storeSave();
+}
+
+/* --------------------------------------------------------------- sound -- */
+let actx = null;
+function beep(freq, len, type, vol) {
+    try {
+        if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = actx.createOscillator(), g = actx.createGain();
+        o.type = type || 'sine'; o.frequency.value = freq;
+        g.gain.value = vol == null ? 0.04 : vol;
+        g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + len);
+        o.connect(g); g.connect(actx.destination);
+        o.start(); o.stop(actx.currentTime + len);
+    } catch (e) {}
+}
+
+/* --------------------------------------------------------------- state -- */
+let state = null;
+let running = false, paused = false, last = 0;
+let keys = {};
+let pointer = { on:false, x:0, y:0 };
+let cam = { x:0, y:0 };
+
+function layout() {
+    VW = cv.width = window.innerWidth;
+    VH = cv.height = window.innerHeight;
+}
+
+function newRun() {
+    state = {
+        t:0, over:false, won:false,
+        player: {
+            x:AW/2, y:AH/2, vx:0, vy:0,
+            size: SZ_START + up('start') * 3,
+            face:0, dash:0, dashCd:0, grace:0, chew:0,
+            slips: up('lucky'),
+        },
+        kit:{}, timers:{},
+        fish:[], pearls:[], jets:[], bits:[], pops:[], school:[],
+        xp:0, level:1, nextXp:XP_BASE,
+        eaten:0, bitten:0, pearlRun:0, pearlBank:0,
+        spawnT:0, shake:0, flash:0, msg:'', msgT:0,
+        picking:false, pendingPicks:0,
+    };
+    cam.x = state.player.x - VW/2; cam.y = state.player.y - VH/2;
+    // a reef that already has fish in it, so there is something to do at once
+    for (let i = 0; i < 46; i++) spawnFish(null, true);
+    running = true; paused = false;
+    last = performance.now();
+    hideAll();
+    say('Green means eat it. Red means it eats you.');
+}
+
+function say(t) { state.msg = t; state.msgT = 3.6; }
+function pop(x, y, text, hue, size) {
+    state.pops.push({ x, y, text, hue:hue || '#ffffff', life:1.0, size:size || 16 });
+}
+
+/* ------------------------------------------------------------ the shoal -- */
+// what turns up scales with how big you already are, so the reef always has
+// something you can eat and something you must dodge
+function pickShoal() {
+    const p = state.player;
+    const d = DIFFS[diff];
+    if (Math.random() < 0.07) return JELLY;
+    // most of what appears is near your own size, either side of it
+    const bias = (Math.random() - 0.42) * 1.9 * d.big;
+    const want = p.size * (1 + bias);
+    let best = SHOALS[0], bd = 1e9;
+    for (const s of SHOALS) {
+        const gap = Math.abs(s.size - want);
+        if (gap < bd) { bd = gap; best = s; }
+    }
+    return best;
+}
+
+function spawnFish(kind, anywhere) {
+    const p = state.player;
+    const s = kind || pickShoal();
+    let x, y;
+    if (anywhere) {
+        x = 60 + Math.random() * (AW - 120);
+        y = 60 + Math.random() * (AH - 120);
+    } else {
+        // just off the edge of the view, never on top of you
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.max(VW, VH) * 0.62 + 60 + Math.random() * 160;
+        x = p.x + Math.cos(a) * d;
+        y = p.y + Math.sin(a) * d;
+    }
+    x = Math.max(30, Math.min(AW - 30, x));
+    y = Math.max(30, Math.min(AH - 30, y));
+    state.fish.push({
+        kind:s, key:s.key, x, y, vx:0, vy:0,
+        size:s.size * (0.86 + Math.random() * 0.3),
+        face:Math.random() * Math.PI * 2, wob:Math.random() * 6.28,
+        think:Math.random() * 2, flash:0, roam:null,
+        // Only some of them are actually interested in you. With every big fish
+        // in the sea hunting at once you never stop running, never get to eat,
+        // and shrink until the whole reef is red — which is exactly what made
+        // this feel impossible. The rest just get on with their day.
+        // and the reef takes a little while to notice you at all, so the first
+        // minute is yours to learn in rather than to be hunted through
+        bold: Math.random() < 0.12 + Math.min(0.22, state.t / 60 * 0.22),
+    });
+}
+
+function crowd() {
+    const d = DIFFS[diff];
+    return Math.round((44 + state.t * 0.16) * d.crowd);
+}
+
+/* -------------------------------------------------------------- update -- */
+function update(dt) {
+    const p = state.player;
+    state.t += dt;
+    if (state.msgT > 0) state.msgT -= dt;
+    if (state.shake > 0) state.shake -= dt;
+    if (state.flash > 0) state.flash -= dt;
+    if (p.grace > 0) p.grace -= dt;
+    if (p.chew > 0) p.chew -= dt;
+    if (p.dashCd > 0) p.dashCd -= dt;
+    tickSave(dt);
+
+    if (state.t >= SWIM) return endRun(true);
+
+    /* --- swimming --- */
+    let mx = 0, my = 0;
+    if (keys['arrowleft'] || keys['a']) mx -= 1;
+    if (keys['arrowright'] || keys['d']) mx += 1;
+    if (keys['arrowup'] || keys['w']) my -= 1;
+    if (keys['arrowdown'] || keys['s']) my += 1;
+    if (!mx && !my && pointer.on) {
+        const dx = pointer.x + cam.x - p.x, dy = pointer.y + cam.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 18) { mx = dx / d; my = dy / d; }
+    }
+    const m = Math.hypot(mx, my);
+    if (m > 0) { mx /= m; my /= m; p.face = Math.atan2(my, mx); }
+
+    if ((keys['shift']) && p.dash <= 0 && p.dashCd <= 0) {
+        p.dash = DASH_T; p.dashCd = dashCd();
+        beep(520, 0.12, 'sine', 0.04);
+    }
+    if (p.dash > 0) p.dash -= dt;
+
+    // a bigger fish is a slower fish, which is what stops you steamrolling
+    const bulk = 1 - Math.min(0.42, (p.size - SZ_START) / 260);
+    const spd = P_SPD * speedMult() * bulk * (p.dash > 0 ? DASH_MULT : 1);
+    p.vx += (mx * spd - p.vx) * Math.min(1, dt * 9);
+    p.vy += (my * spd - p.vy) * Math.min(1, dt * 9);
+    p.x = Math.max(24, Math.min(AW - 24, p.x + p.vx * dt));
+    p.y = Math.max(24, Math.min(AH - 24, p.y + p.vy * dt));
+
+    /* --- keep the reef stocked --- */
+    state.spawnT -= dt;
+    if (state.spawnT <= 0) {
+        state.spawnT = 0.35;
+        while (state.fish.length < crowd()) spawnFish();
+    }
+
+    updateFish(dt);
+    updateKit(dt);
+    updatePearls(dt);
+    updateBits(dt);
+
+    cam.x += ((p.x - VW/2) - cam.x) * Math.min(1, dt * 7);
+    cam.y += ((p.y - VH/2) - cam.y) * Math.min(1, dt * 7);
+    cam.x = Math.max(0, Math.min(AW - VW, cam.x));
+    cam.y = Math.max(0, Math.min(AH - VH, cam.y));
+    if (AW < VW) cam.x = (AW - VW) / 2;
+    if (AH < VH) cam.y = (AH - VH) / 2;
+}
+
+// what a fish is to you, right now. everything on screen is coloured by this.
+function standing(f) {
+    const p = state.player;
+    if (f.kind.stings) return 'sting';
+    if (p.size > f.size * eatEdge()) return 'prey';
+    if (f.size > p.size * EAT_EDGE) return 'threat';
+    return 'even';
+}
+
+function updateFish(dt) {
+    const p = state.player;
+    for (let i = state.fish.length - 1; i >= 0; i--) {
+        const f = state.fish[i];
+        if (f.flash > 0) f.flash -= dt;
+        f.wob += dt * 4;
+
+        const rel = standing(f);
+        const dx = p.x - f.x, dy = p.y - f.y;
+        const d = Math.hypot(dx, dy) || 1;
+
+        let tx = null, ty = null;
+        if (f.kind.mind === 'drift') {
+            f.think -= dt;
+            if (f.think <= 0) { f.think = 3 + Math.random() * 3;
+                f.roam = { x:f.x + (Math.random()-0.5)*300, y:f.y + (Math.random()-0.5)*300 }; }
+            tx = f.roam ? f.roam.x : f.x; ty = f.roam ? f.roam.y : f.y;
+        } else if (rel === 'prey' && d < 230) {
+            // it only bolts once you are close, so you can line a run up
+            tx = f.x - dx; ty = f.y - dy;
+        } else if (rel === 'threat' && f.bold && d < 420 + scareR()) {
+            // it hunts you, but hangs back a little if you look fierce
+            if (d < scareR()) { tx = f.x - dx; ty = f.y - dy; }
+            else { tx = p.x; ty = p.y; }
+        } else {
+            f.think -= dt;
+            if (f.think <= 0) { f.think = 2 + Math.random() * 3;
+                f.roam = { x: 60 + Math.random()*(AW-120), y: 60 + Math.random()*(AH-120) }; }
+            tx = f.roam ? f.roam.x : f.x; ty = f.roam ? f.roam.y : f.y;
+        }
+
+        const ax = tx - f.x, ay = ty - f.y, ad = Math.hypot(ax, ay) || 1;
+        // frightened prey is quick but not quicker than you — a chase has to end
+        const fs = f.kind.spd * (1 - Math.min(0.35, f.size / 400)) * (rel === 'prey' ? 0.82 : 1);
+        f.vx += ((ax / ad) * fs - f.vx) * Math.min(1, dt * 3.4);
+        f.vy += ((ay / ad) * fs - f.vy) * Math.min(1, dt * 3.4);
+        f.x = Math.max(20, Math.min(AW - 20, f.x + f.vx * dt));
+        f.y = Math.max(20, Math.min(AH - 20, f.y + f.vy * dt));
+        if (Math.hypot(f.vx, f.vy) > 6) f.face = Math.atan2(f.vy, f.vx);
+
+        // fish far off behind you are recycled to the front, so the reef stays busy
+        if (d > Math.max(VW, VH) * 1.5) { state.fish.splice(i, 1); continue; }
+
+        /* --- the moment of truth --- */
+        // Your mouth is generous on purpose. At 0.42 of the combined size this was
+        // a 19px window on a fish running away from you, which meant you could
+        // chase something for twenty seconds and never land it. Eating is the
+        // whole game; it should not be a test of pixel aim.
+        const touch = (p.size + f.size) * (rel === 'prey' ? 0.72 : 0.44);
+        if (d > touch) continue;
+
+        if (rel === 'prey') { eatFish(f, i); continue; }
+        if (rel === 'sting' || rel === 'threat') {
+            if (p.grace > 0) continue;
+            bitten(f, rel === 'sting');
+            if (state.over) return;
+        }
+        // 'even' — you simply bump off each other
+        else {
+            const a = Math.atan2(f.y - p.y, f.x - p.x);
+            f.vx += Math.cos(a) * 180; f.vy += Math.sin(a) * 180;
+        }
+    }
+}
+
+function eatFish(f, i) {
+    const p = state.player;
+    state.fish.splice(i, 1);
+    state.eaten++;
+    p.chew = 0.18;
+
+    // you grow by a share of what you ate, so a big meal is a big step
+    const gain = (2.0 + f.size * 0.10) * growMult();
+    p.size = Math.min(SZ_CAP, p.size + gain);
+
+    state.xp += f.kind.xp;
+    state.pearlBank += f.kind.pearl * DIFFS[diff].pay * pearlMult() * 0.085;
+    const whole = Math.floor(state.pearlBank);
+    if (whole > 0) { state.pearlBank -= whole; pearls += whole; state.pearlRun += whole; }
+
+    for (let k = 0; k < Math.min(4, 1 + Math.floor(f.size / 24)); k++) {
+        const a = Math.random() * Math.PI * 2, d = Math.random() * f.size;
+        state.pearls.push({ x:f.x + Math.cos(a)*d, y:f.y + Math.sin(a)*d, bob:Math.random()*6.28 });
+    }
+    for (let k = 0; k < 7; k++) {
+        const a = Math.random() * Math.PI * 2, s = 40 + Math.random() * 130;
+        state.bits.push({ x:f.x, y:f.y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
+                          life:0.4, r:2 + Math.random()*3, hue:f.kind.hue });
+    }
+    pop(f.x, f.y - f.size * 0.6, '+' + gain.toFixed(1), '#2fd06a', 15);
+    beep(420 + Math.random() * 120, 0.05, 'triangle', 0.02);
+
+    while (state.xp >= state.nextXp) {
+        state.xp -= state.nextXp;
+        state.level++;
+        state.nextXp = Math.round(XP_BASE * Math.pow(XP_STEP, state.level - 1));
+        state.pendingPicks++;
+    }
+    if (state.pendingPicks > 0 && !state.picking) { state.pendingPicks--; openPicks(); }
+}
+
+function bitten(f, sting) {
+    const p = state.player;
+    const loss = p.size * biteLoss() * (sting ? 0.6 : 1);
+    p.size = Math.max(0, p.size - loss);
+    p.grace = GRACE;
+    state.bitten++;
+    state.shake = 0.35; state.flash = 0.4;
+
+    // shoved clear, so you are not sitting inside the thing that just bit you
+    const a = Math.atan2(p.y - f.y, p.x - f.x);
+    p.vx = Math.cos(a) * 420; p.vy = Math.sin(a) * 420;
+    f.vx -= Math.cos(a) * 160; f.vy -= Math.sin(a) * 160;
+
+    pop(p.x, p.y - p.size, sting ? 'STUNG' : '−' + loss.toFixed(1), '#ff4a4a', 20);
+    beep(150, 0.2, 'sawtooth', 0.05);
+    say(sting ? 'Jellyfish sting — they get everyone, big or small'
+              : 'Bitten. Keep clear of the red ones until you are bigger.');
+
+    if (p.size <= SZ_MIN) {
+        if (p.slips > 0) {
+            p.slips--;
+            p.size = SZ_START;
+            p.grace = 3;
+            state.flash = 0.9;
+            say('Your lucky fin got you out. ' + p.slips + ' left.');
+            beep(880, 0.3, 'sine', 0.05);
+            return;
+        }
+        endRun(false);
+    }
+}
+
+function updateKit(dt) {
+    const p = state.player;
+
+    // the water jet: fires itself at whatever is nearest and shrinks it
+    const jl = lv('spit');
+    if (jl) {
+        state.timers.spit = (state.timers.spit || 0) - dt;
+        if (state.timers.spit <= 0) {
+            state.timers.spit = Math.max(0.35, 1.5 - jl * 0.2);
+            let near = null, nd = 460;
+            for (const f of state.fish) {
+                const d = Math.hypot(f.x - p.x, f.y - p.y);
+                if (d < nd) { nd = d; near = f; }
+            }
+            if (near) {
+                const a = Math.atan2(near.y - p.y, near.x - p.x);
+                state.jets.push({ x:p.x, y:p.y, vx:Math.cos(a)*520, vy:Math.sin(a)*520,
+                                  life:0.9, shrink:1.6 + jl * 1.1 });
+                beep(680, 0.06, 'sine', 0.02);
+            }
+        }
+    }
+    for (let i = state.jets.length - 1; i >= 0; i--) {
+        const j = state.jets[i];
+        j.life -= dt; j.x += j.vx * dt; j.y += j.vy * dt;
+        if (j.life <= 0) { state.jets.splice(i, 1); continue; }
+        for (const f of state.fish) {
+            if (Math.hypot(f.x - j.x, f.y - j.y) > f.size * 0.5) continue;
+            // it does not kill, it shrinks — which can turn a red fish green
+            f.size = Math.max(6, f.size - j.shrink);
+            f.flash = 0.15;
+            pop(f.x, f.y - f.size, '−' + j.shrink.toFixed(1), '#8fd6ff', 13);
+            state.jets.splice(i, 1);
+            break;
+        }
+    }
+
+    // the little school that swims with you
+    const sl = lv('school');
+    while (state.school.length < sl * 2) state.school.push({ x:p.x, y:p.y, a:Math.random()*6.28, cd:0 });
+    while (state.school.length > sl * 2) state.school.pop();
+    for (const s of state.school) {
+        s.a += dt * 1.4;
+        const tx = p.x + Math.cos(s.a) * (p.size + 34), ty = p.y + Math.sin(s.a) * (p.size + 34);
+        s.x += (tx - s.x) * Math.min(1, dt * 5);
+        s.y += (ty - s.y) * Math.min(1, dt * 5);
+        s.cd -= dt;
+        if (s.cd > 0) continue;
+        for (const f of state.fish) {
+            if (Math.hypot(f.x - s.x, f.y - s.y) > f.size * 0.6 + 10) continue;
+            f.size = Math.max(6, f.size - 0.5 - sl * 0.25);
+            f.flash = 0.1;
+            s.cd = 0.55;
+            break;
+        }
+    }
+}
+
+function updatePearls(dt) {
+    const p = state.player;
+    const R = pullR();
+    for (let i = state.pearls.length - 1; i >= 0; i--) {
+        const w = state.pearls[i];
+        w.bob += dt * 5;
+        const dx = p.x - w.x, dy = p.y - w.y, d = Math.hypot(dx, dy) || 1;
+        if (d < R) {
+            const k = Math.min(1, (1 - d / R) * 3);
+            w.x += (dx / d) * PULL_SPD * k * dt;
+            w.y += (dy / d) * PULL_SPD * k * dt;
+        }
+        if (d < p.size * 0.5 + PEARL_R) {
+            state.pearls.splice(i, 1);
+            state.pearlBank += DIFFS[diff].pay * pearlMult() * 0.17;
+            const whole = Math.floor(state.pearlBank);
+            if (whole > 0) { state.pearlBank -= whole; pearls += whole; state.pearlRun += whole; }
+        }
+    }
+}
+
+function updateBits(dt) {
+    for (let i = state.bits.length - 1; i >= 0; i--) {
+        const b = state.bits[i];
+        b.life -= dt;
+        if (b.life <= 0) { state.bits.splice(i, 1); continue; }
+        b.x += b.vx * dt; b.y += b.vy * dt; b.vx *= 0.92; b.vy *= 0.92;
+    }
+    for (let i = state.pops.length - 1; i >= 0; i--) {
+        const o = state.pops[i];
+        o.life -= dt;
+        if (o.life <= 0) { state.pops.splice(i, 1); continue; }
+        o.y -= 28 * dt;
+    }
+}
+
+/* ------------------------------------------------------------- picking -- */
+function rollPicks() {
+    const pool = [];
+    for (const k of Object.keys(KIT)) {
+        const l = lv(k);
+        if (l >= KIT[k].max) continue;
+        pool.push({ key:k, lv:l, weight: l === 0 ? 10 : 8 });
+    }
+    const picks = [];
+    for (let n = 0; n < 3 && pool.length; n++) {
+        let tot = 0;
+        for (const o of pool) tot += o.weight;
+        let r = Math.random() * tot, got = pool[0];
+        for (const o of pool) { r -= o.weight; if (r <= 0) { got = o; break; } }
+        picks.push(got);
+        pool.splice(pool.indexOf(got), 1);
+    }
+    return picks;
+}
+
+function openPicks() {
+    const picks = rollPicks();
+    if (!picks.length) return;
+    state.picking = true;
+    running = false;
+    document.getElementById('pickSub').textContent =
+        'Size ' + Math.round(state.player.size) + '. Level ' + state.level + '.';
+    const box = document.getElementById('pickCards');
+    box.innerHTML = '';
+    for (const pick of picks) {
+        const src = KIT[pick.key];
+        const card = document.createElement('div');
+        card.className = 'card' + (pick.lv === 0 ? ' new' : '');
+        card.innerHTML =
+            '<div class="g">' + src.g + '</div>' +
+            '<div class="n">' + src.name + '</div>' +
+            '<div class="lv">' + (pick.lv === 0 ? 'NEW' : 'LEVEL ' + (pick.lv + 1) + ' of ' + src.max) + '</div>' +
+            '<div class="d">' + src.desc + '</div>';
+        card.addEventListener('click', () => takePick(pick));
+        box.appendChild(card);
+    }
+    document.getElementById('pickOv').classList.remove('hidden');
+    beep(660, 0.12, 'sine', 0.045);
+}
+
+function takePick(pick) {
+    if (pick) state.kit[pick.key] = (state.kit[pick.key] || 0) + 1;
+    document.getElementById('pickOv').classList.add('hidden');
+    state.picking = false;
+    if (state.pendingPicks > 0) { state.pendingPicks--; return openPicks(); }
+    running = true;
+    last = performance.now();
+}
+
+/* -------------------------------------------------------------- render -- */
+const RING = { prey:'#2fd06a', even:'#ffc02f', threat:'#ff4a4a', sting:'#d98ae0' };
+
+function render() {
+    ctx.save();
+    if (state.shake > 0) {
+        const s = state.shake * 12;
+        ctx.translate((Math.random()-0.5)*s, (Math.random()-0.5)*s);
+    }
+    ctx.translate(-cam.x, -cam.y);
+
+    drawSea();
+    drawPearls();
+    for (const f of state.fish) drawFish(f);
+    drawJets();
+    drawSchool();
+    drawPlayer();
+    drawBits();
+
+    ctx.restore();
+
+    drawArrows();
+    if (state.flash > 0) {
+        ctx.fillStyle = 'rgba(255,70,70,' + (state.flash * 0.3).toFixed(3) + ')';
+        ctx.fillRect(0, 0, VW, VH);
+    }
+    drawHUD();
+}
+
+function drawSea() {
+    // a bright, plain sea. nothing here is allowed to hide anything.
+    const g = ctx.createLinearGradient(0, cam.y, 0, cam.y + VH);
+    g.addColorStop(0, '#5fc8ea');
+    g.addColorStop(1, '#1f7fb4');
+    ctx.fillStyle = g;
+    ctx.fillRect(cam.x - 10, cam.y - 10, VW + 20, VH + 20);
+
+    const T = 150;
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+    ctx.lineWidth = 2;
+    const x0 = Math.floor((cam.x - 10) / T) * T, y0 = Math.floor((cam.y - 10) / T) * T;
+    for (let x = x0; x < cam.x + VW + T; x += T) {
+        ctx.beginPath(); ctx.moveTo(x, cam.y - 10); ctx.lineTo(x, cam.y + VH + 10); ctx.stroke();
+    }
+    for (let y = y0; y < cam.y + VH + T; y += T) {
+        ctx.beginPath(); ctx.moveTo(cam.x - 10, y); ctx.lineTo(cam.x + VW + 10, y); ctx.stroke();
+    }
+
+    // the reef wall, so the edge of the world is obvious
+    ctx.strokeStyle = '#0a4a6e'; ctx.lineWidth = 14;
+    ctx.strokeRect(7, 7, AW - 14, AH - 14);
+    ctx.strokeStyle = '#f0b45e'; ctx.lineWidth = 6;
+    ctx.strokeRect(7, 7, AW - 14, AH - 14);
+}
+
+function drawPearls() {
+    for (const w of state.pearls) {
+        const lift = Math.sin(w.bob) * 2;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(w.x, w.y + lift, PEARL_R * 0.6, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#9fd8f0'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(w.x, w.y + lift, PEARL_R, 0, Math.PI * 2); ctx.stroke();
+    }
+}
+
+function fishShape(x, y, size, face, hue, flash) {
+    const r = size * 0.5;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(face);
+    if (Math.abs(face) > Math.PI / 2) ctx.scale(1, -1);   // never draw a fish upside down
+
+    ctx.fillStyle = flash ? '#ffffff' : hue;
+    ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.66, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.85, 0);
+    ctx.lineTo(-r * 1.5, -r * 0.55);
+    ctx.lineTo(-r * 1.5, r * 0.55);
+    ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = 'rgba(0,0,0,0.14)';
+    ctx.beginPath(); ctx.ellipse(0, r * 0.26, r * 0.8, r * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(r * 0.42, -r * 0.16, r * 0.17, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#12222c';
+    ctx.beginPath(); ctx.arc(r * 0.47, -r * 0.16, r * 0.09, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+}
+
+function drawFish(f) {
+    const rel = standing(f);
+    const r = f.size * 0.5;
+
+    // the ring is the whole point: it says what this fish is to you, right now
+    ctx.strokeStyle = RING[rel];
+    ctx.lineWidth = rel === 'threat' ? 5 : 3.5;
+    ctx.beginPath(); ctx.arc(f.x, f.y, r * 1.28, 0, Math.PI * 2); ctx.stroke();
+    if (rel === 'threat') {
+        ctx.strokeStyle = 'rgba(255,74,74,0.35)';
+        ctx.lineWidth = 2;
+        const pulse = r * 1.28 + 5 + Math.sin(state.t * 6 + f.wob) * 4;
+        ctx.beginPath(); ctx.arc(f.x, f.y, pulse, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    if (f.kind.stings) {
+        ctx.fillStyle = f.flash > 0 ? '#ffffff' : f.kind.hue;
+        ctx.beginPath(); ctx.arc(f.x, f.y - r * 0.2, r * 0.8, Math.PI, 0); ctx.fill();
+        ctx.strokeStyle = f.kind.hue; ctx.lineWidth = 3; ctx.lineCap = 'round';
+        for (let i = -2; i <= 2; i++) {
+            ctx.beginPath();
+            ctx.moveTo(f.x + i * r * 0.3, f.y - r * 0.15);
+            ctx.quadraticCurveTo(f.x + i * r * 0.3 + Math.sin(state.t * 3 + i) * 8,
+                                 f.y + r * 0.6, f.x + i * r * 0.3, f.y + r * 1.2);
+            ctx.stroke();
+        }
+        ctx.lineCap = 'butt';
+    } else {
+        fishShape(f.x, f.y, f.size, f.face, f.kind.hue, f.flash > 0);
+    }
+
+    // its size, in plain numbers, because guessing is not a mechanic
+    ctx.fillStyle = RING[rel];
+    ctx.font = 'bold 12px Segoe UI';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.strokeText(Math.round(f.size), f.x, f.y - r * 1.28 - 10);
+    ctx.fillText(Math.round(f.size), f.x, f.y - r * 1.28 - 10);
+}
+
+function drawJets() {
+    for (const j of state.jets) {
+        ctx.fillStyle = 'rgba(180,235,255,0.9)';
+        ctx.beginPath(); ctx.arc(j.x, j.y, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(j.x, j.y, 11, 0, Math.PI * 2); ctx.stroke();
+    }
+}
+
+function drawSchool() {
+    for (const s of state.school) fishShape(s.x, s.y, 14, s.a + Math.PI / 2, '#ffe07a', false);
+}
+
+function drawPlayer() {
+    const p = state.player;
+    const blink = p.grace > 0 && Math.floor(p.grace * 10) % 2 === 0;
+    ctx.save();
+    if (blink) ctx.globalAlpha = 0.55;
+
+    if (p.dash > 0) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 4;
+        for (let i = 1; i <= 3; i++) {
+            ctx.globalAlpha = (blink ? 0.55 : 1) * (0.35 - i * 0.09);
+            ctx.beginPath();
+            ctx.arc(p.x - Math.cos(p.face) * i * 16, p.y - Math.sin(p.face) * i * 16, p.size * 0.5, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = blink ? 0.55 : 1;
+    }
+
+    // a white ring on you always, so you never lose yourself in a crowd
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 0.5 * 1.3, 0, Math.PI * 2); ctx.stroke();
+
+    const squash = p.chew > 0 ? 1.12 : 1;
+    fishShape(p.x, p.y, p.size * squash, p.face, '#ff9a3c', false);
+    ctx.restore();
+}
+
+function drawBits() {
+    for (const b of state.bits) {
+        ctx.globalAlpha = Math.min(1, b.life * 3);
+        ctx.fillStyle = b.hue;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const o of state.pops) {
+        ctx.globalAlpha = Math.min(1, o.life * 1.6);
+        ctx.font = 'bold ' + o.size + 'px Segoe UI';
+        ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.strokeText(o.text, o.x, o.y);
+        ctx.fillStyle = o.hue;
+        ctx.fillText(o.text, o.x, o.y);
+        ctx.globalAlpha = 1;
+    }
+}
+
+// anything dangerous that is off screen gets an arrow, so nothing arrives unseen
+function drawArrows() {
+    const p = state.player;
+    const sx = p.x - cam.x, sy = p.y - cam.y;
+    for (const f of state.fish) {
+        if (standing(f) !== 'threat') continue;
+        const fx = f.x - cam.x, fy = f.y - cam.y;
+        const pad = 40;
+        if (fx > -pad && fx < VW + pad && fy > -pad && fy < VH + pad) continue;
+        if (Math.hypot(f.x - p.x, f.y - p.y) > 1400) continue;
+        const a = Math.atan2(fy - sy, fx - sx);
+        const rx = Math.min(VW - 34, Math.max(34, sx + Math.cos(a) * 10000));
+        const ry = Math.min(VH - 34, Math.max(34, sy + Math.sin(a) * 10000));
+        const ex = Math.max(34, Math.min(VW - 34, sx + Math.cos(a) * Math.min(VW, VH) * 0.46));
+        const ey = Math.max(34, Math.min(VH - 34, sy + Math.sin(a) * Math.min(VW, VH) * 0.46));
+        ctx.save();
+        ctx.translate(ex, ey); ctx.rotate(a);
+        ctx.fillStyle = 'rgba(255,74,74,0.9)';
+        ctx.beginPath();
+        ctx.moveTo(13, 0); ctx.lineTo(-9, -9); ctx.lineTo(-9, 9);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = '#ff4a4a'; ctx.font = 'bold 11px Segoe UI';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.strokeText(Math.round(f.size), ex, ey - 17);
+        ctx.fillText(Math.round(f.size), ex, ey - 17);
+    }
+}
+
+function drawHUD() {
+    const p = state.player;
+
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fillRect(0, 0, VW, 62);
+    ctx.strokeStyle = 'rgba(10,74,110,0.35)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, 62); ctx.lineTo(VW, 62); ctx.stroke();
+
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#5e7a88'; ctx.font = 'bold 11px Segoe UI';
+    ctx.fillText('YOUR SIZE', 14, 16);
+    ctx.fillStyle = '#0f86c4'; ctx.font = 'bold 30px Segoe UI';
+    ctx.fillText(Math.round(p.size), 14, 40);
+
+    // exactly what you can and cannot swallow, in numbers
+    ctx.font = 'bold 12px Segoe UI';
+    ctx.fillStyle = '#1a9c4a';
+    ctx.fillText('EAT anything under ' + Math.floor(p.size / eatEdge()), 96, 16);
+    ctx.fillStyle = '#c43a3a';
+    ctx.fillText('AVOID anything over ' + Math.ceil(p.size * EAT_EDGE), 96, 34);
+    ctx.fillStyle = '#5e7a88';
+    ctx.fillText(state.eaten + ' eaten  ·  🐚 ' + state.pearlRun, 96, 50);
+
+    // how long is left
+    const bw = Math.min(300, VW * 0.3), bx = VW - bw - 14, by = 14;
+    ctx.fillStyle = 'rgba(10,74,110,0.12)';
+    ctx.fillRect(bx, by, bw, 10);
+    ctx.fillStyle = '#0f86c4';
+    ctx.fillRect(bx, by, bw * Math.min(1, state.t / SWIM), 10);
+    const left = Math.max(0, SWIM - state.t);
+    ctx.textAlign = 'right'; ctx.fillStyle = '#5e7a88'; ctx.font = 'bold 11px Segoe UI';
+    ctx.fillText('BIGGEST ON THE REEF IN ' + Math.floor(left / 60) + ':' +
+                 String(Math.floor(left % 60)).padStart(2, '0'), VW - 14, by + 22);
+
+    // xp
+    ctx.fillStyle = 'rgba(10,74,110,0.12)';
+    ctx.fillRect(bx, by + 30, bw, 6);
+    ctx.fillStyle = '#2fd06a';
+    ctx.fillRect(bx, by + 30, bw * Math.min(1, state.xp / state.nextXp), 6);
+    ctx.fillStyle = '#5e7a88';
+    ctx.fillText('LEVEL ' + state.level, VW - 14, by + 46);
+
+    // what you are carrying
+    let kx = 14;
+    ctx.textAlign = 'left'; ctx.font = '17px serif';
+    for (const k of Object.keys(state.kit)) {
+        ctx.fillText(KIT[k].g, kx, VH - 26);
+        ctx.font = 'bold 10px Segoe UI'; ctx.fillStyle = '#0f86c4';
+        ctx.fillText(String(state.kit[k]), kx + 18, VH - 20);
+        ctx.font = '17px serif'; ctx.fillStyle = '#0d2b3a';
+        kx += 34;
+    }
+
+    ctx.textAlign = 'right'; ctx.font = 'bold 12px Segoe UI';
+    ctx.fillStyle = p.dashCd <= 0 ? '#0f86c4' : 'rgba(255,255,255,0.75)';
+    ctx.fillText(p.dashCd <= 0 ? 'SHIFT — DASH' : 'dash in ' + p.dashCd.toFixed(1) + 's', VW - 14, VH - 24);
+
+    if (state.msgT > 0) {
+        ctx.globalAlpha = Math.min(1, state.msgT * 1.4);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = 'bold 15px Segoe UI';
+        const w = ctx.measureText(state.msg).width + 30;
+        ctx.fillStyle = 'rgba(255,255,255,0.94)';
+        ctx.beginPath(); ctx.roundRect(VW/2 - w/2, VH - 74, w, 32, 9); ctx.fill();
+        ctx.fillStyle = '#0d2b3a';
+        ctx.fillText(state.msg, VW/2, VH - 58);
+        ctx.globalAlpha = 1;
+    }
+}
+
+/* ---------------------------------------------------------- the finish -- */
+function endRun(won) {
+    if (state.over) return;
+    state.over = true; state.won = won;
+    running = false;
+
+    const sz = Math.round(state.player.size);
+    if (sz > best.size) best.size = sz;
+    if (state.t > best.time) best.time = state.t;
+    if (won) best.dives++;
+    storeSave();
+
+    const mins = Math.floor(state.t / 60), secs = Math.floor(state.t % 60);
+    document.getElementById('overTitle').textContent = won ? '🏆 BIGGEST ON THE REEF' : 'EATEN';
+    document.getElementById('overTitle').style.color = won ? '#1a9c4a' : '#c43a3a';
+    document.getElementById('overSub').textContent = won
+        ? 'Five minutes and nothing left that could touch you.'
+        : 'Something bigger got you at ' + mins + ':' + String(secs).padStart(2,'0') + '.';
+
+    document.getElementById('overKit').innerHTML =
+        Object.keys(state.kit).map(k => '<span>' + KIT[k].g + '<i>' + state.kit[k] + '</i></span>').join('')
+        || '<span style="font-size:13px;color:#5e7a88">no upgrades taken</span>';
+
+    document.getElementById('overTally').innerHTML =
+        line('Size reached', sz) +
+        line('Lasted', mins + ':' + String(secs).padStart(2,'0') + ' of 5:00') +
+        line('Fish eaten', state.eaten) +
+        line('Times bitten', state.bitten) +
+        line('Pearls found', '🐚 ' + state.pearlRun);
+    document.getElementById('overBest').textContent =
+        'Best size ' + best.size + ', best time ' +
+        Math.floor(best.time / 60) + ':' + String(Math.floor(best.time % 60)).padStart(2,'0') +
+        ', ' + best.dives + ' dive' + (best.dives === 1 ? '' : 's') + ' finished.' +
+        '  You have 🐚 ' + pearls.toLocaleString() + '.';
+    document.getElementById('overOv').classList.remove('hidden');
+    beep(won ? 660 : 160, 0.5, won ? 'sine' : 'sawtooth', 0.06);
+    if (won) setTimeout(() => beep(990, 0.5, 'sine', 0.06), 200);
+}
+
+function line(k, v) { return '<div class="line"><span>' + k + '</span><b>' + v + '</b></div>'; }
+
+/* ---------------------------------------------------------------- loop -- */
+function loop(now) {
+    requestAnimationFrame(loop);
+    if (!running || paused || !state) { last = now; return; }
+    const dt = Math.min((now - last) / 1000, 0.033);
+    last = now;
+    update(dt);
+    if (state) render();
+}
+
+/* ---------------------------------------------------------------- menu -- */
+function bestText() {
+    const bought = SHOP.reduce((a, it) => a + (owned[it.key] || 0), 0);
+    return 'Best size ' + best.size + ', ' + best.dives + ' dive' + (best.dives === 1 ? '' : 's') +
+           ' finished.  🐚 ' + pearls.toLocaleString() + ' pearls' +
+           (bought ? ', ' + bought + ' bought.' : '.');
+}
+
+function paintDiffs() {
+    const row = document.getElementById('diffRow');
+    row.innerHTML = '';
+    for (const k of Object.keys(DIFFS)) {
+        const b = document.createElement('button');
+        b.className = 'btn small' + (k === diff ? ' sel' : '');
+        b.textContent = DIFFS[k].name;
+        b.addEventListener('click', () => { diff = k; storeSave(); paintDiffs(); });
+        row.appendChild(b);
+    }
+}
+
+let shopFrom = null;
+function openShop(from) {
+    buys = []; shopFrom = from || null;
+    hideAll(); buildShop();
+    document.getElementById('shopOv').classList.remove('hidden');
+}
+function leaveShop() {
+    const back = shopFrom || 'titleOv';
+    shopFrom = null;
+    hideAll();
+    document.getElementById('titleBest').textContent = bestText();
+    document.getElementById(back).classList.remove('hidden');
+}
+
+function buildShop() {
+    document.getElementById('shopPurse').innerHTML = '🐚 <b>' + pearls.toLocaleString() + '</b> pearls';
+    const list = document.getElementById('shopList');
+    list.innerHTML = '';
+    for (const it of SHOP) {
+        const l = owned[it.key] || 0;
+        const maxed = l >= it.max;
+        const price = maxed ? 0 : it.cost[l];
+        const row = document.createElement('div');
+        row.className = 'buy' + (maxed ? ' maxed' : '');
+        row.innerHTML =
+            '<div class="g">' + it.g + '</div>' +
+            '<div class="t"><div class="n">' + it.name + '</div>' +
+            '<div class="d">' + it.desc + '</div>' +
+            '<div class="l">' + (maxed ? 'ALL YOURS' : it.max > 1 ? 'bought ' + l + ' of ' + it.max : 'not yet') + '</div></div>';
+        const b = document.createElement('button');
+        if (maxed) { b.textContent = 'DONE'; b.disabled = true; }
+        else {
+            b.textContent = '🐚 ' + price.toLocaleString();
+            b.disabled = pearls < price;
+            b.addEventListener('click', () => {
+                if (pearls < price) return;
+                pearls -= price;
+                owned[it.key] = l + 1;
+                buys.push({ key:it.key, price });
+                storeSave(); buildShop();
+                beep(760, 0.12, 'sine', 0.05);
+            });
+        }
+        row.appendChild(b);
+        list.appendChild(row);
+    }
+    const undo = document.getElementById('shopUndo');
+    const lastBuy = buys[buys.length - 1];
+    undo.disabled = !lastBuy;
+    undo.textContent = lastBuy ? '↩ UNDO ' + SHOP.find(x => x.key === lastBuy.key).name.toUpperCase()
+                               : '↩ NOTHING TO UNDO';
+}
+
+function undoBuy() {
+    const lastBuy = buys.pop();
+    if (!lastBuy) return;
+    owned[lastBuy.key]--;
+    pearls += lastBuy.price;
+    storeSave(); buildShop();
+    beep(320, 0.12, 'triangle', 0.045);
+}
+
+function hideAll() {
+    for (const id of ['titleOv', 'pickOv', 'pauseOv', 'shopOv', 'overOv'])
+        document.getElementById(id).classList.add('hidden');
+}
+
+function toMenu() {
+    running = false; paused = false;
+    hideAll();
+    document.getElementById('titleBest').textContent = bestText();
+    document.getElementById('titleOv').classList.remove('hidden');
+}
+
+function paintKit(el) {
+    el.innerHTML = Object.keys(state.kit)
+        .map(k => '<span>' + KIT[k].g + '<i>' + state.kit[k] + '</i></span>').join('')
+        || '<span style="font-size:13px;color:#5e7a88">no upgrades yet</span>';
+}
+
+document.getElementById('startBtn').addEventListener('click', newRun);
+document.getElementById('againBtn').addEventListener('click', newRun);
+document.getElementById('menuBtn').addEventListener('click', toMenu);
+document.getElementById('quitBtn').addEventListener('click', () => { paused = false; endRun(false); });
+document.getElementById('resumeBtn').addEventListener('click', () => {
+    paused = false;
+    document.getElementById('pauseOv').classList.add('hidden');
+    last = performance.now();
+});
+document.getElementById('shopBtn').addEventListener('click', () => openShop('titleOv'));
+document.getElementById('overShopBtn').addEventListener('click', () => openShop('overOv'));
+document.getElementById('shopBack').addEventListener('click', leaveShop);
+document.getElementById('shopUndo').addEventListener('click', undoBuy);
+
+/* --------------------------------------------------------------- input -- */
+addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    keys[k] = true;
+    if ([' ', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown'].indexOf(k) >= 0) e.preventDefault();
+    if (k === ' ') keys['shift'] = true;             // space dashes too
+    if (!state || state.over) return;
+    if (k === 'p' || k === 'escape') {
+        if (state.picking) return;
+        paused = !paused;
+        if (paused) paintKit(document.getElementById('pauseKit'));
+        document.getElementById('pauseOv').classList.toggle('hidden', !paused);
+        if (!paused) last = performance.now();
+    }
+});
+addEventListener('keyup', e => {
+    const k = e.key.toLowerCase();
+    keys[k] = false;
+    if (k === ' ') keys['shift'] = false;
+});
+addEventListener('blur', () => { keys = {}; pointer.on = false; });
+
+cv.addEventListener('pointerdown', e => { pointer.on = true; pointer.x = e.clientX; pointer.y = e.clientY; });
+cv.addEventListener('pointermove', e => { if (pointer.on) { pointer.x = e.clientX; pointer.y = e.clientY; } });
+addEventListener('pointerup', () => { pointer.on = false; });
+addEventListener('pointercancel', () => { pointer.on = false; });
+window.addEventListener('resize', layout);
+addEventListener('pagehide', storeSave);
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') storeSave(); });
+
+/* --------------------------------------------------------------- start -- */
+storeLoad();
+layout();
+paintDiffs();
+document.getElementById('titleBest').textContent = bestText();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
