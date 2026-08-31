@@ -123,7 +123,7 @@
       <b>charge</b> it and it snaps on nothing and the bait is yours.<br><br>
       Not every brick is the same brick. <b>Cracked</b> ones go for half the belly, <b>steel</b>
       takes two goes, and <b>jelly</b> springs you back and wants three — but costs you nothing.<br><br>
-      Every fourth floor there is a <b>🥋 sumo ring</b> on the landing. All that weight finally
+      Every other floor there is a <b>🥋 sumo ring</b> on the landing. All that weight finally
       counts for something: <b>your belly is your fighting weight</b>, and every shove spends a
       little of it. Barge the others out and you walk off with crumbs and a floor laid out with
       the good stuff.<br><br>
@@ -346,7 +346,7 @@ const SHOP_EVERY = 3;
 // weight, and every shove you throw spends a little of it. Barge the others out
 // of the ring, and the last one standing walks off with crumbs and a floor
 // stocked with the good stuff.
-const SUMO_EVERY = 4;
+const SUMO_EVERY = 2;
 const SUMO_FOES = 3;
 const SUMO_R0 = 0.40;                  // ring radius, as a share of the short side
 const SUMO_SHRINK_AT = 12;             // seconds before the ring starts closing in
@@ -1718,9 +1718,16 @@ function levelClear() {
         line('Score', state.score.toLocaleString());
     document.getElementById('nextBtn').textContent =
         state.level % SHOP_EVERY === 0 ? '🍰 THE LANDING CAFE' : 'NEXT FLOOR';
-    // the ring only turns up every so often, and only if you are worth weighing
-    const ringUp = state.level % SUMO_EVERY === 0 && state.player.belly >= SUMO_W_MIN;
-    document.getElementById('sumoBtn').style.display = ringUp ? '' : 'none';
+    // The ring is offered every other floor. It used to also need 40+ belly, which
+    // hid it almost every time — you arrive at the door having just spent your
+    // belly on the bricks. A light eater simply fights at the minimum weight.
+    const sb = document.getElementById('sumoBtn');
+    const ringUp = state.level % SUMO_EVERY === 0;
+    sb.style.display = '';
+    sb.disabled = !ringUp;
+    sb.style.opacity = ringUp ? '' : '0.45';
+    sb.textContent = ringUp ? '🥋 SUMO RING'
+        : '🥋 RING AFTER FLOOR ' + (state.level + (SUMO_EVERY - state.level % SUMO_EVERY));
     document.getElementById('clearOv').classList.remove('hidden');
     beep(660, 0.14, 'sine', 0.06);
     setTimeout(() => beep(880, 0.22, 'sine', 0.06), 130);
@@ -2402,12 +2409,15 @@ document.getElementById('titleShopBtn').addEventListener('click', () => openCafe
 document.getElementById('pauseShopBtn').addEventListener('click', () => openCafe('pauseOv'));
 document.getElementById('overShopBtn').addEventListener('click', () => openCafe('overOv'));
 document.getElementById('nextBtn').addEventListener('click', afterClear);
-document.getElementById('sumoBtn').addEventListener('click', startSumo);
+document.getElementById('sumoBtn').addEventListener('click', () => {
+    if (state.level % SUMO_EVERY === 0) startSumo();
+});
 document.getElementById('sumoGo').addEventListener('click', () => {
     hideAll();
     // back to the floor-clear screen you came from, to carry on as normal
     document.getElementById('clearOv').classList.remove('hidden');
-    document.getElementById('sumoBtn').style.display = 'none';
+    document.getElementById('sumoBtn').disabled = true;
+    document.getElementById('sumoBtn').style.opacity = '0.45';
 });
 document.getElementById('shopGo').addEventListener('click', leaveCafe);
 document.getElementById('shopUndo').addEventListener('click', undoBuy);
