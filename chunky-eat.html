@@ -207,6 +207,10 @@ const ctx = cv.getContext('2d');
 let VW = 0, VH = 0;
 
 /* --------------------------------------------------------------- world -- */
+// Canvas will not reach for the colour emoji font on its own — asked for plain
+// "serif" it hands back the flat black-and-white glyph on most machines. Naming
+// the platform emoji fonts first is what gets the proper coloured ones.
+const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",serif';
 const HUD_H = 74;                       // the strip along the top the board must not use
 const WALL_T = 60;                      // how thick the bricked-up wall is
 // The doorway is one brick deep and always the same size — a harder floor packs
@@ -245,19 +249,30 @@ const PU_EVERY = 13, PU_R = 16, PU_LIFE = 11;
 // gets you; charge it and it snaps on nothing and the bait is yours.
 const TRAP_R = 22, TRAP_BELLY = 14;
 
-// what is lying about on the floor. the value is what it does to your belly.
+// What is lying about on the floor. The junkier a thing is, the more it puts in
+// your belly — a stick of celery barely registers, a slice of cake nearly fills
+// you. But greens pay far better in crumbs and points, so a floor picked clean
+// of salad buys you more at the cafe than one picked clean of doughnuts.
+// junk 1 = you could run a marathon on it, 5 = you can hear your arteries.
 const FOODS = [
-    { g:'🍎', v:7 },  { g:'🍇', v:7 },  { g:'🥨', v:8 },  { g:'🧀', v:9 },
-    { g:'🍩', v:10 }, { g:'🍗', v:11 }, { g:'🌭', v:11 }, { g:'🍕', v:12 },
-    { g:'🍰', v:12 }, { g:'🍔', v:13 },
+    { g:'🥦', v:3,  junk:1 }, { g:'🥕', v:3,  junk:1 }, { g:'🥗', v:4,  junk:1 },
+    { g:'🍎', v:5,  junk:2 }, { g:'🍇', v:5,  junk:2 }, { g:'🍌', v:6,  junk:2 },
+    { g:'🧀', v:9,  junk:3 }, { g:'🥨', v:9,  junk:3 }, { g:'🌮', v:11, junk:3 },
+    { g:'🍗', v:12, junk:4 }, { g:'🌭', v:13, junk:4 }, { g:'🍟', v:14, junk:4 },
+    { g:'🍕', v:15, junk:5 }, { g:'🍔', v:16, junk:5 }, { g:'🍩', v:16, junk:5 },
+    { g:'🍰', v:17, junk:5 },
 ];
-const GOLDEN = { g:'🍯', v:26, gold:true };
-const CHILLI = { g:'🌶️', v:-18, hot:true };
+// greens are worth the picking up: crumbs and points both climb as junk falls
+const JUNK_PAY  = [0, 7.2, 4.1, 2.1, 1.5, 1.2];   // score, per belly point
+const JUNK_CRUMB= [0, 4,   3,   2,   1,   1  ];   // crumbs an item is worth
+const JUNK_TINT = [0, '#7ee06a', '#a8e06a', '#ffd23a', '#ffa63a', '#ff6a3c'];
+const GOLDEN = { g:'🍯', v:26, junk:4, gold:true };
+const CHILLI = { g:'🌶️', v:-18, junk:0, hot:true };
 // worth more than anything on the floor, and going off while you look at it
-const ICE = { g:'🍦', v:26, melt:true };
+const ICE = { g:'🍦', v:26, junk:5, melt:true };
 const MELT_RATE = 2.6, MELT_FLOOR = 5;   // belly points a second, and when it is a puddle
 // no telling what is under the lid until you have eaten it
-const DISH = { g:'🍲', v:0, dish:true };
+const DISH = { g:'🍲', v:0, junk:3, dish:true };
 const DISH_ODDS = [
     { v: 30, text:'A FEAST!',   colour:'#ffd23a', weight:3 },
     { v: 14, text:'not bad',    colour:'#ffffff', weight:4 },
@@ -599,12 +614,14 @@ function eat(f, i) {
 
     p.belly = Math.min(bellyMax(), p.belly + v);
     p.chew = 0.22;
-    const worth = Math.round(v * (gold ? 6 : 2) * DIFFS[diff].pay);
+    const j = k.junk || 3;
+    const worth = Math.round(v * (gold ? 6 : JUNK_PAY[j]) * DIFFS[diff].pay);
     state.score += worth;
-    state.coins += 1;
+    state.coins += gold ? 6 : JUNK_CRUMB[j];
     state.eaten++; state.levelEaten++;
     state.tally[k.g] = (state.tally[k.g] || 0) + 1;
-    popup(f.x, f.y - 18, '+' + Math.round(v), gold ? '#ffd23a' : '#ffffff', gold ? 22 : 16);
+    popup(f.x, f.y - 18, '+' + Math.round(v), gold ? '#ffd23a' : JUNK_TINT[j] || '#ffffff', gold ? 22 : 16);
+    if (!gold && j <= 2) popup(f.x, f.y - 36, '🪙' + JUNK_CRUMB[j], '#9fe08a', 13);
     crumbs(f.x, f.y, gold ? 16 : 7, gold ? '#ffd23a' : '#d8a25e');
     chompSound(v);
     if (k.gold) { beep(880, 0.16, 'sine', 0.05); say('A whole pot of honey!'); }
@@ -896,7 +913,7 @@ function drawTraps() {
         }
         ctx.stroke(); ctx.lineCap = 'butt';
         if (!shut) {
-            ctx.font = '17px serif';
+            ctx.font = '18px ' + EMOJI;
             ctx.fillText(t.bait.g, t.x, t.y + 3 + Math.sin(t.wob) * 1.5);
         }
     }
@@ -1049,21 +1066,21 @@ function render() {
 
 function drawFloor() {
     const b = state.board, f = floorRect();
-    ctx.fillStyle = '#f6e6c9';
+    ctx.fillStyle = '#e8d3ab';
     ctx.fillRect(f.x, f.y, f.w, f.h);
-    // kitchen tiles
+    // kitchen tiles, a good deal darker than they were so everything on top reads
     const T = 54;
-    ctx.fillStyle = '#efdcb8';
+    ctx.fillStyle = '#d9bf90';
     for (let y = 0; y < f.h; y += T)
         for (let x = 0; x < f.w; x += T)
             if (((x / T | 0) + (y / T | 0)) % 2 === 0)
                 ctx.fillRect(f.x + x, f.y + y, Math.min(T, f.w - x), Math.min(T, f.h - y));
-    ctx.strokeStyle = 'rgba(150,115,70,0.16)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(110,80,45,0.3)'; ctx.lineWidth = 1;
     for (let x = T; x < f.w; x += T) { ctx.beginPath(); ctx.moveTo(f.x + x, f.y); ctx.lineTo(f.x + x, f.y + f.h); ctx.stroke(); }
     for (let y = T; y < f.h; y += T) { ctx.beginPath(); ctx.moveTo(f.x, f.y + y); ctx.lineTo(f.x + f.w, f.y + y); ctx.stroke(); }
 
-    ctx.strokeStyle = '#7a5228'; ctx.lineWidth = 5;
-    ctx.strokeRect(b.x + 2.5, b.y + 2.5, b.w - 5, b.h - 5);
+    ctx.strokeStyle = '#5c3a17'; ctx.lineWidth = 6;
+    ctx.strokeRect(b.x + 3, b.y + 3, b.w - 6, b.h - 6);
 }
 
 function drawCrates() {
@@ -1087,9 +1104,13 @@ function drawFood() {
         const lift = Math.sin(f.bob) * 2;
         const melt = f.kind.melt ? 0.55 + 0.45 * (f.v / f.kind.v) : 1;
         const pop = (f.pop > 0 ? 1 + f.pop * 1.2 : 1) * melt;
-        ctx.fillStyle = 'rgba(60,35,15,0.18)';
-        ctx.beginPath(); ctx.ellipse(f.x, f.y + 11, 11, 4, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.font = Math.round(27 * pop) + 'px serif';
+        ctx.fillStyle = 'rgba(50,28,10,0.3)';
+        ctx.beginPath(); ctx.ellipse(f.x, f.y + 12, 12, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+        // a pale plate under every item, so nothing is lost against the tiles
+        ctx.fillStyle = 'rgba(255,252,244,0.72)';
+        ctx.beginPath(); ctx.arc(f.x, f.y + lift, 16 * pop, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(92,58,23,0.35)'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.font = Math.round(29 * pop) + 'px ' + EMOJI;
         ctx.fillText(f.kind.g, f.x, f.y + lift);
     }
 }
@@ -1103,7 +1124,7 @@ function drawPowers() {
         ctx.fillStyle = '#fff6d8';
         ctx.strokeStyle = '#c4562f'; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(u.x, u.y + lift, PU_R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.font = '19px serif';
+        ctx.font = '20px ' + EMOJI;
         ctx.fillText(u.p.g, u.x, u.y + lift + 1);
         ctx.globalAlpha = 1;
     }
@@ -1241,7 +1262,7 @@ function drawPlayer() {
         ctx.beginPath(); ctx.arc(p.x, p.y, 190, 0, Math.PI * 2); ctx.stroke();
     }
     if (p.strong > 0 || p.fizz > 0) {
-        ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = '17px ' + EMOJI; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(p.fizz > 0 ? '🥤' : '💪', p.x + p.r + 6, p.y - p.r - 4);
     }
     ctx.restore();
@@ -1278,10 +1299,10 @@ function drawRat(r) {
 
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     if (r.stun > 0) {
-        ctx.fillStyle = '#ffd23a'; ctx.font = '13px serif';
+        ctx.fillStyle = '#ffd23a'; ctx.font = '14px ' + EMOJI;
         ctx.fillText('💫', r.x, r.y - r.r - 9);
     } else if (r.munch > 0) {
-        ctx.font = '11px serif';
+        ctx.font = '12px ' + EMOJI;
         ctx.fillText('😋', r.x + r.r * 0.9, r.y - r.r - 6);
     }
     ctx.restore();
@@ -1306,7 +1327,7 @@ function drawBits() {
     for (const o of state.pops) {
         ctx.globalAlpha = Math.min(1, o.life * 1.6);
         ctx.font = 'bold ' + o.size + 'px Segoe UI';
-        ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(40,24,10,0.65)';
+        ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(28,16,6,0.85)';
         ctx.strokeText(o.text, o.x, o.y);
         ctx.fillStyle = o.colour;
         ctx.fillText(o.text, o.x, o.y);
@@ -1359,7 +1380,7 @@ function drawHUD() {
 
     // hearts, floor, score
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.font = '18px serif';
+    ctx.font = '19px ' + EMOJI;
     let hx = VW - 14;
     for (let i = 0; i < heartsMax(); i++) {
         ctx.globalAlpha = i < p.hearts ? 1 : 0.22;
