@@ -136,8 +136,11 @@
       A red fish catching you is not the end — it just <b>takes a chunk of your size</b> and you get
       a moment to get clear. You only lose if it eats you down to nothing. There is no darkness,
       no hidden anything: if it can reach you, you can see it coming.<br><br>
-      Every time you grow you pick <b>one of three</b> upgrades. Last <b>five minutes</b> and you
-      are the biggest thing on the reef. Pearls you collect are yours for keeps — the reef market
+      Eat again quickly and it counts for more: <b>three in a row steps up a multiplier</b>, up to
+      ×8, and it makes everything you eat grow you faster and pay more pearls. Stop eating for a
+      few seconds — or take a bite — and the run is gone.<br><br>
+      Every so often you grow enough to pick <b>one of three</b> upgrades. Last <b>five minutes</b>
+      and you are the biggest thing on the reef. Pearls you collect are yours for keeps — the reef market
       sells things that last for good.
     </div>
     <div class="keys">
@@ -238,7 +241,14 @@ const P_SPD = 250;
 const DASH_T = 0.3, DASH_MULT = 2.5, DASH_CD = 2.4;
 
 const PEARL_R = 11, PULL = 120, PULL_SPD = 520;
-const XP_BASE = 4, XP_STEP = 1.28;
+// Eat again quickly and it counts for more. Three in a row steps the multiplier
+// up; stop eating and it slides back down. It is the reason to keep moving
+// instead of picking off one safe fish a minute.
+const COMBO_WINDOW = 3.4, COMBO_PER = 3, COMBO_MAX = 8;
+// A good dive eats well over a hundred fish. At the old 4/1.28 that was a card
+// screen roughly every couple of seconds, which stops the game dead every time.
+// This gives about a dozen levels across a full five minutes instead.
+const XP_BASE = 9, XP_STEP = 1.33;
 
 // Everything in the sea, smallest first. `size` is the whole of what a fish is:
 // it decides who eats who, how fast it is, and how big it is drawn.
@@ -390,6 +400,7 @@ function newRun() {
         fish:[], pearls:[], jets:[], bits:[], pops:[], school:[],
         xp:0, level:1, nextXp:XP_BASE,
         eaten:0, bitten:0, pearlRun:0, pearlBank:0,
+        combo:0, comboT:0, mult:1, bestMult:1, multPop:0,
         spawnT:0, shake:0, flash:0, msg:'', msgT:0,
         picking:false, pendingPicks:0,
     };
@@ -414,8 +425,13 @@ function pickShoal() {
     const p = state.player;
     const d = DIFFS[diff];
     if (Math.random() < 0.07) return JELLY;
-    // most of what appears is near your own size, either side of it
-    const bias = (Math.random() - 0.42) * 1.9 * d.big;
+    // Most of what appears is near your own size, either side of it — but if you
+    // have been knocked back below where you started, the reef fills up with
+    // small fry instead. Without this a couple of early bites left you too small
+    // to eat anything and the whole dive was spent hiding.
+    const struggling = p.size < SZ_START;
+    const lean = struggling ? 0.72 : 0.42;
+    const bias = (Math.random() - lean) * 1.9 * d.big;
     const want = p.size * (1 + bias);
     let best = SHOALS[0], bd = 1e9;
     for (const s of SHOALS) {
@@ -471,6 +487,15 @@ function update(dt) {
     if (p.grace > 0) p.grace -= dt;
     if (p.chew > 0) p.chew -= dt;
     if (p.dashCd > 0) p.dashCd -= dt;
+    if (state.multPop > 0) state.multPop -= dt;
+    // the run cools off if you stop eating
+    if (state.comboT > 0) {
+        state.comboT -= dt;
+        if (state.comboT <= 0) {
+            if (state.mult > 1) say('Multiplier gone. Keep eating to build it back.');
+            state.combo = 0; state.mult = 1;
+        }
+    }
     tickSave(dt);
 
     if (state.t >= SWIM) return endRun(true);
@@ -603,12 +628,25 @@ function eatFish(f, i) {
     state.eaten++;
     p.chew = 0.18;
 
-    // you grow by a share of what you ate, so a big meal is a big step
-    const gain = (2.0 + f.size * 0.10) * growMult();
+    // one more on the run, and every third one steps the multiplier up
+    state.combo++;
+    state.comboT = COMBO_WINDOW;
+    const was = state.mult;
+    state.mult = Math.min(COMBO_MAX, 1 + Math.floor(state.combo / COMBO_PER));
+    if (state.mult > was) {
+        state.bestMult = Math.max(state.bestMult, state.mult);
+        state.multPop = 0.7;
+        pop(p.x, p.y - p.size * 0.9, '×' + state.mult + '!', '#ffb02f', 26);
+        beep(560 + state.mult * 70, 0.1, 'square', 0.035);
+        if (state.mult === COMBO_MAX) say('×' + COMBO_MAX + ' — as high as it goes. Do not stop.');
+    }
+
+    // you grow by a share of what you ate, and the multiplier is on the growth too
+    const gain = (2.0 + f.size * 0.10) * growMult() * (1 + (state.mult - 1) * 0.28);
     p.size = Math.min(SZ_CAP, p.size + gain);
 
     state.xp += f.kind.xp;
-    state.pearlBank += f.kind.pearl * DIFFS[diff].pay * pearlMult() * 0.085;
+    state.pearlBank += f.kind.pearl * DIFFS[diff].pay * pearlMult() * 0.085 * state.mult;
     const whole = Math.floor(state.pearlBank);
     if (whole > 0) { state.pearlBank -= whole; pearls += whole; state.pearlRun += whole; }
 
@@ -639,6 +677,8 @@ function bitten(f, sting) {
     p.size = Math.max(0, p.size - loss);
     p.grace = GRACE;
     state.bitten++;
+    if (state.mult > 1) pop(p.x, p.y - p.size - 26, '×' + state.mult + ' LOST', '#ff4a4a', 17);
+    state.combo = 0; state.mult = 1; state.comboT = 0;
     state.shake = 0.35; state.flash = 0.4;
 
     // shoved clear, so you are not sitting inside the thing that just bit you
@@ -1055,6 +1095,36 @@ function drawHUD() {
     ctx.fillStyle = '#5e7a88';
     ctx.fillText(state.eaten + ' eaten  ·  🐚 ' + state.pearlRun, 96, 50);
 
+    // the multiplier, big enough to watch out of the corner of your eye
+    const mx = Math.min(VW - 330, 320);
+    if (state.mult > 1 || state.comboT > 0) {
+        const grow = state.multPop > 0 ? 1 + state.multPop * 0.5 : 1;
+        ctx.save();
+        ctx.translate(mx + 40, 30);
+        ctx.scale(grow, grow);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = 'bold 30px Segoe UI';
+        ctx.fillStyle = state.mult >= COMBO_MAX ? '#e05a1a' : '#ffb02f';
+        ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.strokeText('×' + state.mult, 0, 0);
+        ctx.fillText('×' + state.mult, 0, 0);
+        ctx.restore();
+        // how long the run has left on it
+        const w = 74;
+        ctx.fillStyle = 'rgba(10,74,110,0.12)';
+        ctx.fillRect(mx + 3, 48, w, 5);
+        ctx.fillStyle = state.mult >= COMBO_MAX ? '#e05a1a' : '#ffb02f';
+        ctx.fillRect(mx + 3, 48, w * Math.max(0, state.comboT / COMBO_WINDOW), 5);
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#5e7a88'; ctx.font = 'bold 10px Segoe UI';
+        ctx.fillText((COMBO_PER - state.combo % COMBO_PER) + ' more to step up', mx + 3, 62);
+    } else {
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#a8c0cc'; ctx.font = 'bold 12px Segoe UI';
+        ctx.fillText('eat three quickly to start a run', mx, 30);
+    }
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+
     // how long is left
     const bw = Math.min(300, VW * 0.3), bx = VW - bw - 14, by = 14;
     ctx.fillStyle = 'rgba(10,74,110,0.12)';
@@ -1129,6 +1199,7 @@ function endRun(won) {
         line('Size reached', sz) +
         line('Lasted', mins + ':' + String(secs).padStart(2,'0') + ' of 5:00') +
         line('Fish eaten', state.eaten) +
+        line('Best multiplier', '×' + state.bestMult) +
         line('Times bitten', state.bitten) +
         line('Pearls found', '🐚 ' + state.pearlRun);
     document.getElementById('overBest').textContent =
