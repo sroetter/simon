@@ -238,14 +238,33 @@ const ctx = cv.getContext('2d');
 let VW = 0, VH = 0;
 
 /* ---------------------------------------------------------------- reef -- */
-const AW = 3000, AH = 2200;
+// The reef used to be a fixed 3000×2200 box, which is what forced a size ceiling:
+// past a certain point you filled it. It now grows with you, and the camera pulls
+// back to match, so there is no size at which the world runs out. These are the
+// dimensions you start with.
+const BASE_AW = 3000, BASE_AH = 2200;
+let AW = BASE_AW, AH = BASE_AH;
 const SWIM = 300;                      // five minutes and you have made it
 
 // The old ceiling was 150, which you hit with the reef still full of things
 // bigger than you. It now runs to 300: past a whale shark, past a megalodon,
 // far enough that the last stretch is you hunting the things that opened the
 // dive hunting you.
-const SZ_START = 26, SZ_MIN = 12, SZ_CAP = 300;
+// There is no ceiling any more. You keep growing, the reef grows with you, and
+// there is always something bigger in it — see era() below.
+const SZ_START = 26, SZ_MIN = 12;
+// How far past the natural reef you have grown. Everything scales off this: how
+// big the sea is, how big the things in it are, and how far the camera pulls
+// back. At 1 this is the reef exactly as it always was.
+const ERA_FROM = 110;
+function era() { return Math.max(1, (state && state.player ? state.player.size : SZ_START) / ERA_FROM); }
+// You stay about this many pixels long on screen no matter how big you get, so
+// growing reads as the world shrinking around you rather than as you overflowing it.
+const ON_SCREEN = 92;
+function zoomFor(size) { return Math.min(1, ON_SCREEN / Math.max(1, size)); }
+// how much of the world you can actually see, in world units
+function worldW() { return VW / cam.z; }
+function worldH() { return VH / cam.z; }
 const EAT_EDGE = 1.10;                 // it must be this much smaller to swallow
 const BITE_LOSS = 0.11;                // what a bigger fish takes off you
 const GRACE = 1.6;                     // and how long you are left alone after
@@ -286,7 +305,9 @@ const P={
   disc:  [[0,.030],[.09,.205],[.28,.330],[.52,.340],[.74,.235],[.91,.100],[1,.040]],
   bulb:  [[0,.060],[.10,.255],[.30,.355],[.54,.350],[.76,.255],[.92,.110],[1,.042]],
   shark: [[0,.018],[.09,.098],[.24,.148],[.44,.140],[.64,.098],[.82,.054],[1,.024]],
-  whale: [[0,.052],[.07,.140],[.21,.186],[.44,.170],[.68,.112],[.86,.052],[1,.020]],
+  whale: [[0,.042],[.05,.082],[.17,.104],[.40,.099],[.63,.070],[.85,.034],[1,.013]],
+  // a sperm whale is a third head: a squared-off slab, then a slim body
+  sperm: [[0,.104],[.04,.116],[.24,.118],[.33,.096],[.56,.076],[.80,.040],[1,.014]],
   eel:   [[0,.013],[.06,.038],[.32,.046],[.62,.040],[.86,.027],[1,.009]],
   krait: [[0,.011],[.06,.026],[.36,.031],[.66,.030],[.88,.033],[1,.011]],
   ribbon:[[0,.012],[.05,.042],[.35,.046],[.70,.034],[.90,.020],[1,.007]],
@@ -369,9 +390,9 @@ const SPECIES={
    fins:{d:"tri",a:"low",pect:"blade",tail:"hetero"},bl:.7,depth:[0,.4],arm:"filter"},
  orca:{n:"Orca",sci:"Orcinus orca",L:800,p:"whale",form:"whale",c:["#0c0f13","#14181e","#1a1f26"],pat:"saddle",
    fins:{d:"orca",pect:"paddle",tail:"fluke"},bl:1.5,burst:2.6,depth:[0,.35],arm:"pod-ram",school:3},
- humpback:{n:"Humpback Whale",sci:"Megaptera novaeangliae",L:1500,p:"whale",form:"whale",knobs:1,c:["#1d2830","#3a4a54","#e4e6de"],pat:"none",
+ humpback:{n:"Humpback Whale",sci:"Megaptera novaeangliae",L:1500,p:"whale",form:"whale",knobs:1,pleats:1,c:["#1d2830","#3a4a54","#e4e6de"],pat:"none",
    fins:{d:"hump",pect:"wing",tail:"fluke"},bl:.7,depth:[0,.4],arm:"lunge-feed"},
- sperm:{n:"Sperm Whale",sci:"Physeter macrocephalus",L:1750,p:"whale",form:"whale",box:1,c:["#3a3630","#5d564c","#8d8478"],pat:"wrinkle",
+ sperm:{n:"Sperm Whale",sci:"Physeter macrocephalus",L:1750,p:"sperm",form:"whale",box:1,c:["#3a3630","#5d564c","#8d8478"],pat:"wrinkle",
    fins:{d:"ridge",pect:"paddle",tail:"fluke"},bl:.75,depth:[.2,1],arm:"sonar"},
  blue:{n:"Blue Whale",sci:"Balaenoptera musculus",L:2900,p:"whale",form:"whale",pleats:1,c:["#2b4a63","#4e7896","#b9cbd2"],pat:"mottle",pc:"#3a5f7c",
    fins:{d:"nub",pect:"paddle",tail:"fluke"},bl:.7,depth:[0,.45],arm:"engulf"},
@@ -461,10 +482,19 @@ function tailPath(ctx,g,type,tl,sp){
     case "round":
       ctx.moveTo(b,by-hh); ctx.quadraticCurveTo(b-tl*1.5,by-sp*.85,b-tl*1.05,by);
       ctx.quadraticCurveTo(b-tl*1.5,by+sp*.85,b,by+hh); break;
-    case "fluke":
-      ctx.moveTo(b,by-hh*.8); ctx.quadraticCurveTo(b-tl*.7,by-sp*.35,b-tl*1.15,by-sp*.62);
-      ctx.quadraticCurveTo(b-tl*.72,by-sp*.06,b-tl*.5,by); ctx.quadraticCurveTo(b-tl*.72,by+sp*.06,b-tl*1.15,by+sp*.62);
-      ctx.quadraticCurveTo(b-tl*.7,by+sp*.35,b,by+hh*.8); break;
+    case "fluke": {
+      // A whale's flukes are horizontal, so side-on you see a wide flattened
+      // blade rather than a fish's upright tail: a narrow stock, then two lobes
+      // swept back from a deep centre notch. Much shallower than it is long.
+      const lo = sp * 0.52, tip = tl * 1.5;
+      ctx.moveTo(b, by - hh * 0.62);
+      ctx.quadraticCurveTo(b - tl * 0.55, by - hh * 0.34, b - tl * 0.92, by - lo * 0.30);
+      ctx.quadraticCurveTo(b - tip * 0.95, by - lo * 1.05, b - tip, by - lo * 0.86);
+      ctx.quadraticCurveTo(b - tip * 0.86, by - lo * 0.34, b - tl * 1.02, by);   // notch
+      ctx.quadraticCurveTo(b - tip * 0.86, by + lo * 0.34, b - tip, by + lo * 0.86);
+      ctx.quadraticCurveTo(b - tip * 0.95, by + lo * 1.05, b - tl * 0.92, by + lo * 0.30);
+      ctx.quadraticCurveTo(b - tl * 0.55, by + hh * 0.34, b, by + hh * 0.62);
+      break; }
     case "paddle":
       ctx.moveTo(b,by-hh); ctx.quadraticCurveTo(b-tl*.6,by-sp*.9,b-tl*1.0,by-sp*.5);
       ctx.quadraticCurveTo(b-tl*1.15,by,b-tl*1.0,by+sp*.5); ctx.quadraticCurveTo(b-tl*.6,by+sp*.9,b,by+hh); break;
@@ -553,6 +583,9 @@ function patternPass(ctx,sp,g,t){
     ctx.lineTo(-.9,g.bot(.9)-.01); ctx.quadraticCurveTo(-.6,g.wv(.55)+.09,-.42,g.bot(.42)-.02);
     ctx.quadraticCurveTo(-.36,g.wv(.36),-.3,g.top(.3)+.02); ctx.fill();
   } else if(pat==="saddle"){
+    ctx.fillStyle="rgba(150,166,178,.55)";
+    ctx.beginPath();                         /* the grey saddle behind the fin */
+    ctx.ellipse(-.44,g.top(.44)+.038,.13,.055,-.10,0,TAU); ctx.fill();
     ctx.fillStyle="#f4f6f0";
     ctx.beginPath(); /* eye patch */
     ctx.ellipse(-.14,g.wv(.14)-g.h(.14)*.35,.075,.032,-.16,0,TAU); ctx.fill();
@@ -580,11 +613,25 @@ function eyeAndHead(ctx,sp,g,t,st){
   const ex=-u, ey=g.wv(u)-g.h(u)*(sp.form==="whale"?.42:.34), r=Math.max(.008,g.h(u)*(sp.form==="whale"?.10:.20));
   /* mouth */
   ctx.strokeStyle="rgba(0,0,0,.45)"; ctx.lineWidth=.008; ctx.beginPath();
-  if(sp.form==="shark"||sp.form==="whale"){
+  if(sp.form==="whale"){
+    // The jaw of a whale is enormous — on a rorqual it reaches a third of the
+    // way down the body — and it is the single clearest thing that says whale
+    // rather than large fish.
+    const jaw = sp.box ? .30 : (sp.pleats || sp.knobs ? .34 : .24);
+    ctx.moveTo(-.004, g.wv(0) + g.h(0) * .30);
+    ctx.quadraticCurveTo(-jaw*.5, g.bot(jaw*.55) - .004, -jaw, g.bot(jaw) - .022);
+  } else if(sp.form==="shark"){
     ctx.moveTo(-.005,g.wv(0)+g.h(0)*.4);
     ctx.quadraticCurveTo(-u*1.4,g.bot(u*1.6)-.006,-u*2.9,g.bot(u*3)-.01);
   } else { ctx.moveTo(-.004,g.wv(0)+g.h(0)*.15); ctx.lineTo(-u*.75,g.wv(u*.8)+g.h(u*.8)*.42); }
   ctx.stroke();
+
+  /* blowhole, set well forward on the crown */
+  if(sp.form==="whale"){
+    const bu = sp.box ? .30 : .14;
+    ctx.fillStyle="rgba(0,0,0,.55)";
+    ctx.beginPath(); ctx.ellipse(-bu, g.top(bu)+.006, .016, .009, -.15, 0, TAU); ctx.fill();
+  }
   /* gills */
   ctx.globalAlpha=.4;
   if(sp.form==="shark"){ for(let i=0;i<5;i++){const gu=.17+i*.022;
@@ -616,7 +663,7 @@ function drawFish(ctx,sp,t,st){
   drawPect(ctx,g,sp,F.pect,t,swim,.72);
   /* --- fins behind body --- */
   ctx.fillStyle=finFill; ctx.globalAlpha=.9;
-  const tl=sp.form==="whale"?.13:(sp.form==="shark"?.17:.16), spread=g.max*(sp.form==="whale"?2.6:2.5);
+  const tl=sp.form==="whale"?.17:(sp.form==="shark"?.17:.16), spread=g.max*(sp.form==="whale"?4.2:2.5);
   ctx.save();
   const sl=(g.wv(1)-g.wv(.86))*2.1; ctx.translate(-1,g.wv(1)); ctx.rotate(Math.atan(sl)); ctx.translate(1,-g.wv(1));
   tailPath(ctx,g,F.tail||"fork",tl,spread); ctx.fill();
@@ -654,9 +701,13 @@ function drawFish(ctx,sp,t,st){
       ctx.quadraticCurveTo(-.02,g.top(.05)-.16-i*.02,.02+Math.sin(t*2+i)*.02,g.top(.05)-.24-i*.03);ctx.stroke();}}
   /* --- body --- */
   ctx.fillStyle=bodyGrad; bodyPath(ctx,g); ctx.fill();
-  if(sp.box){ ctx.fillStyle=sp.c[1]; ctx.beginPath();
-    ctx.moveTo(0,g.wv(0)-g.h(0)); ctx.lineTo(-.02,g.top(.02)-g.max*.42);
-    ctx.lineTo(-.26,g.top(.26)-g.max*.30); ctx.lineTo(-.26,g.top(.26)); ctx.closePath(); ctx.fill();}
+  if(sp.box){ /* the slab forehead — a third of a sperm whale is this */
+    ctx.fillStyle=bodyGrad; ctx.beginPath();
+    ctx.moveTo(-.34,g.top(.34));
+    ctx.quadraticCurveTo(-.22,g.top(.22)-g.max*.52,-.06,g.top(.06)-g.max*.60);
+    ctx.quadraticCurveTo(.012,g.top(.02)-g.max*.58,.018,g.wv(0)-g.max*.16);
+    ctx.quadraticCurveTo(.014,g.wv(0)+g.h(0)*.5,-.04,g.bot(.04));
+    ctx.lineTo(-.34,g.bot(.34)); ctx.closePath(); ctx.fill(); }
   if(sp.knobs){ ctx.fillStyle="rgba(0,0,0,.25)";
     for(let i=0;i<7;i++){const u=.03+i*.025;ctx.beginPath();ctx.arc(-u,g.top(u)+.004,.008,0,TAU);ctx.fill();}}
   if(sp.pleats){ ctx.strokeStyle="rgba(0,0,0,.22)";ctx.lineWidth=.006;
@@ -701,7 +752,9 @@ function drawPect(ctx,g,sp,type,t,swim,near){
   ctx.beginPath();
   if(type==="long"){ctx.moveTo(0,0);ctx.quadraticCurveTo(g.max*.6,g.max*.9,-g.max*.2,g.max*3.1);ctx.quadraticCurveTo(-g.max*.5,g.max*1.2,-g.max*.35,0);}
   else if(type==="blade"){ctx.moveTo(0,0);ctx.quadraticCurveTo(g.max*.9,g.max*1.0,g.max*.15,g.max*2.3);ctx.quadraticCurveTo(-g.max*.9,g.max*1.1,-g.max*.5,0);}
-  else if(type==="wing"){ctx.moveTo(0,0);ctx.quadraticCurveTo(g.max*1.4,g.max*1.6,g.max*.4,g.max*3.4);ctx.quadraticCurveTo(-g.max*.7,g.max*1.6,-g.max*.5,0);}
+  else if(type==="wing"){ctx.fillStyle=sp.c[2];   /* the long white flipper of a humpback */
+    ctx.moveTo(0,0);ctx.quadraticCurveTo(g.max*1.1,g.max*1.9,-g.max*.30,g.max*3.6);
+    ctx.quadraticCurveTo(-g.max*1.5,g.max*1.8,-g.max*.55,0);}
   else if(type==="paddle"){ctx.moveTo(0,0);ctx.quadraticCurveTo(g.max*.8,g.max*.8,g.max*.25,g.max*1.6);ctx.quadraticCurveTo(-g.max*.7,g.max*.8,-g.max*.45,0);}
   else if(type==="plume"){ctx.moveTo(0,0);for(let i=0;i<5;i++){const a=.2+i*.28;
       ctx.lineTo(Math.sin(a)*g.max*2.6,Math.cos(a)*g.max*2.6);ctx.lineTo(Math.sin(a+.12)*g.max*.8,Math.cos(a+.12)*g.max*.8);}}
@@ -1000,9 +1053,9 @@ function speedMult() { return (1 + lv('quick') * 0.10) * (1 + up('fins') * 0.05)
 function dashCd()    { return DASH_CD * Math.max(0.3, 1 - lv('dash') * 0.33 - perk('dash')); }
 function growMult()  { return (1 + lv('grow') * 0.25) * (1 + up('feed') * 0.12) * (1 + perk('grow')); }
 function biteLoss()  { return BITE_LOSS * Math.max(0.25, 1 - lv('tough') * 0.25 - perk('tough')) * (1 - up('scales') * 0.1); }
-function pullR()     { return PULL * (1 + lv('pull') * 1.0 + perk('pull')) * (1 + up('sense') * 0.4); }
+function pullR()     { return PULL * era() * (1 + lv('pull') * 1.0 + perk('pull')) * (1 + up('sense') * 0.4); }
 function pearlMult() { return (1 + lv('pearl') * 0.3) * (1 + up('diver') * 0.15); }
-function scareR()    { return lv('scare') * 55 + perk('scare'); }
+function scareR()    { return (lv('scare') * 55 + perk('scare')) * era(); }
 
 /* ----------------------------------------------------------- the market -- */
 const SHOP = [
@@ -1121,38 +1174,44 @@ const DCOLS = 3, DROWS = 2;
 const DISTRICTS = [
     { id:'gardens', name:'CORAL GARDENS', sub:'tropical fish, and nothing much that wants you',
       top:'#6fd6ee', bot:'#1f92c0',
-      pool:['clown','damsel','tang','butterfly','angel','cardinal','anchovy','sardine',
+      pool:['clown','damsel','tang','butterfly','angel','cardinal','anchovy',
             'parrot','trigger','seahorse','turtle','grouper'],
+      bed:'#d9c49a',
       reef:{ pal:['#e0674f','#f2a03d','#c95a86','#4fb8a8','#e8c56a','#8e5fa8'],
              types:['staghorn','brain','fan','tube','anem','plate'], dens:1.35 } },
     { id:'spines', name:'THE SPINE BEDS', sub:'everything here is armed',
       top:'#63cbc4', bot:'#1a8496',
-      pool:['puffer','lion','trigger','cardinal','butterfly','damsel','parrot',
-            'seahorse','turtle','grouper','stingray','lobster','shrimp'],
+      pool:['puffer','lion','trigger','cardinal','parrot','seahorse','lobster',
+            'shrimp','stingray','turtle'],
+      bed:'#cdbb86',
       reef:{ pal:['#d8a15c','#b9d05e','#e08a6a','#6fc0a4','#cfc07a'],
              types:['brain','anem','plate','rock','tube'], dens:1.15 } },
     { id:'channel', name:'SERPENT CHANNEL', sub:'kraits, morays, and things that coil',
       top:'#4fae9a', bot:'#155e60',
-      pool:['krait','olive','moray','anchovy','cardinal','squid','grouper','damsel',
-            'cuttle','oarfish','seahorse'],
+      pool:['krait','olive','moray','squid','cuttle','oarfish','seahorse','jelly',
+            'cardinal','grouper'],
+      bed:'#6b7a52',
       reef:{ pal:['#3f6b4a','#5e7a3a','#7a8a4c','#334f45','#8a9a5c'],
              types:['kelp','rock','staghorn','tube'], dens:1.2 } },
     { id:'flats', name:'THE RAY FLATS', sub:'sand, rubble and buried wings',
       top:'#7ec9d8', bot:'#2a7e9e',
-      pool:['stingray','eagleray','torpedo','manta','turtle','grouper','sardine',
-            'cuttle','anchovy','mahi','shrimp'],
+      pool:['stingray','eagleray','torpedo','manta','turtle','shrimp','cuttle',
+            'sardine','grouper'],
+      bed:'#ded3b4',
       reef:{ pal:['#c8b184','#a89468','#d8c9a0','#8f7f5c'],
              types:['rock','plate','anem'], dens:0.55 } },
     { id:'alley', name:'SHARK ALLEY', sub:'blacktips, hammerheads, and worse',
       top:'#4a9cc8', bot:'#12547e',
-      pool:['reefshark','hammer','tiger','megalodon','tuna','sardine','turtle',
-            'anchovy','mahi','grouper','whaleshark'],
+      pool:['reefshark','hammer','tiger','megalodon','tuna','mahi','sardine',
+            'turtle','whaleshark'],
+      bed:'#8d97a0',
       reef:{ pal:['#54606a','#3d4b56','#6b7681','#2f3b45'],
              types:['rock','brain','plate'], dens:0.7 } },
     { id:'blue', name:'THE BLUE ROAD', sub:'open water, and the biggest bodies in it',
       top:'#3b86bc', bot:'#0d3f6e',
-      pool:['tuna','mahi','marlin','sword','sardine','anchovy','manta','orca',
-            'humpback','sperm','bluewhale','whaleshark','oarfish'],
+      pool:['tuna','mahi','marlin','sword','anchovy','sardine','manta','orca',
+            'humpback','sperm','bluewhale','whaleshark','jelly'],
+      bed:'#5d7385',
       reef:{ pal:['#33505f','#26404e','#3c5a6e'], types:['rock','plate'], dens:0.3 } },
 ];
 function hash(n) { const s = Math.sin(n * 127.1 + 0.7) * 43758.5453; return s - Math.floor(s); }
@@ -1237,7 +1296,7 @@ let state = null;
 let running = false, paused = false, last = 0;
 let keys = {};
 let pointer = { on:false, x:0, y:0 };
-let cam = { x:0, y:0 };
+let cam = { x:0, y:0, z:1 };
 
 function layout() {
     VW = cv.width = window.innerWidth;
@@ -1245,6 +1304,8 @@ function layout() {
 }
 
 function newRun() {
+    // last dive may have left the sea enormous; it opens small again
+    AW = BASE_AW; AH = BASE_AH;
     state = {
         t:0, over:false, won:false,
         player: {
@@ -1260,8 +1321,10 @@ function newRun() {
         combo:0, comboT:0, mult:1, bestMult:1, multPop:0,
         apexT:38, apexOut:{},
         spawnT:0, shake:0, flash:0, msg:'', msgT:0, killer:null, district:null,
+        peak:SZ_START,
     };
-    cam.x = state.player.x - VW/2; cam.y = state.player.y - VH/2;
+    cam.z = zoomFor(state.player.size);
+    cam.x = state.player.x - worldW()/2; cam.y = state.player.y - worldH()/2;
     // a reef that already has fish in it, so there is something to do at once
     for (let i = 0; i < 46; i++) spawnFish(null, true);
     running = true; paused = false;
@@ -1281,7 +1344,12 @@ function pop(x, y, text, hue, size) {
 function pickShoal() {
     const p = state.player;
     const d = DIFFS[diff];
-    if (Math.random() < 0.07) return JELLY;
+    // Jellyfish used to drift in anywhere. They are residents of two districts
+    // now, like everything else.
+    if (Math.random() < 0.09) {
+        const water = districtAt(p.x, p.y);
+        if (water.pool.indexOf('jelly') >= 0) return JELLY;
+    }
     // Most of what appears is near your own size, either side of it — but if you
     // have been knocked back below where you started, the reef fills up with
     // small fry instead. Without this a couple of early bites left you too small
@@ -1300,10 +1368,13 @@ function pickShoal() {
     // has its own residents; a quarter of what spawns wanders in from the rest
     // of the reef, so a district is a strong flavour rather than a wall.
     const here = districtAt(p.x, p.y);
-    const local = Math.random() < 0.75;
+    const local = Math.random() < 0.92;   // a district is where a species lives, not a hint
     const from = local ? SHOALS.filter(x => here.pool.indexOf(x.key) >= 0) : SHOALS;
+    // species sizes are the animals' real sizes; `want` is in the reef's current
+    // scale, so bring one to the other before ranking
+    const w = want / era();
     const rank = (from.length ? from : SHOALS).slice().sort((a, b) =>
-        Math.abs(a.size - want) - Math.abs(b.size - want));
+        Math.abs(a.size - w) - Math.abs(b.size - w));
     for (const s of rank) {
         if (s.rare && Math.random() > s.rare) continue;
         return s;
@@ -1321,15 +1392,24 @@ function spawnFish(kind, anywhere) {
     } else {
         // just off the edge of the view, never on top of you
         const a = Math.random() * Math.PI * 2;
-        const d = Math.max(VW, VH) * 0.62 + 60 + Math.random() * 160;
+        const d = Math.max(worldW(), worldH()) * 0.62 + 60 + Math.random() * 160 * era();
         x = p.x + Math.cos(a) * d;
         y = p.y + Math.sin(a) * d;
     }
+    // Which water this animal belongs to. Nearly everything is spawned from the
+    // pool of the district you are already in, so this is usually just where it
+    // appeared; the few that drift in from elsewhere will make their own way
+    // back rather than being teleported somewhere you will never see them.
+    const home = s.apex ? [] : DISTRICTS.filter(dd => dd.pool.indexOf(s.key) >= 0);
     x = Math.max(30, Math.min(AW - 30, x));
     y = Math.max(30, Math.min(AH - 30, y));
     const f = {
         kind:s, key:s.key, x, y, vx:0, vy:0,
-        size:s.size * (s.apex ? 1 : 0.86 + Math.random() * 0.3),
+        // Species sizes are the sizes of real animals, and you will outgrow all of
+        // them. Past that point the reef scales: what you meet are older, larger
+        // individuals of the same animals, so there is never a dive where nothing
+        // left can either feed you or frighten you.
+        size:s.size * era() * (s.apex ? 1 : 0.86 + Math.random() * 0.3),
         face:Math.random() * Math.PI * 2, wob:Math.random() * 6.28,
         think:Math.random() * 2, flash:0, roam:null,
         base:0, puff:0, burst:0, jet:0, stalkT:Math.random()*3, charging:0, chargeT:Math.random()*3,
@@ -1353,6 +1433,10 @@ function spawnFish(kind, anywhere) {
         bold: s.apex || s.mind === 'stalk' || s.mind === 'charge' || s.mind === 'lurk'
               || Math.random() < (0.18 + Math.min(0.34, state.t / 60 * 0.34)) * DIFFS[diff].bold,
     };
+    f.home = home.length
+        ? (home.indexOf(districtAt(x, y)) >= 0 ? districtAt(x, y)
+                                               : home[(Math.random() * home.length) | 0])
+        : null;
     f.base = f.size;                      // a puffer needs to remember its real size
     state.fish.push(f);
     return f;
@@ -1375,6 +1459,7 @@ function update(dt) {
     if (p.chew > 0) p.chew -= dt;
     if (p.dashCd > 0) p.dashCd -= dt;
     if (state.multPop > 0) state.multPop -= dt;
+    if (p.size > state.peak) state.peak = p.size;
     // the run cools off if you stop eating
     if (state.comboT > 0) {
         state.comboT -= dt;
@@ -1401,7 +1486,7 @@ function update(dt) {
     if (keys['arrowup'] || keys['w']) my -= 1;
     if (keys['arrowdown'] || keys['s']) my += 1;
     if (!mx && !my && pointer.on) {
-        const dx = pointer.x + cam.x - p.x, dy = pointer.y + cam.y - p.y;
+        const dx = pointer.x / cam.z + cam.x - p.x, dy = pointer.y / cam.z + cam.y - p.y;
         const d = Math.hypot(dx, dy);
         if (d > 18) { mx = dx / d; my = dy / d; }
     }
@@ -1415,8 +1500,9 @@ function update(dt) {
     if (p.dash > 0) p.dash -= dt;
 
     // a bigger fish is a slower fish, which is what stops you steamrolling
-    const bulk = 1 - Math.min(0.42, (p.size - SZ_START) / 260);
-    const spd = P_SPD * speedMult() * bulk * (p.dash > 0 ? DASH_MULT : 1);
+    const E = era();
+    const bulk = 1 - Math.min(0.42, (p.size - SZ_START * E) / (260 * E));
+    const spd = P_SPD * E * speedMult() * bulk * (p.dash > 0 ? DASH_MULT : 1);
     p.vx += (mx * spd - p.vx) * Math.min(1, dt * 9);
     p.vy += (my * spd - p.vy) * Math.min(1, dt * 9);
     p.x = Math.max(24, Math.min(AW - 24, p.x + p.vx * dt));
@@ -1427,7 +1513,7 @@ function update(dt) {
     if (state.apexT <= 0) {
         state.apexT = 42 + Math.random() * 26;
         // only the ones you have grown enough to be worth their while
-        const can = APEX.filter(a => p.size >= a.from && !state.apexOut[a.key]);
+        const can = APEX.filter(a => p.size >= a.from * era() * 0.55 && !state.apexOut[a.key]);
         if (can.length) {
             const a = can[Math.floor(Math.random() * can.length)];
             const f = spawnFish(a);
@@ -1454,12 +1540,22 @@ function update(dt) {
     updatePearls(dt);
     updateBits(dt);
 
-    cam.x += ((p.x - VW/2) - cam.x) * Math.min(1, dt * 7);
-    cam.y += ((p.y - VH/2) - cam.y) * Math.min(1, dt * 7);
-    cam.x = Math.max(0, Math.min(AW - VW, cam.x));
-    cam.y = Math.max(0, Math.min(AH - VH, cam.y));
-    if (AW < VW) cam.x = (AW - VW) / 2;
-    if (AH < VH) cam.y = (AH - VH) / 2;
+    // The sea grows as you do, and never shrinks back inside a dive — fish are
+    // already swimming out there and must not find themselves outside the wall.
+    const want = era();
+    AW = Math.max(AW, BASE_AW * want);
+    AH = Math.max(AH, BASE_AH * want);
+
+    // and the camera eases back so you stay a constant size on screen
+    cam.z += (zoomFor(p.size) - cam.z) * Math.min(1, dt * 2.2);
+
+    const vw = worldW(), vh = worldH();
+    cam.x += ((p.x - vw/2) - cam.x) * Math.min(1, dt * 7);
+    cam.y += ((p.y - vh/2) - cam.y) * Math.min(1, dt * 7);
+    cam.x = Math.max(0, Math.min(AW - vw, cam.x));
+    cam.y = Math.max(0, Math.min(AH - vh, cam.y));
+    if (AW < vw) cam.x = (AW - vw) / 2;
+    if (AH < vh) cam.y = (AH - vh) / 2;
 }
 
 // what a fish is to you, right now. everything on screen is coloured by this.
@@ -1479,6 +1575,7 @@ function updateFish(dt) {
         f.wob += dt * 4;
 
         const rel = standing(f);
+        const E = era();                 // the reef is bigger now; so are its distances
         const dx = p.x - f.x, dy = p.y - f.y;
         const d = Math.hypot(dx, dy) || 1;
 
@@ -1500,11 +1597,11 @@ function updateFish(dt) {
             // Wide enough to inflate before you are in mouth range, big enough
             // that a puffed one is genuinely off the menu, and it goes down fast
             // so it is a defence rather than a wall you cannot go near.
-            const want = d < 200 && rel !== 'threat';
+            const want = d < 200 * E && rel !== 'threat';
             f.puff = Math.max(0, Math.min(1, (f.puff || 0) + (want ? dt * 5 : -dt * 1.8)));
             f.size = f.base * (1 + f.puff * 1.05);
             wander();
-        } else if (rel === 'prey' && d < 230) {
+        } else if (rel === 'prey' && d < 230 * E) {
             // it only bolts once you are close, so you can line a run up
             tx = f.x - dx; ty = f.y - dy;
             if (mind === 'dart') {
@@ -1519,10 +1616,10 @@ function updateFish(dt) {
                 // A shark does not simply swim at you. It keeps its distance,
                 // circles, and then commits — so you get a moment to see it coming.
                 f.stalkT = (f.stalkT || 0) - dt;
-                const ring = 230;
+                const ring = 230 * E;
                 if (f.charging > 0) {
                     f.charging -= dt; rush = 2.1; tx = f.lockX; ty = f.lockY;
-                } else if (d < 620 + scareR()) {
+                } else if (d < 620 * E + scareR()) {
                     if (f.stalkT <= 0) {
                         f.stalkT = 3.2 + Math.random() * 2;
                         f.charging = 1.1;
@@ -1538,37 +1635,48 @@ function updateFish(dt) {
                 // a swordfish lines you up and runs you through, then has to turn around
                 f.chargeT = (f.chargeT || 0) - dt;
                 if (f.charging > 0) { f.charging -= dt; rush = 2.6; tx = f.lockX; ty = f.lockY; }
-                else if (d < 700 && f.chargeT <= 0) {
+                else if (d < 700 * E && f.chargeT <= 0) {
                     f.chargeT = 4 + Math.random() * 2;
                     f.charging = 1.3; f.tell = 0.55;
                     f.lockX = p.x + p.vx * 0.5; f.lockY = p.y + p.vy * 0.5;
-                } else if (d < 700) { rush = 0.5; wander(); }
+                } else if (d < 700 * E) { rush = 0.5; wander(); }
                 else wander();
             } else if (mind === 'lurk') {
                 // an eel sits perfectly still until you are almost on it
-                if (d < 190) { tx = p.x; ty = p.y; rush = 1.9; }
+                if (d < 190 * E) { tx = p.x; ty = p.y; rush = 1.9; }
                 else { tx = f.x; ty = f.y; rush = 0; }
-            } else if (d < 420 + scareR()) {
+            } else if (d < 420 * E + scareR()) {
                 if (d < scareR()) { tx = f.x - dx; ty = f.y - dy; }
                 else { tx = p.x; ty = p.y; }
             } else wander();
         } else if (mind === 'lurk') {
-            if (d < 120 && rel !== 'prey') { tx = p.x; ty = p.y; rush = 1.7; }
+            if (d < 120 * E && rel !== 'prey') { tx = p.x; ty = p.y; rush = 1.7; }
             else { tx = f.x; ty = f.y; rush = 0; }
         } else if (mind === 'drift') {
             f.think -= dt;
             if (f.think <= 0) { f.think = 3 + Math.random() * 3;
-                f.roam = { x:f.x + (Math.random()-0.5)*300, y:f.y + (Math.random()-0.5)*300 }; }
+                f.roam = { x:f.x + (Math.random()-0.5)*300*E, y:f.y + (Math.random()-0.5)*300*E }; }
             tx = f.roam ? f.roam.x : f.x; ty = f.roam ? f.roam.y : f.y;
         } else wander();
 
         if (f.tell > 0) f.tell -= dt;
 
+        // A fish that has wandered out of its own water turns back, so long as it
+        // is not in the middle of hunting or fleeing. This is what actually keeps
+        // a district full of its own kind rather than a slow blend of everything.
+        if (f.home && rush <= 1 && districtAt(f.x, f.y) !== f.home) {
+            const idx = DISTRICTS.indexOf(f.home);
+            const cw = AW / DCOLS, chh = AH / DROWS;
+            tx = ((idx % DCOLS) + 0.5) * cw;
+            ty = (((idx / DCOLS) | 0) + 0.5) * chh;
+            rush = Math.max(rush, 0.85);
+        }
+
         const ax = tx - f.x, ay = ty - f.y, ad = Math.hypot(ax, ay) || 1;
         // frightened prey is quick but not quicker than you — a chase has to end
         // A predator that has committed to you swims like it means it, and how
         // hard it commits is what separates the shallows from the deep.
-        const fs = f.kind.spd * (1 - Math.min(0.35, f.size / 400))
+        const fs = f.kind.spd * E * (1 - Math.min(0.35, f.size / (400 * E)))
                  * (rush > 1 ? rush * DIFFS[diff].rush : rush)
                  * (rel === 'prey' ? 0.82 : 1);
         f.vx += ((ax / ad) * fs - f.vx) * Math.min(1, dt * 3.4);
@@ -1578,7 +1686,7 @@ function updateFish(dt) {
         if (Math.hypot(f.vx, f.vy) > 6) f.face = Math.atan2(f.vy, f.vx);
 
         // fish far off behind you are recycled to the front, so the reef stays busy
-        if (d > Math.max(VW, VH) * (f.kind.apex ? 2.6 : 1.5)) { state.fish.splice(i, 1); continue; }
+        if (d > Math.max(worldW(), worldH()) * (f.kind.apex ? 2.6 : 1.5)) { state.fish.splice(i, 1); continue; }
 
         /* --- the moment of truth --- */
         // Your mouth is generous on purpose. At 0.42 of the combined size this was
@@ -1630,7 +1738,7 @@ function eatFish(f, i) {
     // hit the ceiling inside half a minute.
     const rel2 = Math.pow(Math.min(1, f.size / p.size), 1.6);
     const gain = 6.2 * rel2 * growMult() * (1 + (state.mult - 1) * 0.28);
-    p.size = Math.min(SZ_CAP, p.size + gain);
+    p.size += gain;                       // nothing clamps this any more
 
     state.xp += f.kind.xp;
     state.pearlBank += f.kind.pearl * DIFFS[diff].pay * pearlMult() * 0.085 * state.mult;
@@ -1679,10 +1787,10 @@ function bitten(f, sting) {
     say(sting ? 'Jellyfish sting — they get everyone, big or small'
               : 'Bitten. Keep clear of the red ones until you are bigger.');
 
-    if (p.size <= SZ_MIN) {
+    if (p.size <= Math.max(SZ_MIN, state.peak * 0.16)) {
         if (p.slips > 0) {
             p.slips--;
-            p.size = SZ_START;
+            p.size = Math.max(SZ_START, state.peak * 0.42);
             p.grace = 3;
             state.flash = 0.9;
             say('Your lucky fin got you out. ' + p.slips + ' left.');
@@ -1796,6 +1904,7 @@ function render() {
         const s = state.shake * 12;
         ctx.translate((Math.random()-0.5)*s, (Math.random()-0.5)*s);
     }
+    ctx.scale(cam.z, cam.z);
     ctx.translate(-cam.x, -cam.y);
 
     drawSea();
@@ -1822,20 +1931,21 @@ function drawSea() {
     // from the districts either side of it, so a border is a gradient you swim
     // through and see coming.
     const cw = AW / DCOLS, ch = AH / DROWS;
-    const x0 = Math.max(0, cam.x - 20), x1 = Math.min(AW, cam.x + VW + 20);
-    const row = Math.max(0, Math.min(DROWS - 1, Math.floor((cam.y + VH / 2) / ch)));
-    const STEP = 60;
+    const vw = worldW(), vh = worldH();
+    const x0 = Math.max(0, cam.x - 20), x1 = Math.min(AW, cam.x + vw + 20);
+    const row = Math.max(0, Math.min(DROWS - 1, Math.floor((cam.y + vh / 2) / ch)));
+    const STEP = Math.max(60, vw / 22);
     for (let x = x0; x < x1; x += STEP) {
         const u = (x + STEP / 2) / cw - 0.5;             // where we are between two columns
         const c0 = Math.max(0, Math.min(DCOLS - 1, Math.floor(u)));
         const c1 = Math.max(0, Math.min(DCOLS - 1, c0 + 1));
         const k = Math.max(0, Math.min(1, u - c0));
         const a = DISTRICTS[row * DCOLS + c0], b = DISTRICTS[row * DCOLS + c1];
-        const g = ctx.createLinearGradient(0, cam.y, 0, cam.y + VH);
+        const g = ctx.createLinearGradient(0, cam.y, 0, cam.y + vh);
         g.addColorStop(0, mixHex(a.top, b.top, k));
         g.addColorStop(1, mixHex(a.bot, b.bot, k));
         ctx.fillStyle = g;
-        ctx.fillRect(x, cam.y - 10, Math.min(STEP + 1, x1 - x + 1), VH + 20);
+        ctx.fillRect(x, cam.y - 10, Math.min(STEP + 1, x1 - x + 1), vh + 20);
     }
 
     // shafts of light from the surface, so the water has a top to it
@@ -1843,8 +1953,8 @@ function drawSea() {
     ctx.globalAlpha = 0.06;
     ctx.fillStyle = '#ffffff';
     for (let i = 0; i < 9; i++) {
-        const sx = ((i * 421) % AW) + Math.sin(state.t * 0.15 + i) * 30;
-        if (sx < cam.x - 260 || sx > cam.x + VW + 260) continue;
+        const sx = ((i * 421 * era()) % AW) + Math.sin(state.t * 0.15 + i) * 30;
+        if (sx < cam.x - 260 || sx > cam.x + vw + 260) continue;
         ctx.beginPath();
         ctx.moveTo(sx - 26, 0); ctx.lineTo(sx + 26, 0);
         ctx.lineTo(sx + 150, AH); ctx.lineTo(sx + 60, AH);
@@ -1855,10 +1965,11 @@ function drawSea() {
     drawReef();
 
     // the reef wall, so the edge of the world is obvious
-    ctx.strokeStyle = '#0a4a6e'; ctx.lineWidth = 14;
-    ctx.strokeRect(7, 7, AW - 14, AH - 14);
-    ctx.strokeStyle = '#f0b45e'; ctx.lineWidth = 6;
-    ctx.strokeRect(7, 7, AW - 14, AH - 14);
+    const wall = 14 / cam.z;
+    ctx.strokeStyle = '#0a4a6e'; ctx.lineWidth = wall;
+    ctx.strokeRect(wall/2, wall/2, AW - wall, AH - wall);
+    ctx.strokeStyle = '#f0b45e'; ctx.lineWidth = wall * 0.43;
+    ctx.strokeRect(wall/2, wall/2, AW - wall, AH - wall);
 }
 
 function mixHex(a, b, k) {
@@ -1873,24 +1984,69 @@ function mixHex(a, b, k) {
 // arena. Where it sits is decided by a hash of its index, so it is in the same
 // place every dive and never has to be stored.
 function drawReef() {
-    const cw = AW / DCOLS, ch = AH / DROWS;
-    const SP = 132;                                  // one coral head every so often
-    const i0 = Math.floor((cam.x - SP) / SP), i1 = Math.ceil((cam.x + VW + SP) / SP);
+    const ch = AH / DROWS, cw = AW / DCOLS;
+    const e = era(), vw = worldW(), vh = worldH();
+
     for (let band = 0; band < DROWS; band++) {
-        const baseY = (band + 1) * ch - 8;           // it grows up off the floor of its band
-        if (baseY < cam.y - 90 || baseY > cam.y + VH + 40) continue;
-        for (let i = i0; i <= i1; i++) {
-            const h = hash(i * 1.37 + band * 31), h2 = hash(i * 4.11 + band * 31),
-                  h3 = hash(i * 9.7 + band * 31);
-            const sx = i * SP + (h2 - 0.5) * SP * 0.55;
-            if (sx < 12 || sx > AW - 12) continue;
-            const d = DISTRICTS[band * DCOLS +
-                      Math.max(0, Math.min(DCOLS - 1, Math.floor(sx / cw)))];
-            if (h3 > d.reef.dens * 0.72) continue;   // sparser out in open water
-            const type = d.reef.types[(h * d.reef.types.length) | 0];
-            const col  = d.reef.pal[(h2 * d.reef.pal.length) | 0];
-            coral(ctx, sx, baseY + (h3 - 0.5) * 10, 110 * (0.6 + h * 0.9),
-                  type, col, state.t, i + band * 7);
+        const floorY = (band + 1) * ch;
+        if (floorY < cam.y - 260 * e || floorY - 300 * e > cam.y + vh) continue;
+
+        // The ground itself. Not a stripe of colour but a rock ledge with an
+        // uneven top edge and its own sand, fading downward into the water below
+        // so a shelf reads as something the reef stands on.
+        const fx0 = Math.max(0, cam.x - 60), fx1 = Math.min(AW, cam.x + vw + 60);
+        const FSTEP = Math.max(70, vw / 26);
+        const deep = 150 * e;                        // how far the rock reaches down
+        for (let x = fx0; x < fx1; x += FSTEP) {
+            const w = Math.min(FSTEP + 1, fx1 - x + 1);
+            // the sand crosses a border the same way the water does, by mixing
+            const u = (x + w / 2) / cw - 0.5;
+            const c0 = Math.max(0, Math.min(DCOLS - 1, Math.floor(u)));
+            const c1 = Math.max(0, Math.min(DCOLS - 1, c0 + 1));
+            const kk = Math.max(0, Math.min(1, u - c0));
+            const sand = mixHex(DISTRICTS[band * DCOLS + c0].bed,
+                                DISTRICTS[band * DCOLS + c1].bed, kk);
+            // an uneven crest, so the ground is never a ruled line
+            const k = x / FSTEP;
+            const r0 = (hash(k * 2.1 + band) - 0.5) * 26 * e;
+            const r1 = (hash((k + 1) * 2.1 + band) - 0.5) * 26 * e;
+            const g = ctx.createLinearGradient(0, floorY - 30 * e, 0, floorY + deep);
+            g.addColorStop(0,   sand);
+            g.addColorStop(0.28, sand);
+            g.addColorStop(1,   'rgba(6,26,42,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(x, floorY + r0);
+            ctx.lineTo(x + w, floorY + r1);
+            ctx.lineTo(x + w, floorY + deep);
+            ctx.lineTo(x, floorY + deep);
+            ctx.closePath(); ctx.fill();
+        }
+
+        // Two ranks of coral. The far rank is smaller, paler and set back, which
+        // is the whole trick: a reef is a thing with depth in it, not a row of
+        // shapes standing on a line.
+        for (const rank of [{ sp:118, s:0.60, a:0.38, lift:26, seed:71 },
+                            { sp:74,  s:1.05, a:1,    lift:0,  seed:3 }]) {
+            const SP = rank.sp * e;
+            const i0 = Math.floor((cam.x - SP) / SP), i1 = Math.ceil((cam.x + vw + SP) / SP);
+            ctx.save();
+            ctx.globalAlpha = rank.a;
+            for (let i = i0; i <= i1; i++) {
+                const h  = hash(i * 1.37 + band * 31 + rank.seed),
+                      h2 = hash(i * 4.11 + band * 31 + rank.seed),
+                      h3 = hash(i * 9.7  + band * 31 + rank.seed);
+                const sx = i * SP + (h2 - 0.5) * SP * 0.6;
+                if (sx < 14 || sx > AW - 14) continue;
+                const d = DISTRICTS[band * DCOLS +
+                          Math.max(0, Math.min(DCOLS - 1, Math.floor(sx / cw)))];
+                if (h3 > d.reef.dens * 0.94) continue;      // sparser out in open water
+                const type = d.reef.types[(h * d.reef.types.length) | 0];
+                const col  = d.reef.pal[(h2 * d.reef.pal.length) | 0];
+                coral(ctx, sx, floorY - (rank.lift + h3 * 12) * e,
+                      118 * e * rank.s * (0.55 + h * 0.95), type, col, state.t, i + band * 7);
+            }
+            ctx.restore();
         }
     }
 }
@@ -2077,13 +2233,13 @@ function drawBits() {
 // anything dangerous that is off screen gets an arrow, so nothing arrives unseen
 function drawArrows() {
     const p = state.player;
-    const sx = p.x - cam.x, sy = p.y - cam.y;
+    const sx = (p.x - cam.x) * cam.z, sy = (p.y - cam.y) * cam.z;
     for (const f of state.fish) {
         if (standing(f) !== 'threat') continue;
-        const fx = f.x - cam.x, fy = f.y - cam.y;
+        const fx = (f.x - cam.x) * cam.z, fy = (f.y - cam.y) * cam.z;
         const pad = 40;
         if (fx > -pad && fx < VW + pad && fy > -pad && fy < VH + pad) continue;
-        if (Math.hypot(f.x - p.x, f.y - p.y) > 1400) continue;
+        if (Math.hypot(f.x - p.x, f.y - p.y) > 1400 * era()) continue;
         const a = Math.atan2(fy - sy, fx - sx);
         const rx = Math.min(VW - 34, Math.max(34, sx + Math.cos(a) * 10000));
         const ry = Math.min(VH - 34, Math.max(34, sy + Math.sin(a) * 10000));
