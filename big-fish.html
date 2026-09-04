@@ -54,6 +54,17 @@
           border-radius:5px; padding:1px 6px; font-size:12px; color:#0a5e8c; }
     .label { font-size:12px; color:#5e7a88; margin:12px 0 4px; letter-spacing:2px; }
     .row { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+    .picks { display:flex; gap:7px; justify-content:center; flex-wrap:wrap; margin-bottom:4px; }
+    .pick { border:2px solid rgba(94,122,136,.3); background:rgba(255,255,255,.55);
+      border-radius:12px; padding:5px 6px 4px; cursor:pointer; width:96px; text-align:center;
+      transition:border-color .12s, background .12s, transform .12s; }
+    .pick:hover { border-color:#3fc0f0; transform:translateY(-2px); }
+    .pick.sel { border-color:#0f86c4; background:linear-gradient(160deg,#e0f4ff,#bfe6fa); }
+    .pick canvas { display:block; width:84px; height:44px; }
+    .pick b { display:block; font-size:10.5px; line-height:1.15; color:#20404f; margin-top:1px; }
+    .pick i { display:block; font-size:9px; font-style:normal; letter-spacing:.04em;
+      text-transform:uppercase; color:#6d8b9a; margin-top:1px; }
+    .pick.sel i { color:#0f6f9e; }
     .btn {
         background:linear-gradient(140deg,#3fc0f0,#0f86c4); color:#fff;
         border:2px solid #bfe8ff; border-radius:11px; cursor:pointer;
@@ -142,9 +153,10 @@
       Eat again quickly and it counts for more: <b>three in a row steps up a multiplier</b>, up to
       ×8, and it makes everything you eat grow you faster and pay more pearls. Stop eating for a
       few seconds — or take a bite — and the run is gone.<br><br>
-      Every so often you grow enough to pick <b>one of three</b> upgrades. Last <b>five minutes</b>
-      and you are the biggest thing on the reef. Pearls you collect are yours for keeps — the reef market
-      sells things that last for good.
+      The reef is six places, not one: coral gardens, spine beds, a serpent channel, the ray flats,
+      shark alley and the open blue. The water changes colour before you cross a border, and what
+      lives on the other side is different. Last <b>five minutes</b> and you are the biggest thing in
+      it. Pearls you collect are yours for keeps — the reef market sells things that last for good.
     </div>
     <div class="keys">
       <div><kbd>W A S D</kbd> or <kbd>← ↑ ↓ →</kbd> — swim</div>
@@ -152,6 +164,9 @@
       <div><kbd>P</kbd> or <kbd>Esc</kbd> — pause</div>
       <div>Or hold the mouse down to swim that way</div>
     </div>
+    <div class="label">WHAT YOU GO IN AS</div>
+    <div class="picks" id="pickRow"></div>
+    <div class="note" id="pickNote"></div>
     <div class="label">HOW ROUGH A REEF</div>
     <div class="row" id="diffRow"></div>
     <div class="row" style="margin-top:16px;">
@@ -226,7 +241,11 @@ let VW = 0, VH = 0;
 const AW = 3000, AH = 2200;
 const SWIM = 300;                      // five minutes and you have made it
 
-const SZ_START = 26, SZ_MIN = 12, SZ_CAP = 150;
+// The old ceiling was 150, which you hit with the reef still full of things
+// bigger than you. It now runs to 300: past a whale shark, past a megalodon,
+// far enough that the last stretch is you hunting the things that opened the
+// dive hunting you.
+const SZ_START = 26, SZ_MIN = 12, SZ_CAP = 300;
 const EAT_EDGE = 1.10;                 // it must be this much smaller to swallow
 const BITE_LOSS = 0.11;                // what a bigger fish takes off you
 const GRACE = 1.6;                     // and how long you are left alone after
@@ -897,6 +916,16 @@ const SHOALS = [
     { key:'hammer',    sp:'hammer',    size:128, spd:150, hue:'#8593a0', xp:22, pearl:30, mind:'stalk',  rare:0.2 },
     { key:'humpback',  sp:'humpback',  size:136, spd:92,  hue:'#3a4a54', xp:26, pearl:40, mind:'wander', rare:0.5 },
     { key:'whaleshark',sp:'whaleshark',size:144, spd:84,  hue:'#43617a', xp:28, pearl:44, mind:'drift',  rare:0.4 },
+    // Above a whale shark the reef used to simply stop. These are what the last
+    // stretch of a dive is for — every one of them would have been unkillable
+    // when you started.
+    { key:'oarfish',   sp:'oarfish',   size:156, spd:70,  hue:'#c3ced6', xp:30, pearl:48, mind:'drift',  rare:0.35 },
+    { key:'manta',     sp:'manta',     size:168, spd:96,  hue:'#2a3846', xp:32, pearl:54, mind:'drift',  rare:0.3 },
+    { key:'tiger',     sp:'tiger',     size:182, spd:150, hue:'#7b8c7c', xp:36, pearl:62, mind:'stalk',  rare:0.22 },
+    { key:'orca',      sp:'orca',      size:198, spd:162, hue:'#14181e', xp:42, pearl:76, mind:'charge', rare:0.2 },
+    { key:'sperm',     sp:'sperm',     size:216, spd:86,  hue:'#5d564c', xp:48, pearl:88, mind:'lurk',   rare:0.28 },
+    { key:'megalodon', sp:'meg',       size:238, spd:146, hue:'#5c6a72', xp:56, pearl:110,mind:'stalk',  rare:0.15 },
+    { key:'bluewhale', sp:'blue',      size:262, spd:78,  hue:'#4e7896', xp:70, pearl:150,mind:'wander', rare:0.25 },
 ];
 // Two things bigger than you will ever get. They are always red, whatever size
 // you reach, so the late game still has something in it to be afraid of. They
@@ -907,6 +936,26 @@ const APEX = [
     { key:'kraken',     sp:'gsquid', size:290, spd:104, hue:'#c05a52', xp:0, pearl:0, mind:'charge',
       apex:true, name:'THE KRAKEN', from:150 },
 ];
+// What each of these is actually called, so that when one of them finishes you
+// off the game can say so by name instead of 'something bigger'.
+const NAMES = {
+    anchovy:'an anchovy', shrimp:'a shrimp', damsel:'a damselfish', clown:'a clownfish',
+    sardine:'a sardine', cardinal:'a cardinalfish', seahorse:'a seahorse', tang:'a blue tang',
+    squid:'a reef squid', butterfly:'a butterflyfish', angel:'an emperor angelfish',
+    lion:'a lionfish', puffer:'a porcupine puffer', cuttle:'a cuttlefish',
+    trigger:'a titan triggerfish', parrot:'a bumphead parrotfish', lobster:'a lobster',
+    torpedo:'a torpedo ray', grouper:'a goliath grouper', stingray:'a stingray',
+    turtle:'a sea turtle', krait:'a banded sea krait', tuna:'a bluefin tuna',
+    eagleray:'a spotted eagle ray', moray:'a green moray', olive:'an olive sea snake',
+    reefshark:'a blacktip reef shark', mahi:'a mahi-mahi', sword:'a swordfish',
+    marlin:'a blue marlin', hammer:'a great hammerhead', humpback:'a humpback whale',
+    whaleshark:'a whale shark', oarfish:'a giant oarfish', manta:'a giant manta',
+    tiger:'a tiger shark', orca:'an orca', sperm:'a sperm whale',
+    megalodon:'a megalodon', bluewhale:'a blue whale',
+    jelly:"a lion's mane jellyfish", greatwhite:'a great white', kraken:'the kraken',
+};
+function nameOf(f) { return NAMES[f.key] || 'something bigger'; }
+
 const BY_KEY = {};
 for (const s of SHOALS) BY_KEY[s.key] = s;
 for (const s of APEX) BY_KEY[s.key] = s;
@@ -943,15 +992,17 @@ const NO_KIT = {};
 for (const k of Object.keys(KIT)) NO_KIT[k] = 0;
 let kitOwned = Object.assign({}, NO_KIT);
 
+// Every one of these folds three things together: what you bought in the market,
+// what you carry between dives, and what the animal you chose simply is.
 function lv(k) { return kitOwned[k] || 0; }
-function eatEdge()   { return Math.max(0.94, EAT_EDGE - lv('jaws') * 0.032); }
-function speedMult() { return (1 + lv('quick') * 0.10) * (1 + up('fins') * 0.05); }
-function dashCd()    { return DASH_CD * Math.max(0.4, 1 - lv('dash') * 0.33); }
-function growMult()  { return (1 + lv('grow') * 0.25) * (1 + up('feed') * 0.12); }
-function biteLoss()  { return BITE_LOSS * Math.max(0.3, 1 - lv('tough') * 0.25) * (1 - up('scales') * 0.1); }
-function pullR()     { return PULL * (1 + lv('pull') * 1.0) * (1 + up('sense') * 0.4); }
+function eatEdge()   { return Math.max(0.90, EAT_EDGE - lv('jaws') * 0.032 - perk('jaws')); }
+function speedMult() { return (1 + lv('quick') * 0.10) * (1 + up('fins') * 0.05) * (1 + perk('speed')); }
+function dashCd()    { return DASH_CD * Math.max(0.3, 1 - lv('dash') * 0.33 - perk('dash')); }
+function growMult()  { return (1 + lv('grow') * 0.25) * (1 + up('feed') * 0.12) * (1 + perk('grow')); }
+function biteLoss()  { return BITE_LOSS * Math.max(0.25, 1 - lv('tough') * 0.25 - perk('tough')) * (1 - up('scales') * 0.1); }
+function pullR()     { return PULL * (1 + lv('pull') * 1.0 + perk('pull')) * (1 + up('sense') * 0.4); }
 function pearlMult() { return (1 + lv('pearl') * 0.3) * (1 + up('diver') * 0.15); }
-function scareR()    { return lv('scare') * 55; }
+function scareR()    { return lv('scare') * 55 + perk('scare'); }
 
 /* ----------------------------------------------------------- the market -- */
 const SHOP = [
@@ -977,19 +1028,53 @@ let owned = Object.assign({}, NO_UP);
 let buys = [];
 function up(k) { return owned[k] || 0; }
 
+// `bold` is how much of the reef is actually hunting you rather than getting on
+// with its day, and `rush` is how hard they commit once they do.
 const DIFFS = {
-    shallow: { name:'SHALLOWS', crowd:0.75, big:0.7, pay:1.0 },
-    reef:    { name:'THE REEF', crowd:1.0,  big:1.0, pay:1.35 },
-    deep:    { name:'THE DEEP', crowd:1.35, big:1.4, pay:1.9 },
+    shallow: { name:'SHALLOWS', crowd:0.75, big:0.7, pay:1.0,  bold:0.75, rush:0.9 },
+    reef:    { name:'THE REEF', crowd:1.0,  big:1.0, pay:1.4,  bold:1.25, rush:1.12 },
+    deep:    { name:'THE DEEP', crowd:1.35, big:1.4, pay:2.1,  bold:1.7,  rush:1.3 },
 };
 let diff = 'reef';
 
-// What you go into the water as. Every one of these is a real animal with a real
-// body, and you keep growing whichever you pick — a clownfish the size of a
-// shark is still a clownfish, and that is the joke.
-const PLAYABLE = ['clown', 'puffer', 'krait', 'barracuda', 'torpedo', 'squid',
-                  'reefshark', 'orca', 'blue'];
+// What you go into the water as. Every one is a real animal, drawn from the same
+// anatomy as everything it swims past, and each carries the thing the real animal
+// is actually good at — a puffer is hard to bite, a barracuda is quick, a sea
+// snake swallows above its weight. You keep growing whichever you pick, so a
+// clownfish the size of a shark is still a clownfish, and that is the joke.
+const PLAYABLE = [
+    { key:'clown',     name:'Clownfish',     tag:'the easy one',
+      note:'Nothing special, and nothing awkward. Start here.',
+      perk:{} },
+    { key:'puffer',    name:'Porcupine Puffer', tag:'hard to swallow',
+      note:'Spines everywhere. A bite off you takes barely half of what it should.',
+      perk:{ tough:0.45, speed:-0.12 } },
+    { key:'krait',     name:'Banded Sea Krait', tag:'bites above its weight',
+      note:'Venom does the work its jaws cannot: you swallow things much closer to your own size.',
+      perk:{ jaws:0.09, tough:-0.15 } },
+    { key:'barracuda', name:'Great Barracuda', tag:'fastest thing here',
+      note:'A quarter faster in the water, and the dash comes back in half the time.',
+      perk:{ speed:0.25, dash:0.5 } },
+    { key:'torpedo',   name:'Torpedo Ray',   tag:'clears its own space',
+      note:'Two hundred volts. Smaller fish will not come near you at all.',
+      perk:{ scare:110, speed:-0.08 } },
+    { key:'squid',     name:'Reef Squid',    tag:'jets and vanishes',
+      note:'Dash on a lungful of water — it comes back almost at once — and pearls drift to you.',
+      perk:{ dash:0.6, pull:0.8 } },
+    { key:'reefshark', name:'Blacktip Reef Shark', tag:'built to feed',
+      note:'Everything you eat grows you half again as much. You get big fast.',
+      perk:{ grow:0.5 } },
+    { key:'orca',      name:'Orca',          tag:'starts big',
+      note:'You go in at twice the size of everything else, and you hit harder for it.',
+      perk:{ start:26, grow:0.2, speed:-0.05 } },
+    { key:'blue',      name:'Blue Whale',    tag:'enormous and slow',
+      note:'The biggest start in the game, and the slowest. Very little can bite you; you cannot chase anything either.',
+      perk:{ start:48, tough:0.5, speed:-0.3, jaws:-0.03 } },
+];
+const BY_PLAYABLE = {};
+for (const p of PLAYABLE) BY_PLAYABLE[p.key] = p;
 let playerSpecies = 'clown';
+function perk(k) { const p = BY_PLAYABLE[playerSpecies]; return (p && p.perk[k]) || 0; }
 
 let best = { size:0, time:0, dives:0 };
 
@@ -1006,7 +1091,7 @@ function storeLoad() {
             owned = Object.assign({}, NO_UP, d.owned || {});
             kitOwned = Object.assign({}, NO_KIT, d.kit || {});
             if (d.diff && DIFFS[d.diff]) diff = d.diff;
-            if (d.species && PLAYABLE.includes(d.species)) playerSpecies = d.species;
+            if (d.species && BY_PLAYABLE[d.species]) playerSpecies = d.species;
         }
         loadOk = true;
     } catch (e) { loadOk = false; }
@@ -1024,6 +1109,113 @@ function tickSave(dt) {
     saveT -= dt;
     if (saveT > 0 || pearls === savedPearls) return;
     saveT = 4; storeSave();
+}
+
+
+/* ------------------------------------------------------------ districts -- */
+// The reef used to be one flat blue field with a grid drawn on it. It is now six
+// places, laid out three across and two down, each with its own water, its own
+// coral, and its own idea of what lives there. You can see the join coming: the
+// water changes colour before you cross it.
+const DCOLS = 3, DROWS = 2;
+const DISTRICTS = [
+    { id:'gardens', name:'CORAL GARDENS', sub:'tropical fish, and nothing much that wants you',
+      top:'#6fd6ee', bot:'#1f92c0',
+      pool:['clown','damsel','tang','butterfly','angel','cardinal','anchovy','sardine',
+            'parrot','trigger','seahorse','turtle','grouper'],
+      reef:{ pal:['#e0674f','#f2a03d','#c95a86','#4fb8a8','#e8c56a','#8e5fa8'],
+             types:['staghorn','brain','fan','tube','anem','plate'], dens:1.35 } },
+    { id:'spines', name:'THE SPINE BEDS', sub:'everything here is armed',
+      top:'#63cbc4', bot:'#1a8496',
+      pool:['puffer','lion','trigger','cardinal','butterfly','damsel','parrot',
+            'seahorse','turtle','grouper','stingray','lobster','shrimp'],
+      reef:{ pal:['#d8a15c','#b9d05e','#e08a6a','#6fc0a4','#cfc07a'],
+             types:['brain','anem','plate','rock','tube'], dens:1.15 } },
+    { id:'channel', name:'SERPENT CHANNEL', sub:'kraits, morays, and things that coil',
+      top:'#4fae9a', bot:'#155e60',
+      pool:['krait','olive','moray','anchovy','cardinal','squid','grouper','damsel',
+            'cuttle','oarfish','seahorse'],
+      reef:{ pal:['#3f6b4a','#5e7a3a','#7a8a4c','#334f45','#8a9a5c'],
+             types:['kelp','rock','staghorn','tube'], dens:1.2 } },
+    { id:'flats', name:'THE RAY FLATS', sub:'sand, rubble and buried wings',
+      top:'#7ec9d8', bot:'#2a7e9e',
+      pool:['stingray','eagleray','torpedo','manta','turtle','grouper','sardine',
+            'cuttle','anchovy','mahi','shrimp'],
+      reef:{ pal:['#c8b184','#a89468','#d8c9a0','#8f7f5c'],
+             types:['rock','plate','anem'], dens:0.55 } },
+    { id:'alley', name:'SHARK ALLEY', sub:'blacktips, hammerheads, and worse',
+      top:'#4a9cc8', bot:'#12547e',
+      pool:['reefshark','hammer','tiger','megalodon','tuna','sardine','turtle',
+            'anchovy','mahi','grouper','whaleshark'],
+      reef:{ pal:['#54606a','#3d4b56','#6b7681','#2f3b45'],
+             types:['rock','brain','plate'], dens:0.7 } },
+    { id:'blue', name:'THE BLUE ROAD', sub:'open water, and the biggest bodies in it',
+      top:'#3b86bc', bot:'#0d3f6e',
+      pool:['tuna','mahi','marlin','sword','sardine','anchovy','manta','orca',
+            'humpback','sperm','bluewhale','whaleshark','oarfish'],
+      reef:{ pal:['#33505f','#26404e','#3c5a6e'], types:['rock','plate'], dens:0.3 } },
+];
+function hash(n) { const s = Math.sin(n * 127.1 + 0.7) * 43758.5453; return s - Math.floor(s); }
+function districtAt(x, y) {
+    const c = Math.max(0, Math.min(DCOLS - 1, Math.floor(x / (AW / DCOLS))));
+    const r = Math.max(0, Math.min(DROWS - 1, Math.floor(y / (AH / DROWS))));
+    return DISTRICTS[r * DCOLS + c];
+}
+
+/* the coral itself, one routine per kind of thing that grows on a reef */
+function coral(ctx,x,y,s,type,col,t,i){
+  ctx.fillStyle=col; ctx.strokeStyle=col;
+  if(type==="staghorn"){
+    ctx.lineCap="round";
+    const branch=(bx,by,a,len,w,d)=>{
+      ctx.lineWidth=w; ctx.beginPath(); ctx.moveTo(bx,by);
+      const ex=bx+Math.cos(a)*len, ey=by+Math.sin(a)*len;
+      ctx.quadraticCurveTo(bx+Math.cos(a-.2)*len*.6,by+Math.sin(a-.2)*len*.6,ex,ey); ctx.stroke();
+      if(d>0){branch(ex,ey,a-.42-hash(i+d)*.2,len*.62,w*.6,d-1);branch(ex,ey,a+.40+hash(i*2+d)*.2,len*.6,w*.6,d-1);}};
+    branch(x,y,-Math.PI/2+ (hash(i)-.5)*.4,s*.42,s*.12,2);
+  } else if(type==="brain"){
+    ctx.beginPath(); ctx.ellipse(x,y,s*.34,s*.27,0,Math.PI,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="rgba(0,0,0,.28)"; ctx.lineWidth=Math.max(1,s*.018);
+    for(let k=0;k<4;k++){ctx.beginPath();
+      ctx.arc(x+(k-1.5)*s*.13,y,s*.10+k*.01*s,Math.PI*1.05,Math.PI*1.95);ctx.stroke();}
+  } else if(type==="fan"){
+    ctx.save(); ctx.translate(x,y); ctx.rotate(Math.sin(t*.7+i)*.06);
+    ctx.beginPath(); ctx.moveTo(0,0);
+    ctx.quadraticCurveTo(-s*.34,-s*.38,-s*.20,-s*.72);
+    ctx.quadraticCurveTo(0,-s*.90,s*.20,-s*.72);
+    ctx.quadraticCurveTo(s*.34,-s*.38,0,0); ctx.fill();
+    ctx.strokeStyle="rgba(0,0,0,.22)"; ctx.lineWidth=Math.max(.8,s*.012);
+    for(let k=-3;k<=3;k++){ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(k*s*.055,-s*.72);ctx.stroke();}
+    ctx.restore();
+  } else if(type==="tube"){
+    for(let k=0;k<4;k++){const h=s*(.30+hash(i*3+k)*.42), w=s*.075;
+      const bx=x+(k-1.5)*s*.13;
+      ctx.beginPath(); ctx.moveTo(bx-w,y); ctx.lineTo(bx-w*.8,y-h);
+      ctx.quadraticCurveTo(bx,y-h-w*.5,bx+w*.8,y-h); ctx.lineTo(bx+w,y); ctx.closePath(); ctx.fill();
+      ctx.fillStyle="rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(bx,y-h,w*.75,w*.28,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle=col;}
+  } else if(type==="anem"){
+    ctx.beginPath(); ctx.ellipse(x,y-s*.04,s*.13,s*.08,0,0,Math.PI*2); ctx.fill();
+    ctx.lineCap="round"; ctx.lineWidth=Math.max(1.2,s*.035);
+    for(let k=0;k<11;k++){const a=-Math.PI+ k*(Math.PI/10);
+      const sw=Math.sin(t*1.5+k*.8+i)*.22;
+      ctx.beginPath(); ctx.moveTo(x,y-s*.04);
+      ctx.quadraticCurveTo(x+Math.cos(a+sw)*s*.16,y-s*.20,x+Math.cos(a+sw*1.6)*s*.24,y-s*.30-Math.sin(a)*s*.05);
+      ctx.stroke();}
+  } else if(type==="plate"){
+    ctx.beginPath(); ctx.moveTo(x-s*.05,y); ctx.lineTo(x-s*.03,y-s*.22); ctx.lineTo(x+s*.03,y-s*.22); ctx.lineTo(x+s*.05,y); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x,y-s*.24,s*.36,s*.085,0,0,Math.PI*2); ctx.fill();
+  } else if(type==="kelp"){
+    ctx.lineCap="round";
+    for(let k=0;k<3;k++){const h=s*(.9+hash(i*5+k)*.7);
+      ctx.lineWidth=Math.max(1.5,s*.045); ctx.beginPath(); ctx.moveTo(x+(k-1)*s*.10,y);
+      for(let j=1;j<=6;j++)ctx.lineTo(x+(k-1)*s*.10+Math.sin(t*.7+k+j*.55+i)*s*.06*j*.3,y-h*j/6);
+      ctx.stroke();}
+  } else { /* rock */
+    ctx.beginPath();
+    for(let k=0;k<=10;k++){const a=Math.PI+k*(Math.PI/10), rr=s*(.22+hash(i*7+k)*.16);
+      ctx.lineTo(x+Math.cos(a)*rr*1.5,y+Math.sin(a)*rr);}
+    ctx.closePath(); ctx.fill();
+  }
 }
 
 /* --------------------------------------------------------------- sound -- */
@@ -1057,7 +1249,7 @@ function newRun() {
         t:0, over:false, won:false,
         player: {
             x:AW/2, y:AH/2, vx:0, vy:0,
-            size: SZ_START + up('start') * 3,
+            size: SZ_START + up('start') * 3 + perk('start'),
             face:0, dash:0, dashCd:0, grace:0, chew:0,
             slips: up('lucky'),
         },
@@ -1067,7 +1259,7 @@ function newRun() {
         eaten:0, bitten:0, pearlRun:0, pearlBank:0,
         combo:0, comboT:0, mult:1, bestMult:1, multPop:0,
         apexT:38, apexOut:{},
-        spawnT:0, shake:0, flash:0, msg:'', msgT:0,
+        spawnT:0, shake:0, flash:0, msg:'', msgT:0, killer:null, district:null,
     };
     cam.x = state.player.x - VW/2; cam.y = state.player.y - VH/2;
     // a reef that already has fish in it, so there is something to do at once
@@ -1104,7 +1296,13 @@ function pickShoal() {
     // The named hunters are meant to be an event, not the local wildlife. Without
     // this you meet seven swordfish and four sharks the moment you pass size 60,
     // all of them hunting, and nobody ever grows past it.
-    const rank = SHOALS.slice().sort((a, b) =>
+    // What is actually in front of you depends on where you are. Each district
+    // has its own residents; a quarter of what spawns wanders in from the rest
+    // of the reef, so a district is a strong flavour rather than a wall.
+    const here = districtAt(p.x, p.y);
+    const local = Math.random() < 0.75;
+    const from = local ? SHOALS.filter(x => here.pool.indexOf(x.key) >= 0) : SHOALS;
+    const rank = (from.length ? from : SHOALS).slice().sort((a, b) =>
         Math.abs(a.size - want) - Math.abs(b.size - want));
     for (const s of rank) {
         if (s.rare && Math.random() > s.rare) continue;
@@ -1148,8 +1346,12 @@ function spawnFish(kind, anywhere) {
         // always mean it — they both telegraph, so that is fair. Lurkers are left
         // random: making every one of them aggressive too put four species out of
         // fifteen permanently on you and nobody could get going at all.
-        bold: s.apex || s.mind === 'stalk' || s.mind === 'charge'
-              || Math.random() < 0.12 + Math.min(0.22, state.t / 60 * 0.22),
+        // Predators that hunt for a living always mean it, and so do the lurkers
+        // now — a moray or a grouper that never lunges is scenery. The plain
+        // wanderers still mostly leave you alone, and the whole reef grows
+        // bolder the longer you survive in it.
+        bold: s.apex || s.mind === 'stalk' || s.mind === 'charge' || s.mind === 'lurk'
+              || Math.random() < (0.18 + Math.min(0.34, state.t / 60 * 0.34)) * DIFFS[diff].bold,
     };
     f.base = f.size;                      // a puffer needs to remember its real size
     state.fish.push(f);
@@ -1158,7 +1360,8 @@ function spawnFish(kind, anywhere) {
 
 function crowd() {
     const d = DIFFS[diff];
-    return Math.round((44 + state.t * 0.16) * d.crowd);
+    // 175 is the hard ceiling on everything in the water at once.
+    return Math.min(175, Math.round((58 + state.t * 0.26) * d.crowd));
 }
 
 /* -------------------------------------------------------------- update -- */
@@ -1183,6 +1386,13 @@ function update(dt) {
     tickSave(dt);
 
     if (state.t >= SWIM) return endRun(true);
+
+    // crossing into somewhere new is worth saying out loud, once
+    const here = districtAt(p.x, p.y);
+    if (here !== state.district) {
+        if (state.district) say(here.name + ' — ' + here.sub);
+        state.district = here;
+    }
 
     /* --- swimming --- */
     let mx = 0, my = 0;
@@ -1356,7 +1566,10 @@ function updateFish(dt) {
 
         const ax = tx - f.x, ay = ty - f.y, ad = Math.hypot(ax, ay) || 1;
         // frightened prey is quick but not quicker than you — a chase has to end
-        const fs = f.kind.spd * (1 - Math.min(0.35, f.size / 400)) * rush
+        // A predator that has committed to you swims like it means it, and how
+        // hard it commits is what separates the shallows from the deep.
+        const fs = f.kind.spd * (1 - Math.min(0.35, f.size / 400))
+                 * (rush > 1 ? rush * DIFFS[diff].rush : rush)
                  * (rel === 'prey' ? 0.82 : 1);
         f.vx += ((ax / ad) * fs - f.vx) * Math.min(1, dt * 3.4);
         f.vy += ((ay / ad) * fs - f.vy) * Math.min(1, dt * 3.4);
@@ -1409,7 +1622,14 @@ function eatFish(f, i) {
     }
 
     // you grow by a share of what you ate, and the multiplier is on the growth too
-    const gain = (2.0 + f.size * 0.10) * growMult() * (1 + (state.mult - 1) * 0.28);
+    // What a meal is worth depends on how big it was *relative to you*, not on
+    // its size in the absolute. A minnow moves you when you are a minnow and
+    // does nothing once you are a shark, so the way to keep growing is always to
+    // go after the biggest thing you dare — which is the game. A flat rate per
+    // fish meant the whole reef could be cleared by hoovering up fry, and you
+    // hit the ceiling inside half a minute.
+    const rel2 = Math.pow(Math.min(1, f.size / p.size), 1.6);
+    const gain = 6.2 * rel2 * growMult() * (1 + (state.mult - 1) * 0.28);
     p.size = Math.min(SZ_CAP, p.size + gain);
 
     state.xp += f.kind.xp;
@@ -1450,6 +1670,9 @@ function bitten(f, sting) {
     const a = Math.atan2(p.y - f.y, p.x - f.x);
     p.vx = Math.cos(a) * 420; p.vy = Math.sin(a) * 420;
     f.vx -= Math.cos(a) * 160; f.vy -= Math.sin(a) * 160;
+
+    // whatever last had a piece of you is what the death screen will name
+    state.killer = { key:f.key, size:Math.round(f.size), sting:!!sting, apex:!!f.kind.apex };
 
     pop(p.x, p.y - p.size, sting ? 'STUNG' : '−' + loss.toFixed(1), '#ff4a4a', 20);
     beep(150, 0.2, 'sawtooth', 0.05);
@@ -1594,29 +1817,82 @@ function render() {
 }
 
 function drawSea() {
-    // a bright, plain sea. nothing here is allowed to hide anything.
-    const g = ctx.createLinearGradient(0, cam.y, 0, cam.y + VH);
-    g.addColorStop(0, '#5fc8ea');
-    g.addColorStop(1, '#1f7fb4');
-    ctx.fillStyle = g;
-    ctx.fillRect(cam.x - 10, cam.y - 10, VW + 20, VH + 20);
+    // Six districts, and the water is a different colour in each. Rather than
+    // paint six rectangles and leave hard seams, every column of pixels is mixed
+    // from the districts either side of it, so a border is a gradient you swim
+    // through and see coming.
+    const cw = AW / DCOLS, ch = AH / DROWS;
+    const x0 = Math.max(0, cam.x - 20), x1 = Math.min(AW, cam.x + VW + 20);
+    const row = Math.max(0, Math.min(DROWS - 1, Math.floor((cam.y + VH / 2) / ch)));
+    const STEP = 60;
+    for (let x = x0; x < x1; x += STEP) {
+        const u = (x + STEP / 2) / cw - 0.5;             // where we are between two columns
+        const c0 = Math.max(0, Math.min(DCOLS - 1, Math.floor(u)));
+        const c1 = Math.max(0, Math.min(DCOLS - 1, c0 + 1));
+        const k = Math.max(0, Math.min(1, u - c0));
+        const a = DISTRICTS[row * DCOLS + c0], b = DISTRICTS[row * DCOLS + c1];
+        const g = ctx.createLinearGradient(0, cam.y, 0, cam.y + VH);
+        g.addColorStop(0, mixHex(a.top, b.top, k));
+        g.addColorStop(1, mixHex(a.bot, b.bot, k));
+        ctx.fillStyle = g;
+        ctx.fillRect(x, cam.y - 10, Math.min(STEP + 1, x1 - x + 1), VH + 20);
+    }
 
-    const T = 150;
-    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-    ctx.lineWidth = 2;
-    const x0 = Math.floor((cam.x - 10) / T) * T, y0 = Math.floor((cam.y - 10) / T) * T;
-    for (let x = x0; x < cam.x + VW + T; x += T) {
-        ctx.beginPath(); ctx.moveTo(x, cam.y - 10); ctx.lineTo(x, cam.y + VH + 10); ctx.stroke();
+    // shafts of light from the surface, so the water has a top to it
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 9; i++) {
+        const sx = ((i * 421) % AW) + Math.sin(state.t * 0.15 + i) * 30;
+        if (sx < cam.x - 260 || sx > cam.x + VW + 260) continue;
+        ctx.beginPath();
+        ctx.moveTo(sx - 26, 0); ctx.lineTo(sx + 26, 0);
+        ctx.lineTo(sx + 150, AH); ctx.lineTo(sx + 60, AH);
+        ctx.closePath(); ctx.fill();
     }
-    for (let y = y0; y < cam.y + VH + T; y += T) {
-        ctx.beginPath(); ctx.moveTo(cam.x - 10, y); ctx.lineTo(cam.x + VW + 10, y); ctx.stroke();
-    }
+    ctx.restore();
+
+    drawReef();
 
     // the reef wall, so the edge of the world is obvious
     ctx.strokeStyle = '#0a4a6e'; ctx.lineWidth = 14;
     ctx.strokeRect(7, 7, AW - 14, AH - 14);
     ctx.strokeStyle = '#f0b45e'; ctx.lineWidth = 6;
     ctx.strokeRect(7, 7, AW - 14, AH - 14);
+}
+
+function mixHex(a, b, k) {
+    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    const r = Math.round((pa >> 16) + ((pb >> 16) - (pa >> 16)) * k);
+    const g = Math.round(((pa >> 8) & 255) + (((pb >> 8) & 255) - ((pa >> 8) & 255)) * k);
+    const bl = Math.round((pa & 255) + ((pb & 255) - (pa & 255)) * k);
+    return 'rgb(' + r + ',' + g + ',' + bl + ')';
+}
+
+// Coral grows on the floor of each district and along the bottom edge of the
+// arena. Where it sits is decided by a hash of its index, so it is in the same
+// place every dive and never has to be stored.
+function drawReef() {
+    const cw = AW / DCOLS, ch = AH / DROWS;
+    const SP = 132;                                  // one coral head every so often
+    const i0 = Math.floor((cam.x - SP) / SP), i1 = Math.ceil((cam.x + VW + SP) / SP);
+    for (let band = 0; band < DROWS; band++) {
+        const baseY = (band + 1) * ch - 8;           // it grows up off the floor of its band
+        if (baseY < cam.y - 90 || baseY > cam.y + VH + 40) continue;
+        for (let i = i0; i <= i1; i++) {
+            const h = hash(i * 1.37 + band * 31), h2 = hash(i * 4.11 + band * 31),
+                  h3 = hash(i * 9.7 + band * 31);
+            const sx = i * SP + (h2 - 0.5) * SP * 0.55;
+            if (sx < 12 || sx > AW - 12) continue;
+            const d = DISTRICTS[band * DCOLS +
+                      Math.max(0, Math.min(DCOLS - 1, Math.floor(sx / cw)))];
+            if (h3 > d.reef.dens * 0.72) continue;   // sparser out in open water
+            const type = d.reef.types[(h * d.reef.types.length) | 0];
+            const col  = d.reef.pal[(h2 * d.reef.pal.length) | 0];
+            coral(ctx, sx, baseY + (h3 - 0.5) * 10, 110 * (0.6 + h * 0.9),
+                  type, col, state.t, i + band * 7);
+        }
+    }
 }
 
 function drawPearls() {
@@ -1840,6 +2116,14 @@ function drawHUD() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillStyle = '#5e7a88'; ctx.font = 'bold 11px Segoe UI';
     ctx.fillText('YOUR SIZE', 14, 16);
+
+    // where you are, always, so the water changing colour means something
+    if (state.district) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#5e7a88'; ctx.font = 'bold 11px Segoe UI';
+        ctx.fillText(state.district.name, VW / 2, 16);
+    }
+    ctx.textAlign = 'left';
     ctx.fillStyle = '#0f86c4'; ctx.font = 'bold 30px Segoe UI';
     ctx.fillText(Math.round(p.size), 14, 40);
 
@@ -1945,9 +2229,24 @@ function endRun(won) {
     const mins = Math.floor(state.t / 60), secs = Math.floor(state.t % 60);
     document.getElementById('overTitle').textContent = won ? '🏆 BIGGEST ON THE REEF' : 'EATEN';
     document.getElementById('overTitle').style.color = won ? '#1a9c4a' : '#c43a3a';
-    document.getElementById('overSub').textContent = won
-        ? 'Five minutes and nothing left that could touch you.'
-        : 'Something bigger got you at ' + mins + ':' + String(secs).padStart(2,'0') + '.';
+    // 'something bigger got you' told you nothing. Now it names the animal, its
+    // size, and what it did — so a death is a thing you can learn from.
+    const at = ' at ' + mins + ':' + String(secs).padStart(2,'0') + '.';
+    let sub;
+    if (won) {
+        sub = 'Five minutes and nothing left that could touch you.';
+    } else if (!state.killer) {
+        sub = 'You called the dive off' + at;
+    } else {
+        const k = state.killer;
+        const what = NAMES[k.key] || 'something bigger';
+        if (k.sting)      sub = 'Stung to nothing by ' + what + at;
+        else if (k.apex)  sub = what[0].toUpperCase() + what.slice(1) + ' took you' + at;
+        else              sub = 'Eaten by ' + what + ' — ' + k.size + ' to your ' + sz + at;
+        document.getElementById('overTitle').textContent = 'EATEN BY ' +
+            what.replace(/^(a|an|the) /i, '').toUpperCase();
+    }
+    document.getElementById('overSub').textContent = sub;
 
     document.getElementById('overKit').innerHTML =
         Object.keys(KIT).filter(k => kitOwned[k]).map(k => '<span>' + KIT[k].g + '<i>' + kitOwned[k] + '</i></span>').join('')
@@ -1988,6 +2287,32 @@ function bestText() {
     return 'Best size ' + best.size + ', ' + best.dives + ' dive' + (best.dives === 1 ? '' : 's') +
            ' finished.  🐚 ' + pearls.toLocaleString() + ' pearls' +
            (bought ? ', ' + bought + ' bought.' : '.');
+}
+
+// Each card draws the actual animal, at the same anatomy the game will use for it
+// in the water — so what you choose is what you see swimming a second later.
+function paintPicks() {
+    const row = document.getElementById('pickRow');
+    row.innerHTML = '';
+    for (const sp of PLAYABLE) {
+        const b = document.createElement('button');
+        b.className = 'pick' + (sp.key === playerSpecies ? ' sel' : '');
+        const c = document.createElement('canvas');
+        c.width = 168; c.height = 88;
+        const g = c.getContext('2d');
+        g.scale(2, 2);
+        // a ray is nearly as tall as it is long, so it gets drawn smaller
+        const len = ANAT.SPECIES[sp.key].form === 'ray' ? 54 : 74;
+        ANAT.stamp(g, ANAT.SPECIES[sp.key], 42, 22, len, 0, 1.1, { swim:1.4 });
+        b.appendChild(c);
+        const n = document.createElement('b'); n.textContent = sp.name; b.appendChild(n);
+        const t = document.createElement('i'); t.textContent = sp.tag; b.appendChild(t);
+        b.addEventListener('click', () => {
+            playerSpecies = sp.key; storeSave(); paintPicks();
+        });
+        row.appendChild(b);
+    }
+    document.getElementById('pickNote').textContent = BY_PLAYABLE[playerSpecies].note;
 }
 
 function paintDiffs() {
@@ -2147,6 +2472,7 @@ addEventListener('visibilitychange', () => { if (document.visibilityState === 'h
 storeLoad();
 layout();
 paintDiffs();
+paintPicks();
 document.getElementById('titleBest').textContent = bestText();
 requestAnimationFrame(loop);
 })();
